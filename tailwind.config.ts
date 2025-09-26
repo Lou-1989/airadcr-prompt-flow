@@ -29,6 +29,11 @@ export default {
           foreground: "hsl(var(--secondary-foreground))",
           hover: "hsl(var(--secondary-hover))",
         },
+        medical: {
+          blue: "hsl(var(--medical-blue))",
+          light: "hsl(var(--medical-light))",
+          accent: "hsl(var(--medical-accent))",
+        },
         destructive: {
           DEFAULT: "hsl(var(--destructive))",
           foreground: "hsl(var(--destructive-foreground))",

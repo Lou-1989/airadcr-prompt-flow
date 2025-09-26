@@ -2,63 +2,68 @@
 @tailwind components;
 @tailwind utilities;
 
-/* AirADCR Desktop Application Design System */
+/* AirADCR Medical Desktop Application Design System */
 
 @layer base {
   :root {
-    /* Core colors for desktop app */
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
+    /* AirADCR Medical Brand Colors */
+    --background: 0 0% 98%;
+    --foreground: 215 25% 27%;
 
-    --card: 240 10% 3.9%;
-    --card-foreground: 0 0% 98%;
+    --card: 0 0% 100%;
+    --card-foreground: 215 25% 27%;
 
-    --popover: 240 10% 3.9%;
-    --popover-foreground: 0 0% 98%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 25% 27%;
 
-    /* AirADCR brand colors */
+    /* AirADCR signature medical blue */
     --primary: 217 91% 60%;
     --primary-foreground: 0 0% 98%;
     --primary-hover: 217 91% 55%;
 
-    --secondary: 240 4.8% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --secondary-hover: 240 4.8% 20%;
+    --medical-blue: 217 91% 60%;
+    --medical-light: 204 94% 94%;
+    --medical-accent: 217 91% 65%;
 
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
+    --secondary: 204 94% 94%;
+    --secondary-foreground: 215 25% 27%;
+    --secondary-hover: 204 94% 90%;
 
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
+    --muted: 220 13% 91%;
+    --muted-foreground: 215 25% 45%;
 
-    --destructive: 0 62.8% 30.6%;
+    --accent: 204 94% 94%;
+    --accent-foreground: 215 25% 27%;
+
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 98%;
 
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
     --ring: 217 91% 60%;
 
-    --radius: 0.5rem;
+    --radius: 0.75rem;
 
     /* Desktop app specific */
-    --toolbar-background: 240 10% 6%;
-    --toolbar-border: 240 3.7% 15.9%;
+    --toolbar-background: 0 0% 100%;
+    --toolbar-border: 220 13% 91%;
     --webview-background: 0 0% 100%;
     
-    /* Status colors */
+    /* Medical status colors */
     --success: 142 76% 36%;
     --warning: 43 96% 56%;
     --error: 0 84% 60%;
 
-    /* Gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(217 91% 45%));
-    --gradient-toolbar: linear-gradient(180deg, hsl(var(--toolbar-background)), hsl(240 10% 5%));
+    /* AirADCR gradients */
+    --gradient-medical: linear-gradient(135deg, hsl(217 91% 60%), hsl(204 94% 94%));
+    --gradient-toolbar: linear-gradient(180deg, hsl(0 0% 100%), hsl(204 94% 98%));
 
-    /* Shadows */
-    --shadow-toolbar: 0 1px 3px hsl(0 0% 0% / 0.2);
-    --shadow-elevated: 0 4px 12px hsl(0 0% 0% / 0.15);
+    /* Professional shadows */
+    --shadow-toolbar: 0 1px 3px hsl(217 91% 60% / 0.1);
+    --shadow-elevated: 0 4px 12px hsl(217 91% 60% / 0.15);
+    --shadow-medical: 0 2px 8px hsl(217 91% 60% / 0.1);
 
-    /* Animations */
+    /* Smooth animations */
     --transition-smooth: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     --transition-bounce: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
   }
@@ -110,30 +115,39 @@
   body {
     @apply bg-background text-foreground overflow-hidden;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    letter-spacing: -0.011em;
   }
 }
 
 @layer components {
-  /* Desktop toolbar styles */
+  /* AirADCR Medical Desktop Toolbar */
   .toolbar {
     background: var(--gradient-toolbar);
     border-bottom: 1px solid hsl(var(--toolbar-border));
     box-shadow: var(--shadow-toolbar);
+    backdrop-filter: blur(10px);
   }
   
   .toolbar-button {
-    @apply inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50;
-    @apply h-9 px-3 bg-transparent text-foreground/80 hover:bg-accent hover:text-accent-foreground;
+    @apply inline-flex items-center justify-center rounded-lg text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50;
+    @apply h-9 px-3 bg-transparent text-foreground/80 hover:bg-medical-light hover:text-primary;
     transition: var(--transition-smooth);
+    font-weight: 500;
+  }
+  
+  .toolbar-button:hover {
+    box-shadow: var(--shadow-medical);
   }
   
   .toolbar-button.active {
     @apply bg-primary text-primary-foreground;
+    box-shadow: var(--shadow-medical);
   }
   
   .webview-container {
-    @apply flex-1 bg-white rounded-lg shadow-lg overflow-hidden;
+    @apply flex-1 bg-white rounded-xl overflow-hidden;
     box-shadow: var(--shadow-elevated);
+    border: 1px solid hsl(var(--border));
   }
   
   .status-indicator {

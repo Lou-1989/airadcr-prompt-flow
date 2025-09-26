@@ -7,11 +7,9 @@ use tauri::{
 };
 use std::collections::HashMap;
 
-#[cfg(target_os = "windows")]
-use winapi::um::winuser::{GetCursorPos, POINT};
-
-#[cfg(target_os = "windows")]
+// Imports cross-platform pour la détection curseur et injection
 use enigo::*;
+use mouse_position::get_mouse_position;
 
 // Commande pour basculer always-on-top
 #[tauri::command]
@@ -81,51 +79,48 @@ async fn get_system_info() -> Result<HashMap<String, String>, String> {
     Ok(info)
 }
 
-// Commande pour obtenir la position du curseur
+// Commande pour obtenir la position du curseur (cross-platform)
 #[tauri::command]
 async fn get_cursor_position() -> Result<(i32, i32), String> {
-    #[cfg(target_os = "windows")]
-    unsafe {
-        let mut point = POINT { x: 0, y: 0 };
-        if GetCursorPos(&mut point) != 0 {
-            Ok((point.x, point.y))
-        } else {
-            Err("Erreur lors de la récupération de la position du curseur".to_string())
-        }
+    match get_mouse_position() {
+        Ok((x, y)) => Ok((x, y)),
+        Err(e) => Err(format!("Erreur position curseur: {}", e))
     }
-    
-    #[cfg(not(target_os = "windows"))]
-    Err("Fonction disponible uniquement sur Windows".to_string())
 }
 
-// Commande pour effectuer l'injection automatique
+// Commande pour effectuer l'injection automatique (cross-platform)
 #[tauri::command]
 async fn perform_injection(text: String) -> Result<(i32, i32), String> {
-    #[cfg(target_os = "windows")]
-    {
-        // 1. Récupérer la position du curseur
-        let cursor_pos = match get_cursor_position().await {
-            Ok(pos) => pos,
-            Err(e) => return Err(format!("Erreur position curseur: {}", e)),
-        };
-        
-        // 2. Copier le texte dans le presse-papier
-        match tauri::api::clipboard::write_text(&text) {
-            Ok(_) => {},
-            Err(e) => return Err(format!("Erreur presse-papier: {}", e)),
-        }
-        
-        // 3. Simuler Ctrl+V
-        let mut enigo = Enigo::new();
-        enigo.key_down(Key::Control);
-        enigo.key_click(Key::Layout('v'));
-        enigo.key_up(Key::Control);
-        
-        Ok(cursor_pos)
+    // 1. Récupérer la position du curseur
+    let cursor_pos = match get_cursor_position().await {
+        Ok(pos) => pos,
+        Err(e) => return Err(format!("Erreur position curseur: {}", e)),
+    };
+    
+    // 2. Copier le texte dans le presse-papier
+    match tauri::api::clipboard::write_text(&text) {
+        Ok(_) => {},
+        Err(e) => return Err(format!("Erreur presse-papier: {}", e)),
     }
     
-    #[cfg(not(target_os = "windows"))]
-    Err("Fonction d'injection disponible uniquement sur Windows".to_string())
+    // 3. Simuler raccourci de collage (Cmd+V sur macOS, Ctrl+V ailleurs)
+    let mut enigo = Enigo::new();
+    
+    #[cfg(target_os = "macos")]
+    {
+        enigo.key_down(Key::Meta); // Touche Cmd sur macOS
+        enigo.key_click(Key::Layout('v'));
+        enigo.key_up(Key::Meta);
+    }
+    
+    #[cfg(not(target_os = "macos"))]
+    {
+        enigo.key_down(Key::Control); // Touche Ctrl sur Windows/Linux
+        enigo.key_click(Key::Layout('v'));
+        enigo.key_up(Key::Control);
+    }
+    
+    Ok(cursor_pos)
 }
 
 fn main() {

@@ -1,8 +1,8 @@
 [package]
 name = "airadcr-desktop"
 version = "1.0.0"
-description = "Application desktop native pour AirADCR avec injection système et always-on-top"
-authors = ["AirADCR Team"]
+description = "AirADCR améliore la qualité des comptes rendus radiologiques grâce à une dictée intelligente optimisée pour la radiologie. Solution desktop native pour radiologues."
+authors = ["AirADCR"]
 license = "MIT"
 repository = "https://github.com/airadcr/desktop"
 edition = "2021"

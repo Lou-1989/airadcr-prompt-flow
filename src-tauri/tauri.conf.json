@@ -103,6 +103,33 @@
           "languages": ["French", "English"],
           "displayLanguageSelector": true
         }
+      },
+      "macOS": {
+        "frameworks": [],
+        "minimumSystemVersion": "10.13",
+        "exceptionDomain": "",
+        "signingIdentity": null,
+        "providerShortName": null,
+        "entitlements": null,
+        "dmg": {
+          "appPosition": {
+            "x": 180,
+            "y": 170
+          },
+          "applicationFolderPosition": {
+            "x": 480,
+            "y": 170
+          },
+          "windowSize": {
+            "width": 660,
+            "height": 400
+          },
+          "windowPosition": {
+            "x": 400,
+            "y": 100
+          },
+          "background": null
+        }
       }
     },
     "security": {

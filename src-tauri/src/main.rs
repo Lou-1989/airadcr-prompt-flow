@@ -91,64 +91,34 @@ async fn get_cursor_position() -> Result<(i32, i32), String> {
 // Commande pour effectuer l'injection automatique (cross-platform)
 #[tauri::command]
 async fn perform_injection(text: String) -> Result<(i32, i32), String> {
-    println!("[Injection] === DÉBUT INJECTION ===");
-    println!("[Injection] Texte à injecter: {} caractères", text.len());
-    
-    // 1. DÉLAI MINIMAL - l'utilisateur a déjà eu 3 secondes pour se repositionner
-    std::thread::sleep(std::time::Duration::from_millis(50));
-    
-    // 2. Récupérer la position ACTUELLE du curseur juste avant injection
-    println!("[Injection] Détection position curseur...");
+    // 1. Récupérer la position du curseur
     let cursor_pos = match get_cursor_position().await {
-        Ok(pos) => {
-            println!("[Injection] Position détectée: ({}, {})", pos.0, pos.1);
-            pos
-        },
-        Err(e) => {
-            println!("[Injection] ERREUR position curseur: {}", e);
-            return Err(format!("Erreur position curseur: {}", e));
-        },
+        Ok(pos) => pos,
+        Err(e) => return Err(format!("Erreur position curseur: {}", e)),
     };
     
-    // 3. Copier le texte dans le presse-papier
-    println!("[Injection] Copie vers presse-papier...");
+    // 2. Copier le texte dans le presse-papier
     match tauri::api::clipboard::write_text(&text) {
-        Ok(_) => println!("[Injection] ✅ Copie réussie"),
-        Err(e) => {
-            println!("[Injection] ❌ Erreur copie: {}", e);
-            return Err(format!("Erreur presse-papier: {}", e));
-        }
+        Ok(_) => {},
+        Err(e) => return Err(format!("Erreur presse-papier: {}", e)),
     }
     
-    // 4. Petit délai pour s'assurer que le clipboard est prêt
-    std::thread::sleep(std::time::Duration::from_millis(50));
-    
-    // 5. Simuler raccourci de collage (Cmd+V sur macOS, Ctrl+V ailleurs)
-    println!("[Injection] Simulation raccourci clavier...");
+    // 3. Simuler raccourci de collage (Cmd+V sur macOS, Ctrl+V ailleurs)
     let mut enigo = Enigo::new();
     
     #[cfg(target_os = "macos")]
     {
-        println!("[Injection] Utilisation Cmd+V pour macOS");
         enigo.key_down(Key::Meta); // Touche Cmd sur macOS
-        std::thread::sleep(std::time::Duration::from_millis(10));
         enigo.key_click(Key::Layout('v'));
-        std::thread::sleep(std::time::Duration::from_millis(10));
         enigo.key_up(Key::Meta);
     }
     
     #[cfg(not(target_os = "macos"))]
     {
-        println!("[Injection] Utilisation Ctrl+V pour Windows/Linux");
         enigo.key_down(Key::Control); // Touche Ctrl sur Windows/Linux
-        std::thread::sleep(std::time::Duration::from_millis(10));
         enigo.key_click(Key::Layout('v'));
-        std::thread::sleep(std::time::Duration::from_millis(10));
         enigo.key_up(Key::Control);
     }
-    
-    println!("[Injection] ✅ Injection terminée à la position ({}, {})", cursor_pos.0, cursor_pos.1);
-    println!("[Injection] === FIN INJECTION ===");
     
     Ok(cursor_pos)
 }

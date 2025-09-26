@@ -3,6 +3,29 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+    <!-- Content Security Policy pour la sécurité -->
+    <meta http-equiv="Content-Security-Policy" content="
+      default-src 'self';
+      script-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+      font-src 'self' https://fonts.gstatic.com;
+      img-src 'self' data: https:;
+      connect-src 'self' https://airadcr.com;
+      frame-src https://airadcr.com;
+      frame-ancestors 'none';
+    ">
+    
+    <!-- Protection contre le clickjacking -->
+    <meta http-equiv="X-Frame-Options" content="DENY">
+    
+    <!-- Protection XSS -->
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta http-equiv="X-XSS-Protection" content="1; mode=block">
+    
+    <!-- Politique de référent stricte -->
+    <meta name="referrer" content="strict-origin-when-cross-origin">
+    
     <title>AirADCR Desktop</title>
     <meta name="description" content="Application desktop native pour AirADCR avec injection système et always-on-top" />
     <meta name="author" content="AirADCR Team" />

@@ -6,6 +6,22 @@ use tauri::{
     WindowBuilder, WindowEvent, WindowUrl,
 };
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CursorPosition {
+    pub x: i32,
+    pub y: i32,
+    pub timestamp: u64,
+}
+
+// Structure globale pour stocker l'état des positions
+#[derive(Debug)]
+pub struct AppState {
+    pub external_positions: Arc<Mutex<Vec<CursorPosition>>>,
+    pub app_has_focus: Arc<Mutex<bool>>,
+}
 
 // Imports cross-platform pour la détection curseur et injection
 use enigo::*;
@@ -86,6 +102,47 @@ async fn get_cursor_position() -> Result<(i32, i32), String> {
         Ok((x, y)) => Ok((x, y)),
         Err(e) => Err(format!("Erreur position curseur: {}", e))
     }
+}
+
+// Commande pour détecter si l'app a le focus
+#[tauri::command]
+async fn check_app_focus(window: tauri::Window) -> Result<bool, String> {
+    match window.is_focused() {
+        Ok(focused) => Ok(focused),
+        Err(e) => Err(format!("Erreur vérification focus: {}", e)),
+    }
+}
+
+// Commande pour effectuer l'injection à une position spécifique
+#[tauri::command]
+async fn perform_injection_at_position(text: String, x: i32, y: i32) -> Result<(i32, i32), String> {
+    // 1. Copier le texte dans le presse-papier
+    match tauri::api::clipboard::write_text(&text) {
+        Ok(_) => {},
+        Err(e) => return Err(format!("Erreur presse-papier: {}", e)),
+    }
+    
+    // 2. Petit délai pour s'assurer que le focus est correct
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    
+    // 3. Simuler raccourci de collage (Cmd+V sur macOS, Ctrl+V ailleurs)
+    let mut enigo = Enigo::new();
+    
+    #[cfg(target_os = "macos")]
+    {
+        enigo.key_down(Key::Meta); // Touche Cmd sur macOS
+        enigo.key_click(Key::Layout('v'));
+        enigo.key_up(Key::Meta);
+    }
+    
+    #[cfg(not(target_os = "macos"))]
+    {
+        enigo.key_down(Key::Control); // Touche Ctrl sur Windows/Linux
+        enigo.key_click(Key::Layout('v'));
+        enigo.key_up(Key::Control);
+    }
+    
+    Ok((x, y))
 }
 
 // Commande pour effectuer l'injection automatique (cross-platform)
@@ -191,7 +248,9 @@ fn main() {
             restore_from_tray,
             get_system_info,
             get_cursor_position,
-            perform_injection
+            perform_injection,
+            perform_injection_at_position,
+            check_app_focus
         ])
         .run(tauri::generate_context!())
         .expect("Erreur lors du lancement de l'application");

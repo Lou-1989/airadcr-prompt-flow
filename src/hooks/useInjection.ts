@@ -15,7 +15,7 @@ export const useInjection = () => {
     }
   }, []);
   
-  // Fonction principale d'injection avec détection position en temps réel
+  // Fonction principale d'injection - WORKFLOW UTILISATEUR CORRIGÉ
   const performInjection = useCallback(async (text: string): Promise<boolean> => {
     if (!text || text.trim().length === 0) {
       console.warn('[Injection Frontend] Texte vide, injection annulée');
@@ -26,9 +26,9 @@ export const useInjection = () => {
       console.log('[Injection Frontend] 🎯 DÉMARRAGE injection sécurisée...');
       console.log('[Injection Frontend] Texte:', text.substring(0, 50) + (text.length > 50 ? '...' : ''));
       
-      // Petit délai pour permettre à l'utilisateur de se positionner
-      console.log('[Injection Frontend] ⏳ Délai pour positionnement curseur...');
-      await new Promise(resolve => setTimeout(resolve, 200));
+      // DÉLAI ÉTENDU pour permettre à l'utilisateur de REPOSITIONNER le curseur dans l'app cible
+      console.log('[Injection Frontend] ⏳ REPOSITIONNEZ votre curseur dans l\'application cible (RIS/Word/etc.) - 3 secondes...');
+      await new Promise(resolve => setTimeout(resolve, 3000));
       
       // Effectuer l'injection via Tauri (position détectée côté Rust juste avant injection)
       const [x, y] = await invoke<[number, number]>('perform_injection', { text });

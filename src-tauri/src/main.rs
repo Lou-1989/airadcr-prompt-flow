@@ -94,8 +94,8 @@ async fn perform_injection(text: String) -> Result<(i32, i32), String> {
     println!("[Injection] === DÉBUT INJECTION ===");
     println!("[Injection] Texte à injecter: {} caractères", text.len());
     
-    // 1. DÉLAI pour permettre à l'utilisateur de positionner le curseur
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    // 1. DÉLAI MINIMAL - l'utilisateur a déjà eu 3 secondes pour se repositionner
+    std::thread::sleep(std::time::Duration::from_millis(50));
     
     // 2. Récupérer la position ACTUELLE du curseur juste avant injection
     println!("[Injection] Détection position curseur...");

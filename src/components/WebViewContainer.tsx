@@ -40,6 +40,11 @@ export const WebViewContainer = ({ className }: WebViewContainerProps) => {
     return (
       <div className={cn("h-full w-full flex items-center justify-center bg-destructive/10", className)}>
         <div className="text-center p-6">
+          <img 
+            src="/lovable-uploads/IMG_9255.png" 
+            alt="AirADCR Logo" 
+            className="h-16 w-auto mx-auto mb-4"
+          />
           <h2 className="text-lg font-semibold text-destructive mb-2">
             🛡️ Erreur de Sécurité
           </h2>
@@ -56,6 +61,11 @@ export const WebViewContainer = ({ className }: WebViewContainerProps) => {
     return (
       <div className={cn("h-full w-full flex items-center justify-center bg-warning/10", className)}>
         <div className="text-center p-6">
+          <img 
+            src="/lovable-uploads/IMG_9255.png" 
+            alt="AirADCR Logo" 
+            className="h-16 w-auto mx-auto mb-4"
+          />
           <h2 className="text-lg font-semibold text-warning mb-2">
             ⚠️ Erreur de Chargement
           </h2>

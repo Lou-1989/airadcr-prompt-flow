@@ -2,57 +2,65 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
-*/
+/* AirADCR Desktop Application Design System */
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* Core colors for desktop app */
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card: 240 10% 3.9%;
+    --card-foreground: 0 0% 98%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    /* AirADCR brand colors */
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 98%;
+    --primary-hover: 217 91% 55%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 240 4.8% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    --secondary-hover: 240 4.8% 20%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 217 91% 60%;
 
     --radius: 0.5rem;
 
-    --sidebar-background: 0 0% 98%;
+    /* Desktop app specific */
+    --toolbar-background: 240 10% 6%;
+    --toolbar-border: 240 3.7% 15.9%;
+    --webview-background: 0 0% 100%;
+    
+    /* Status colors */
+    --success: 142 76% 36%;
+    --warning: 43 96% 56%;
+    --error: 0 84% 60%;
 
-    --sidebar-foreground: 240 5.3% 26.1%;
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(217 91% 45%));
+    --gradient-toolbar: linear-gradient(180deg, hsl(var(--toolbar-background)), hsl(240 10% 5%));
 
-    --sidebar-primary: 240 5.9% 10%;
+    /* Shadows */
+    --shadow-toolbar: 0 1px 3px hsl(0 0% 0% / 0.2);
+    --shadow-elevated: 0 4px 12px hsl(0 0% 0% / 0.15);
 
-    --sidebar-primary-foreground: 0 0% 98%;
-
-    --sidebar-accent: 240 4.8% 95.9%;
-
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
-    --sidebar-border: 220 13% 91%;
-
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* Animations */
+    --transition-smooth: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-bounce: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
   }
 
   .dark {
@@ -100,6 +108,44 @@ All colors MUST be HSL.
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground overflow-hidden;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+}
+
+@layer components {
+  /* Desktop toolbar styles */
+  .toolbar {
+    background: var(--gradient-toolbar);
+    border-bottom: 1px solid hsl(var(--toolbar-border));
+    box-shadow: var(--shadow-toolbar);
+  }
+  
+  .toolbar-button {
+    @apply inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50;
+    @apply h-9 px-3 bg-transparent text-foreground/80 hover:bg-accent hover:text-accent-foreground;
+    transition: var(--transition-smooth);
+  }
+  
+  .toolbar-button.active {
+    @apply bg-primary text-primary-foreground;
+  }
+  
+  .webview-container {
+    @apply flex-1 bg-white rounded-lg shadow-lg overflow-hidden;
+    box-shadow: var(--shadow-elevated);
+  }
+  
+  .status-indicator {
+    @apply inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium;
+    transition: var(--transition-smooth);
+  }
+  
+  .status-indicator.online {
+    @apply bg-green-500/20 text-green-400 border border-green-500/30;
+  }
+  
+  .status-indicator.offline {
+    @apply bg-red-500/20 text-red-400 border border-red-500/30;
   }
 }

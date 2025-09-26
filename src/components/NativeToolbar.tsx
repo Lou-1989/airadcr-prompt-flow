@@ -42,39 +42,37 @@ export const NativeToolbar = () => {
   };
 
   return (
-    <div className="toolbar flex items-center justify-between px-4 py-2 min-h-[48px]">
+    <div className="toolbar flex items-center justify-between px-2 sm:px-4 py-2 min-h-[48px]">
       {/* Left section - App info and controls */}
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2">
-          <div className="w-6 h-6 bg-gradient-to-r from-blue-500 to-blue-600 rounded flex items-center justify-center">
+      <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-6 h-6 bg-medical-blue rounded flex items-center justify-center flex-shrink-0">
             <Zap className="w-4 h-4 text-white" />
           </div>
-          <span className="font-semibold text-sm">AirADCR Desktop</span>
-          {isTauriApp ? (
-            <Badge variant="secondary" className="text-xs">Native</Badge>
-          ) : (
-            <Badge variant="outline" className="text-xs">Demo</Badge>
-          )}
+          <span className="font-semibold text-sm truncate">AirADCR</span>
+          <Badge variant="outline" className="text-xs hidden sm:flex">
+            {isTauriApp ? 'Native' : 'Web'}
+          </Badge>
         </div>
 
-        <Separator orientation="vertical" className="h-6" />
+        <Separator orientation="vertical" className="h-6 hidden md:block" />
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2">
           <Button
             size="sm"
             variant={isAlwaysOnTop ? "default" : "ghost"}
-            className="toolbar-button"
+            className="toolbar-button px-2 sm:px-3"
             onClick={toggleAlwaysOnTop}
           >
             {isAlwaysOnTop ? (
               <>
-                <PinOff className="w-4 h-4 mr-1" />
-                Désépingler
+                <PinOff className="w-4 h-4" />
+                <span className="hidden lg:inline ml-1">Désépingler</span>
               </>
             ) : (
               <>
-                <Pin className="w-4 h-4 mr-1" />
-                Épingler
+                <Pin className="w-4 h-4" />
+                <span className="hidden lg:inline ml-1">Épingler</span>
               </>
             )}
           </Button>
@@ -82,62 +80,62 @@ export const NativeToolbar = () => {
           <Button
             size="sm"
             variant="ghost"
-            className="toolbar-button"
+            className="toolbar-button px-2 sm:px-3 hidden md:flex"
             onClick={() => {}}
           >
-            <Settings className="w-4 h-4 mr-1" />
-            Paramètres
+            <Settings className="w-4 h-4" />
+            <span className="hidden lg:inline ml-1">Paramètres</span>
           </Button>
         </div>
       </div>
 
-      {/* Center section - Active window info */}
-      <div className="flex items-center gap-4">
+      {/* Center section - Active window info (responsive) */}
+      <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1 justify-center">
         {activeWindow && (
-          <div className="flex items-center gap-2 px-3 py-1 bg-secondary/50 rounded-md">
-            <Monitor className="w-4 h-4 text-muted-foreground" />
-            <div className="text-sm">
+          <div className="flex items-center gap-2 px-2 sm:px-3 py-1 bg-secondary/50 rounded-md min-w-0 max-w-xs lg:max-w-md">
+            <Monitor className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+            <div className="text-sm min-w-0">
               <span className="font-medium">{activeWindow.appName}</span>
-              <span className="text-muted-foreground ml-2">
-                {activeWindow.windowTitle.length > 30 
-                  ? `${activeWindow.windowTitle.substring(0, 30)}...`
+              <span className="text-muted-foreground ml-2 truncate hidden sm:inline">
+                {activeWindow.windowTitle.length > 20 
+                  ? `${activeWindow.windowTitle.substring(0, 20)}...`
                   : activeWindow.windowTitle
                 }
               </span>
             </div>
             {activeWindow.isCompatible ? (
-              <Badge variant="secondary" className="bg-success/20 text-green-400 text-xs">
-                Compatible
+              <Badge variant="secondary" className="bg-success/20 text-green-400 text-xs hidden sm:flex">
+                ✓
               </Badge>
             ) : (
-              <Badge variant="secondary" className="bg-warning/20 text-yellow-400 text-xs">
-                Limité
+              <Badge variant="secondary" className="bg-warning/20 text-yellow-400 text-xs hidden sm:flex">
+                !
               </Badge>
             )}
           </div>
         )}
 
-        <div className={`status-indicator ${isOnline ? 'online' : 'offline'}`}>
+        <div className={`status-indicator ${isOnline ? 'online' : 'offline'} hidden sm:flex`}>
           {isOnline ? (
             <>
               <Wifi className="w-4 h-4" />
-              <span>En ligne</span>
+              <span className="hidden md:inline">En ligne</span>
             </>
           ) : (
             <>
               <WifiOff className="w-4 h-4" />
-              <span>Hors ligne</span>
+              <span className="hidden md:inline">Hors ligne</span>
             </>
           )}
         </div>
       </div>
 
       {/* Right section - Window controls */}
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1 flex-shrink-0">
         <Button
           size="sm"
           variant="ghost"
-          className="toolbar-button w-8 h-8 p-0"
+          className="toolbar-button w-8 h-8 p-0 hidden sm:flex"
           onClick={handleMinimize}
         >
           <Minimize2 className="w-4 h-4" />
@@ -146,7 +144,7 @@ export const NativeToolbar = () => {
         <Button
           size="sm"
           variant="ghost"
-          className="toolbar-button w-8 h-8 p-0"
+          className="toolbar-button w-8 h-8 p-0 hidden sm:flex"
           onClick={handleMaximize}
         >
           <Maximize2 className="w-4 h-4" />

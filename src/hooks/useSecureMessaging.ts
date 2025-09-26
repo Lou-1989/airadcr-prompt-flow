@@ -1,10 +1,12 @@
 import { useEffect, useCallback } from 'react';
 import { isValidMessage, SECURITY_CONFIG } from '@/security/SecurityConfig';
+import { useInjection } from './useInjection';
 
 type MessageHandler = (data: any) => void;
 
 // Hook pour la communication sécurisée avec l'iframe AirADCR
 export const useSecureMessaging = () => {
+  const { performInjection } = useInjection();
   // Gestionnaire de messages sécurisé
   const handleSecureMessage = useCallback((event: MessageEvent) => {
     // Validation stricte du message
@@ -21,7 +23,17 @@ export const useSecureMessaging = () => {
         
       case 'airadcr:inject':
         console.log('[Sécurisé] Demande d\'injection reçue:', payload);
-        // Ici, on traiterait la demande d'injection de manière sécurisée
+        if (payload && payload.text) {
+          performInjection(payload.text).then(success => {
+            if (success) {
+              console.log('[Sécurisé] Injection réalisée avec succès');
+            } else {
+              console.error('[Sécurisé] Échec de l\'injection');
+            }
+          });
+        } else {
+          console.warn('[Sécurisé] Payload d\'injection invalide');
+        }
         break;
         
       case 'airadcr:status':

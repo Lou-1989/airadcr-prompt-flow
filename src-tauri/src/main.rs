@@ -7,6 +7,12 @@ use tauri::{
 };
 use std::collections::HashMap;
 
+#[cfg(target_os = "windows")]
+use winapi::um::winuser::{GetCursorPos, POINT};
+
+#[cfg(target_os = "windows")]
+use enigo::*;
+
 // Commande pour basculer always-on-top
 #[tauri::command]
 async fn toggle_always_on_top(window: tauri::Window) -> Result<bool, String> {
@@ -75,6 +81,53 @@ async fn get_system_info() -> Result<HashMap<String, String>, String> {
     Ok(info)
 }
 
+// Commande pour obtenir la position du curseur
+#[tauri::command]
+async fn get_cursor_position() -> Result<(i32, i32), String> {
+    #[cfg(target_os = "windows")]
+    unsafe {
+        let mut point = POINT { x: 0, y: 0 };
+        if GetCursorPos(&mut point) != 0 {
+            Ok((point.x, point.y))
+        } else {
+            Err("Erreur lors de la récupération de la position du curseur".to_string())
+        }
+    }
+    
+    #[cfg(not(target_os = "windows"))]
+    Err("Fonction disponible uniquement sur Windows".to_string())
+}
+
+// Commande pour effectuer l'injection automatique
+#[tauri::command]
+async fn perform_injection(text: String) -> Result<(i32, i32), String> {
+    #[cfg(target_os = "windows")]
+    {
+        // 1. Récupérer la position du curseur
+        let cursor_pos = match get_cursor_position().await {
+            Ok(pos) => pos,
+            Err(e) => return Err(format!("Erreur position curseur: {}", e)),
+        };
+        
+        // 2. Copier le texte dans le presse-papier
+        match tauri::api::clipboard::write_text(&text) {
+            Ok(_) => {},
+            Err(e) => return Err(format!("Erreur presse-papier: {}", e)),
+        }
+        
+        // 3. Simuler Ctrl+V
+        let mut enigo = Enigo::new();
+        enigo.key_down(Key::Control);
+        enigo.key_click(Key::Layout('v'));
+        enigo.key_up(Key::Control);
+        
+        Ok(cursor_pos)
+    }
+    
+    #[cfg(not(target_os = "windows"))]
+    Err("Fonction d'injection disponible uniquement sur Windows".to_string())
+}
+
 fn main() {
     // Configuration du menu System Tray
     let quit = CustomMenuItem::new("quit".to_string(), "Quitter");
@@ -141,7 +194,9 @@ fn main() {
             get_window_position,
             minimize_to_tray,
             restore_from_tray,
-            get_system_info
+            get_system_info,
+            get_cursor_position,
+            perform_injection
         ])
         .run(tauri::generate_context!())
         .expect("Erreur lors du lancement de l'application");

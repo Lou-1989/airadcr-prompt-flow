@@ -72,8 +72,8 @@
       "externalBin": [],
       "copyright": "Copyright © 2025 AirADCR. Tous droits réservés.",
       "category": "Medical",
-      "shortDescription": "Application desktop native pour AirADCR",
-      "longDescription": "Application desktop native pour AirADCR avec injection système et always-on-top pour un usage médical professionnel.",
+      "shortDescription": "Dictée intelligente pour radiologie",
+      "longDescription": "AirADCR améliore la qualité des comptes rendus radiologiques grâce à une dictée intelligente optimisée pour la radiologie. La solution structure automatiquement les rapports, réduisant la variabilité inter-utilisateurs et le temps de dictée.",
       "windows": {
         "certificateThumbprint": null,
         "digestAlgorithm": "sha256",

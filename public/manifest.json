@@ -1,7 +1,7 @@
 {
-  "name": "AirADCR Desktop",
+  "name": "AirADCR Desktop - Dictée intelligente pour radiologie",
   "short_name": "AirADCR",
-  "description": "Application desktop native pour AirADCR avec injection système et always-on-top",
+  "description": "AirADCR améliore la qualité des comptes rendus radiologiques grâce à une dictée intelligente optimisée pour la radiologie. Solution desktop native pour radiologues.",
   "version": "1.0.0",
   "manifest_version": 3,
   "theme_color": "#3b82f6",

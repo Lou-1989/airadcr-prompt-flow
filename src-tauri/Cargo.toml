@@ -1,0 +1,27 @@
+[package]
+name = "airadcr-desktop"
+version = "1.0.0"
+description = "Application desktop native pour AirADCR avec injection système et always-on-top"
+authors = ["AirADCR Team"]
+license = "MIT"
+repository = "https://github.com/airadcr/desktop"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[build-dependencies]
+tauri-build = { version = "1.5", features = [] }
+
+[dependencies]
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+tauri = { version = "1.6", features = [ "window-all", "system-tray", "clipboard-all", "notification-all", "global-shortcut-all", "shell-open", "os-all", "path-all"] }
+
+[features]
+# This feature is used for production builds or when `devPath` points to the filesystem
+# DO NOT REMOVE!!
+custom-protocol = ["tauri/custom-protocol"]
+
+[[bin]]
+name = "airadcr-desktop"
+path = "src/main.rs"

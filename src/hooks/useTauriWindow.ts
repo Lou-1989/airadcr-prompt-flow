@@ -51,6 +51,15 @@ export const useTauriWindow = () => {
           }
           
           console.log('Environnement Tauri détecté');
+          
+          // Activer always-on-top automatiquement au démarrage
+          try {
+            const newState = await invoke('toggle_always_on_top');
+            setIsAlwaysOnTop(newState as boolean);
+            console.log('Always-on-top activé automatiquement au démarrage');
+          } catch (error) {
+            console.error('Erreur activation always-on-top:', error);
+          }
         }
       } catch (error) {
         console.log('Environnement web standard détecté');

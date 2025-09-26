@@ -35,27 +35,15 @@ export const TauriControls: React.FC = () => {
         <Badge variant="secondary" className="text-xs">
           AirADCR Desktop v{systemInfo?.version || '1.0.0'}
         </Badge>
-        {isAlwaysOnTop && (
-          <Badge variant="default" className="text-xs">
-            Always On Top
-          </Badge>
-        )}
+        <Badge variant="default" className="text-xs">
+          <Pin className="h-3 w-3 mr-1" />
+          Always On Top
+        </Badge>
       </div>
       
       <Separator className="mb-2" />
       
       <div className="flex items-center gap-1">
-        {/* Always-on-top toggle */}
-        <Button
-          variant={isAlwaysOnTop ? "default" : "outline"}
-          size="sm"
-          onClick={toggleAlwaysOnTop}
-          className="h-8 w-8 p-0"
-          title={isAlwaysOnTop ? "Désactiver Always-on-top" : "Activer Always-on-top"}
-        >
-          {isAlwaysOnTop ? <Pin className="h-3 w-3" /> : <PinOff className="h-3 w-3" />}
-        </Button>
-
         {/* Minimize to tray */}
         <Button
           variant="outline"
@@ -108,8 +96,8 @@ export const TauriControls: React.FC = () => {
         {/* Raccourcis clavier */}
         <div className="mt-2 text-xs text-muted-foreground">
           <div className="font-medium mb-1">Raccourcis:</div>
-          <div>Ctrl+Alt+T: Always-on-top</div>
           <div>Ctrl+Alt+H: Masquer/Afficher</div>
+          <div>Ctrl+Alt+Q: Fermer</div>
         </div>
       </div>
     </div>

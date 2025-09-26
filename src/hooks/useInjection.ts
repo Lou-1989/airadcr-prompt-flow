@@ -15,24 +15,30 @@ export const useInjection = () => {
     }
   }, []);
   
-  // Fonction principale d'injection
+  // Fonction principale d'injection avec détection position en temps réel
   const performInjection = useCallback(async (text: string): Promise<boolean> => {
     if (!text || text.trim().length === 0) {
-      console.warn('[Injection] Texte vide, injection annulée');
+      console.warn('[Injection Frontend] Texte vide, injection annulée');
       return false;
     }
     
     try {
-      console.log('[Injection] Démarrage injection sécurisée...');
+      console.log('[Injection Frontend] 🎯 DÉMARRAGE injection sécurisée...');
+      console.log('[Injection Frontend] Texte:', text.substring(0, 50) + (text.length > 50 ? '...' : ''));
       
-      // Effectuer l'injection via Tauri
+      // Petit délai pour permettre à l'utilisateur de se positionner
+      console.log('[Injection Frontend] ⏳ Délai pour positionnement curseur...');
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      // Effectuer l'injection via Tauri (position détectée côté Rust juste avant injection)
       const [x, y] = await invoke<[number, number]>('perform_injection', { text });
       
-      console.log(`[Injection] Injection réussie à la position (${x}, ${y})`);
+      console.log(`[Injection Frontend] ✅ Injection réussie à la position (${x}, ${y})`);
+      console.log('[Injection Frontend] 🎉 INJECTION TERMINÉE');
       return true;
       
     } catch (error) {
-      console.error('[Injection] Erreur lors de l\'injection:', error);
+      console.error('[Injection Frontend] ❌ Erreur lors de l\'injection:', error);
       return false;
     }
   }, []);

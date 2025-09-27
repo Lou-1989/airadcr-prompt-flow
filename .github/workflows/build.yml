@@ -1,0 +1,104 @@
+name: 'Build AirADCR Desktop'
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  release:
+    types: [ published ]
+
+jobs:
+  build:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        settings:
+          - platform: 'macos-latest'
+            args: '--target aarch64-apple-darwin'
+          - platform: 'macos-latest'
+            args: '--target x86_64-apple-darwin'
+          - platform: 'ubuntu-22.04'
+            args: ''
+          - platform: 'windows-latest'
+            args: ''
+
+    runs-on: ${{ matrix.settings.platform }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies (ubuntu only)
+        if: matrix.settings.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.0-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Rust setup
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.settings.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Sync node version and setup cache
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          cache: 'npm'
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build the app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: 'AirADCR Desktop v__VERSION__'
+          releaseBody: |
+            🚀 **AirADCR Desktop - Version __VERSION__**
+            
+            Application desktop native pour radiologues avec dictée intelligente optimisée.
+            
+            ## 📦 Fichiers disponibles :
+            
+            ### Windows
+            - **Setup.exe** : Installeur NSIS (recommandé grand public)
+            - **MSI** : Package entreprise Windows
+            - **Portable** : Exécutable sans installation
+            
+            ### macOS
+            - **DMG** : Package macOS Intel & Apple Silicon
+            
+            ### Linux
+            - **AppImage** : Portable Linux
+            - **DEB** : Package Debian/Ubuntu
+            
+            ## ⚡ Fonctionnalités natives :
+            - Always-on-top Windows
+            - System Tray intégré
+            - Raccourcis clavier globaux
+            - Injection de texte système
+            - Interface responsive adaptative
+            
+            **Testé et validé sur Windows 10/11, macOS 12+, Ubuntu 20.04+**
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.settings.args }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: build-${{ matrix.settings.platform }}
+          path: |
+            src-tauri/target/release/bundle/**/*
+            !src-tauri/target/release/bundle/**/deps/
+          retention-days: 30

@@ -44,9 +44,7 @@
         "all": true
       },
       "os": {
-        "all": false,
-        "platform": true,
-        "version": true
+        "all": true
       },
       "path": {
         "all": true
@@ -110,26 +108,26 @@
         "exceptionDomain": "",
         "signingIdentity": null,
         "providerShortName": null,
-        "entitlements": null,
-        "dmg": {
-          "appPosition": {
-            "x": 180,
-            "y": 170
-          },
-          "applicationFolderPosition": {
-            "x": 480,
-            "y": 170
-          },
-          "windowSize": {
-            "width": 660,
-            "height": 400
-          },
-          "windowPosition": {
-            "x": 400,
-            "y": 100
-          },
-          "background": null
-        }
+        "entitlements": null
+      },
+      "dmg": {
+        "appPosition": {
+          "x": 180,
+          "y": 170
+        },
+        "applicationFolderPosition": {
+          "x": 480,
+          "y": 170
+        },
+        "windowSize": {
+          "width": 660,
+          "height": 400
+        },
+        "windowPosition": {
+          "x": 400,
+          "y": 100
+        },
+        "background": null
       }
     },
     "security": {
@@ -165,7 +163,7 @@
       "iconPath": "icons/icon.png",
       "iconAsTemplate": true,
       "menuOnLeftClick": false,
-      "tooltip": "AirADCR Desktop"
+      "title": "AirADCR Desktop"
     }
   }
 }

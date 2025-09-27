@@ -71,3 +71,13 @@ Yes, you can!
 To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
 Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+
+## Desktop Application (Tauri)
+
+This project includes a desktop application built with Tauri. The GitHub Actions workflow automatically builds installers for:
+
+- **Windows**: MSI installer, NSIS setup, and portable executable
+- **macOS**: DMG packages for Intel and Apple Silicon
+- **Linux**: DEB, RPM, and AppImage formats
+
+Desktop builds are triggered automatically on push to main or when creating release tags.

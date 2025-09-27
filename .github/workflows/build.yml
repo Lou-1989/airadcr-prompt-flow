@@ -56,12 +56,9 @@ jobs:
         run: npm ci
 
       - name: Build the app
-        uses: tauri-apps/tauri-action@v0
+        run: npx tauri build ${{ matrix.settings.args }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          args: ${{ matrix.settings.args }}
-          packageManager: npm
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

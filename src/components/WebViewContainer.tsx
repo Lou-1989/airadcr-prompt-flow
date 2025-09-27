@@ -3,6 +3,7 @@ import { PRODUCTION_CONFIG } from '@/config/production';
 import { SECURITY_CONFIG, validateAirADCRUrl } from '@/security/SecurityConfig';
 import { useSecureMessaging } from '@/hooks/useSecureMessaging';
 import { useEffect, useState } from 'react';
+import { logger } from '@/utils/logger';
 
 interface WebViewContainerProps {
   className?: string;
@@ -19,20 +20,20 @@ export const WebViewContainer = ({ className }: WebViewContainerProps) => {
     setIsSecureUrl(isValid);
     
     if (!isValid) {
-      console.error('[Sécurité] URL AirADCR non autorisée:', PRODUCTION_CONFIG.AIRADCR_URL);
+      logger.error('[Sécurité] URL AirADCR non autorisée:', PRODUCTION_CONFIG.AIRADCR_URL);
     }
   }, []);
   
   // Gestion des erreurs de chargement
   const handleIframeError = () => {
     setLoadError(true);
-    console.error('[Sécurité] Erreur de chargement de l\'iframe AirADCR');
+    logger.error('[Sécurité] Erreur de chargement de l\'iframe AirADCR');
   };
   
   // Gestion du chargement réussi
   const handleIframeLoad = () => {
     setLoadError(false);
-    console.log('[Sécurité] Iframe AirADCR chargée avec succès');
+    logger.debug('[Sécurité] Iframe AirADCR chargée avec succès');
   };
   
   // Ne pas afficher l'iframe si l'URL n'est pas sécurisée

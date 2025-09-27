@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
+import { logger } from '@/utils/logger';
 
 interface CursorPosition {
   x: number;
@@ -18,7 +19,7 @@ export const useInjection = () => {
     try {
       return await invoke<boolean>('check_app_focus');
     } catch (error) {
-      console.warn('[Focus] Erreur vérification focus:', error);
+      logger.warn('[Focus] Erreur vérification focus:', error);
       return true; // Par défaut, considérer qu'on a le focus en cas d'erreur
     }
   }, []);
@@ -39,13 +40,13 @@ export const useInjection = () => {
           
           setExternalPositions(prev => {
             const updated = [newPosition, ...prev.slice(0, 2)]; // Garder les 3 dernières
-            console.log('[Monitoring] Position externe capturée:', newPosition);
+            logger.debug('[Monitoring] Position externe capturée:', newPosition);
             return updated;
           });
         }
       }
     } catch (error) {
-      console.warn('[Monitoring] Erreur capture position externe:', error);
+      logger.warn('[Monitoring] Erreur capture position externe:', error);
     }
   }, []);
   
@@ -53,7 +54,7 @@ export const useInjection = () => {
   const startMonitoring = useCallback(() => {
     if (intervalRef.current) return;
     
-    console.log('[Monitoring] Démarrage surveillance positions externes...');
+    logger.debug('[Monitoring] Démarrage surveillance positions externes...');
     setIsMonitoring(true);
     
     intervalRef.current = setInterval(captureExternalPosition, 500);
@@ -64,7 +65,7 @@ export const useInjection = () => {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
       setIsMonitoring(false);
-      console.log('[Monitoring] Arrêt surveillance positions externes');
+      logger.debug('[Monitoring] Arrêt surveillance positions externes');
     }
   }, []);
   
@@ -80,7 +81,7 @@ export const useInjection = () => {
       const [x, y] = await invoke<[number, number]>('get_cursor_position');
       return { x, y };
     } catch (error) {
-      console.error('[Injection] Erreur récupération position curseur:', error);
+      logger.error('[Injection] Erreur récupération position curseur:', error);
       return null;
     }
   }, []);
@@ -88,12 +89,12 @@ export const useInjection = () => {
   // Fonction principale d'injection avec position préventive
   const performInjection = useCallback(async (text: string): Promise<boolean> => {
     if (!text || text.trim().length === 0) {
-      console.warn('[Injection] Texte vide, injection annulée');
+      logger.warn('[Injection] Texte vide, injection annulée');
       return false;
     }
     
     try {
-      console.log('[Injection] Démarrage injection sécurisée...');
+      logger.debug('[Injection] Démarrage injection sécurisée...');
       
       // Utiliser la dernière position externe si disponible
       const lastExternalPosition = externalPositions[0];
@@ -103,7 +104,7 @@ export const useInjection = () => {
         const isPositionRecent = (Date.now() - lastExternalPosition.timestamp) < 30000;
         
         if (isPositionRecent) {
-          console.log(`[Injection] Utilisation position externe: (${lastExternalPosition.x}, ${lastExternalPosition.y})`);
+          logger.debug(`[Injection] Utilisation position externe: (${lastExternalPosition.x}, ${lastExternalPosition.y})`);
           
           // Effectuer l'injection à la position sauvegardée
           const [x, y] = await invoke<[number, number]>('perform_injection_at_position', {
@@ -112,22 +113,22 @@ export const useInjection = () => {
             y: lastExternalPosition.y
           });
           
-          console.log(`[Injection] Injection réussie à la position externe (${x}, ${y})`);
+          logger.debug(`[Injection] Injection réussie à la position externe (${x}, ${y})`);
           return true;
         } else {
-          console.warn('[Injection] Position externe trop ancienne, utilisation position actuelle');
+          logger.warn('[Injection] Position externe trop ancienne, utilisation position actuelle');
         }
       } else {
-        console.warn('[Injection] Aucune position externe disponible, utilisation position actuelle');
+        logger.warn('[Injection] Aucune position externe disponible, utilisation position actuelle');
       }
       
       // Fallback: utiliser la méthode normale
       const [x, y] = await invoke<[number, number]>('perform_injection', { text });
-      console.log(`[Injection] Injection réussie à la position actuelle (${x}, ${y})`);
+      logger.debug(`[Injection] Injection réussie à la position actuelle (${x}, ${y})`);
       return true;
       
     } catch (error) {
-      console.error('[Injection] Erreur lors de l\'injection:', error);
+      logger.error('[Injection] Erreur lors de l\'injection:', error);
       return false;
     }
   }, [externalPositions]);
@@ -138,7 +139,7 @@ export const useInjection = () => {
       await invoke('get_cursor_position');
       return true;
     } catch (error) {
-      console.warn('[Injection] Fonctionnalité d\'injection non disponible:', error);
+      logger.warn('[Injection] Fonctionnalité d\'injection non disponible:', error);
       return false;
     }
   }, []);

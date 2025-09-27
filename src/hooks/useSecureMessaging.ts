@@ -1,6 +1,7 @@
 import { useEffect, useCallback } from 'react';
 import { isValidMessage, SECURITY_CONFIG } from '@/security/SecurityConfig';
 import { useInjection } from './useInjection';
+import { logger } from '@/utils/logger';
 
 type MessageHandler = (data: any) => void;
 
@@ -18,30 +19,30 @@ export const useSecureMessaging = () => {
     
     switch (type) {
       case 'airadcr:ready':
-        console.log('[Sécurisé] AirADCR iframe prête');
+        logger.debug('[Sécurisé] AirADCR iframe prête');
         break;
         
       case 'airadcr:inject':
-        console.log('[Sécurisé] Demande d\'injection reçue:', payload);
+        logger.debug('[Sécurisé] Demande d\'injection reçue:', payload);
         if (payload && payload.text) {
           performInjection(payload.text).then(success => {
             if (success) {
-              console.log('[Sécurisé] Injection réalisée avec succès');
+              logger.debug('[Sécurisé] Injection réalisée avec succès');
             } else {
-              console.error('[Sécurisé] Échec de l\'injection');
+              logger.error('[Sécurisé] Échec de l\'injection');
             }
           });
         } else {
-          console.warn('[Sécurisé] Payload d\'injection invalide');
+          logger.warn('[Sécurisé] Payload d\'injection invalide');
         }
         break;
         
       case 'airadcr:status':
-        console.log('[Sécurisé] Statut AirADCR:', payload);
+        logger.debug('[Sécurisé] Statut AirADCR:', payload);
         break;
         
       default:
-        console.warn('[Sécurisé] Type de message non géré:', type);
+        logger.warn('[Sécurisé] Type de message non géré:', type);
     }
   }, []);
   
@@ -50,13 +51,13 @@ export const useSecureMessaging = () => {
     const iframe = document.querySelector('iframe[title="AirADCR"]') as HTMLIFrameElement;
     
     if (!iframe || !iframe.contentWindow) {
-      console.error('[Sécurisé] Iframe AirADCR non trouvée');
+      logger.error('[Sécurisé] Iframe AirADCR non trouvée');
       return false;
     }
     
     // Validation du type de message
     if (!SECURITY_CONFIG.ALLOWED_MESSAGE_TYPES.includes(type as any)) {
-      console.error('[Sécurisé] Type de message non autorisé:', type);
+      logger.error('[Sécurisé] Type de message non autorisé:', type);
       return false;
     }
     
@@ -67,7 +68,7 @@ export const useSecureMessaging = () => {
       );
       return true;
     } catch (error) {
-      console.error('[Sécurisé] Erreur envoi message:', error);
+      logger.error('[Sécurisé] Erreur envoi message:', error);
       return false;
     }
   }, []);

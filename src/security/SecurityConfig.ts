@@ -1,4 +1,5 @@
 // Configuration de sécurité pour l'application AirADCR
+import { logger } from '@/utils/logger';
 export const SECURITY_CONFIG = {
   // URLs autorisées pour l'iframe
   ALLOWED_ORIGINS: [
@@ -59,14 +60,14 @@ export const generateCSP = (): string => {
 export const isValidMessage = (event: MessageEvent): boolean => {
   // Vérifier l'origine
   if (!(SECURITY_CONFIG.ALLOWED_ORIGINS as readonly string[]).includes(event.origin)) {
-    console.warn('Message rejeté - origine non autorisée:', event.origin);
+    logger.warn('Message rejeté - origine non autorisée:', event.origin);
     return false;
   }
   
   // Vérifier le type de message
   const messageType = event.data?.type;
   if (!messageType || !(SECURITY_CONFIG.ALLOWED_MESSAGE_TYPES as readonly string[]).includes(messageType)) {
-    console.warn('Message rejeté - type non autorisé:', messageType);
+    logger.warn('Message rejeté - type non autorisé:', messageType);
     return false;
   }
   

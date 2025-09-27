@@ -60,37 +60,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: v__VERSION__
-          releaseName: 'AirADCR Desktop v__VERSION__'
-          releaseBody: |
-            🚀 **AirADCR Desktop - Version __VERSION__**
-            
-            Application desktop native pour radiologues avec dictée intelligente optimisée.
-            
-            ## 📦 Fichiers disponibles :
-            
-            ### Windows
-            - **Setup.exe** : Installeur NSIS (recommandé grand public)
-            - **MSI** : Package entreprise Windows
-            - **Portable** : Exécutable sans installation
-            
-            ### macOS
-            - **DMG** : Package macOS Intel & Apple Silicon
-            
-            ### Linux
-            - **AppImage** : Portable Linux
-            - **DEB** : Package Debian/Ubuntu
-            
-            ## ⚡ Fonctionnalités natives :
-            - Always-on-top Windows
-            - System Tray intégré
-            - Raccourcis clavier globaux
-            - Injection de texte système
-            - Interface responsive adaptative
-            
-            **Testé et validé sur Windows 10/11, macOS 12+, Ubuntu 20.04+**
-          releaseDraft: true
-          prerelease: false
           args: ${{ matrix.settings.args }}
 
       - name: Upload artifacts

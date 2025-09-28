@@ -3,13 +3,13 @@
     windows_subsystem = "windows"
 )]
 
-use std::sync::Mutex;
-use tauri::{CustomMenuItem, Manager, State, SystemTray, SystemTrayEvent, SystemTrayMenu, WindowEvent};
+use std::sync::{Mutex, Arc};
+use tauri::{CustomMenuItem, Manager, State, SystemTray, SystemTrayEvent, SystemTrayMenu, WindowEvent, AppHandle};
 use serde::{Deserialize, Serialize};
 use enigo::{Enigo, Button, Key, Settings, Direction, Coordinate};
 use arboard::Clipboard;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CursorPosition {
@@ -19,26 +19,49 @@ pub struct CursorPosition {
 }
 
 pub struct AppState {
-    external_cursor_positions: Mutex<Vec<CursorPosition>>,
-    is_focused: Mutex<bool>,
-    always_on_top: Mutex<bool>,
+    external_cursor_positions: Arc<Mutex<Vec<CursorPosition>>>,
+    is_focused: Arc<Mutex<bool>>,
+    always_on_top: Arc<Mutex<bool>>,
+    clipboard_lock: Arc<Mutex<()>>,
 }
 
 impl Default for AppState {
     fn default() -> Self {
         Self {
-            external_cursor_positions: Mutex::new(Vec::new()),
-            is_focused: Mutex::new(false),
-            always_on_top: Mutex::new(false),
+            external_cursor_positions: Arc::new(Mutex::new(Vec::new())),
+            is_focused: Arc::new(Mutex::new(false)),
+            always_on_top: Arc::new(Mutex::new(false)),
+            clipboard_lock: Arc::new(Mutex::new(())),
         }
     }
 }
 
 #[tauri::command]
 async fn toggle_always_on_top(window: tauri::Window, state: State<'_, AppState>) -> Result<bool, String> {
-    let mut always_on_top = state.always_on_top.lock().unwrap();
+    let mut always_on_top = match state.always_on_top.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            eprintln!("Mutex poisoned in toggle_always_on_top, recovering...");
+            poisoned.into_inner()
+        }
+    };
+    
     let new_state = !*always_on_top;
-    window.set_always_on_top(new_state).map_err(|e| e.to_string())?;
+    
+    // Retry logic for window operations
+    let mut retry_count = 0;
+    while retry_count < 3 {
+        match window.set_always_on_top(new_state) {
+            Ok(_) => break,
+            Err(e) if retry_count < 2 => {
+                retry_count += 1;
+                thread::sleep(Duration::from_millis(50));
+                continue;
+            },
+            Err(e) => return Err(format!("Failed to set always on top after retries: {}", e))
+        }
+    }
+    
     *always_on_top = new_state;
     Ok(new_state)
 }
@@ -92,23 +115,41 @@ async fn get_cursor_position() -> Result<CursorPosition, String> {
     Ok(CursorPosition {
         x,
         y,
-        timestamp: std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64,
+        timestamp: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis()
+            .min(u64::MAX as u128) as u64,
     })
 }
 
 #[tauri::command]
 async fn check_app_focus(window: tauri::Window, state: State<'_, AppState>) -> Result<bool, String> {
     let is_focused = window.is_focused().map_err(|e| e.to_string())?;
-    let mut app_focused = state.is_focused.lock().unwrap();
+    
+    let mut app_focused = match state.is_focused.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            eprintln!("Mutex poisoned in check_app_focus, recovering...");
+            poisoned.into_inner()
+        }
+    };
+    
     *app_focused = is_focused;
     Ok(is_focused)
 }
 
 #[tauri::command]
-async fn perform_injection_at_position(text: String, x: i32, y: i32) -> Result<(), String> {
+async fn perform_injection_at_position(text: String, x: i32, y: i32, state: State<'_, AppState>) -> Result<(), String> {
+    // Thread-safe clipboard operations
+    let _clipboard_guard = match state.clipboard_lock.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            eprintln!("Clipboard mutex poisoned, recovering...");
+            poisoned.into_inner()
+        }
+    };
+    
     let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
     let original_content = clipboard.get_text().unwrap_or_default();
     
@@ -137,7 +178,16 @@ async fn perform_injection_at_position(text: String, x: i32, y: i32) -> Result<(
 }
 
 #[tauri::command]
-async fn perform_injection(text: String) -> Result<(), String> {
+async fn perform_injection(text: String, state: State<'_, AppState>) -> Result<(), String> {
+    // Thread-safe clipboard operations
+    let _clipboard_guard = match state.clipboard_lock.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            eprintln!("Clipboard mutex poisoned, recovering...");
+            poisoned.into_inner()
+        }
+    };
+    
     let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
     let original_content = clipboard.get_text().unwrap_or_default();
     
@@ -180,34 +230,48 @@ fn main() {
         .system_tray(system_tray)
         .on_system_tray_event(|app, event| match event {
             SystemTrayEvent::LeftClick { .. } => {
-                let window = app.get_window("main").unwrap();
-                if window.is_visible().unwrap() {
-                    window.hide().unwrap();
-                } else {
-                    window.show().unwrap();
-                    window.set_focus().unwrap();
+                if let Some(window) = app.get_window("main") {
+                    match window.is_visible() {
+                        Ok(true) => { let _ = window.hide(); }
+                        Ok(false) => { 
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                        Err(e) => eprintln!("Error checking window visibility: {}", e),
+                    }
                 }
             }
             SystemTrayEvent::MenuItemClick { id, .. } => match id.as_str() {
                 "quit" => {
-                    std::process::exit(0);
+                    // Graceful shutdown instead of brutal exit
+                    app.exit(0);
                 }
                 "show" => {
-                    let window = app.get_window("main").unwrap();
-                    window.show().unwrap();
-                    window.set_focus().unwrap();
+                    if let Some(window) = app.get_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
                 }
                 "hide" => {
-                    let window = app.get_window("main").unwrap();
-                    window.hide().unwrap();
+                    if let Some(window) = app.get_window("main") {
+                        let _ = window.hide();
+                    }
                 }
                 "always_on_top" => {
-                    let window = app.get_window("main").unwrap();
-                    let state = app.state::<AppState>();
-                    let mut always_on_top = state.always_on_top.lock().unwrap();
-                    let new_state = !*always_on_top;
-                    window.set_always_on_top(new_state).unwrap();
-                    *always_on_top = new_state;
+                    if let Some(window) = app.get_window("main") {
+                        let state = app.state::<AppState>();
+                        let mut always_on_top = match state.always_on_top.lock() {
+                            Ok(guard) => guard,
+                            Err(poisoned) => {
+                                eprintln!("Mutex poisoned in tray event, recovering...");
+                                poisoned.into_inner()
+                            }
+                        };
+                        let new_state = !*always_on_top;
+                        if window.set_always_on_top(new_state).is_ok() {
+                            *always_on_top = new_state;
+                        }
+                    }
                 }
                 _ => {}
             },
@@ -215,7 +279,9 @@ fn main() {
         })
         .on_window_event(|event| match event.event() {
             WindowEvent::CloseRequested { api, .. } => {
-                event.window().hide().unwrap();
+                if let Err(e) = event.window().hide() {
+                    eprintln!("Error hiding window on close: {}", e);
+                }
                 api.prevent_close();
             }
             _ => {}

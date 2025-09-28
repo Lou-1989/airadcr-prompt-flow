@@ -58,6 +58,9 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Generate icons from source
+        run: npx tauri icon src/assets/airadcr-logo.png -o src-tauri/icons
+
       - name: Validate icons
         run: node scripts/validate-icons.cjs
 

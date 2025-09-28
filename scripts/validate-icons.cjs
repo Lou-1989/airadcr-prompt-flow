@@ -54,6 +54,42 @@ function validateSignature(filePath, expectedSignature, fileType) {
 }
 
 /**
+ * Vérifie qu'un PNG est au format RGBA (colorType=6, bitDepth=8)
+ */
+function validatePngRgba(buffer, filePath) {
+  try {
+    // Vérifier que c'est un PNG valide d'abord
+    if (buffer.length < 33) { // PNG signature (8) + IHDR chunk (25 minimum)
+      return { valid: false, error: `Fichier PNG trop petit: ${filePath}` };
+    }
+
+    // Après la signature PNG (8 bytes), le premier chunk doit être IHDR
+    const IHDR_OFFSET = 8;
+    const chunkLength = buffer.readUInt32BE(IHDR_OFFSET);
+    const chunkType = buffer.toString('ascii', IHDR_OFFSET + 4, IHDR_OFFSET + 8);
+    
+    if (chunkType !== 'IHDR' || chunkLength !== 13) {
+      return { valid: false, error: `IHDR invalide dans ${filePath}` };
+    }
+    
+    // Lire les paramètres IHDR
+    const bitDepth = buffer[IHDR_OFFSET + 8 + 8];   // byte 16 (width=4, height=4, bitDepth=1)
+    const colorType = buffer[IHDR_OFFSET + 8 + 9];  // byte 17
+    
+    if (bitDepth !== 8 || colorType !== 6) {
+      return { 
+        valid: false, 
+        error: `PNG non RGBA dans ${filePath}: bitDepth=${bitDepth}, colorType=${colorType} (attendu: bitDepth=8, colorType=6 pour RGBA)`
+      };
+    }
+    
+    return { valid: true, bitDepth, colorType };
+  } catch (error) {
+    return { valid: false, error: `Erreur validation RGBA ${filePath}: ${error.message}` };
+  }
+}
+
+/**
  * Valide toutes les icônes
  */
 function validateAllIcons() {
@@ -81,11 +117,25 @@ function validateAllIcons() {
       console.error(`❌ ${result.error}`);
       hasErrors = true;
     } else {
+      // Validation RGBA spécifique pour les PNG
+      if (iconConfig.type === 'PNG') {
+        const buffer = fs.readFileSync(filePath);
+        const rgbaResult = validatePngRgba(buffer, filePath);
+        
+        if (!rgbaResult.valid) {
+          console.error(`❌ ${rgbaResult.error}`);
+          hasErrors = true;
+          continue;
+        } else {
+          console.log(`✅ ${iconConfig.file}: PNG RGBA valide (${result.size} bytes, bitDepth=${rgbaResult.bitDepth}, colorType=${rgbaResult.colorType})`);
+        }
+      }
+      
       validIcons++;
       
       if (result.size < iconConfig.minSize) {
         console.warn(`⚠️  ${iconConfig.file}: Taille potentiellement trop petite (${result.size} bytes)`);
-      } else {
+      } else if (iconConfig.type !== 'PNG') {
         console.log(`✅ ${iconConfig.file}: Signature ${iconConfig.type} valide (${result.size} bytes)`);
       }
     }

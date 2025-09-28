@@ -88,7 +88,7 @@ async fn get_system_info() -> Result<SystemInfo, String> {
 #[tauri::command]
 async fn get_cursor_position() -> Result<CursorPosition, String> {
     let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
-    let (x, y) = enigo.location().map_err(|e| e.to_string())?;
+    let (x, y) = enigo.mouse_location().map_err(|e| e.to_string())?;
     Ok(CursorPosition {
         x,
         y,

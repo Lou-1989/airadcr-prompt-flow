@@ -55,6 +55,9 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Validate icons
+        run: node scripts/validate-icons.cjs
+
       - name: Build the app
         run: npx tauri build ${{ matrix.settings.args }}
         env:

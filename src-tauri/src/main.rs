@@ -6,7 +6,7 @@
 use std::sync::{Mutex, Arc};
 use tauri::{CustomMenuItem, Manager, State, SystemTray, SystemTrayEvent, SystemTrayMenu, WindowEvent};
 use serde::{Deserialize, Serialize};
-use enigo::{Enigo, Button, Key, Settings, Direction, Coordinate};
+use enigo::{Enigo, Button, Key, Settings, Direction, Coordinate, Mouse, Keyboard};
 use arboard::Clipboard;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -53,7 +53,7 @@ async fn toggle_always_on_top(window: tauri::Window, state: State<'_, AppState>)
     while retry_count < 3 {
         match window.set_always_on_top(new_state) {
             Ok(_) => break,
-            Err(e) if retry_count < 2 => {
+            Err(_e) if retry_count < 2 => {
                 retry_count += 1;
                 thread::sleep(Duration::from_millis(50));
                 continue;
@@ -111,7 +111,7 @@ async fn get_system_info() -> Result<SystemInfo, String> {
 #[tauri::command]
 async fn get_cursor_position() -> Result<CursorPosition, String> {
     let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
-    let (x, y) = enigo.mouse_location().map_err(|e| e.to_string())?;
+    let (x, y) = enigo.location().map_err(|e| e.to_string())?;
     Ok(CursorPosition {
         x,
         y,

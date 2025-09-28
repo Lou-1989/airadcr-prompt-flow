@@ -4,7 +4,7 @@
 )]
 
 use std::sync::{Mutex, Arc};
-use tauri::{CustomMenuItem, Manager, State, SystemTray, SystemTrayEvent, SystemTrayMenu, WindowEvent, AppHandle};
+use tauri::{CustomMenuItem, Manager, State, SystemTray, SystemTrayEvent, SystemTrayMenu, WindowEvent};
 use serde::{Deserialize, Serialize};
 use enigo::{Enigo, Button, Key, Settings, Direction, Coordinate};
 use arboard::Clipboard;

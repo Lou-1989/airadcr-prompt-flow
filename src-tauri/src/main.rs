@@ -4,9 +4,9 @@
 )]
 
 use std::sync::Mutex;
-use tauri::{AppHandle, CustomMenuItem, Manager, State, SystemTray, SystemTrayEvent, SystemTrayMenu, WindowEvent};
+use tauri::{CustomMenuItem, Manager, State, SystemTray, SystemTrayEvent, SystemTrayMenu, WindowEvent};
 use serde::{Deserialize, Serialize};
-use enigo::{Enigo, KeyboardControllable, MouseControllable};
+use enigo::{Enigo, Button, Key, Settings, Direction, Coordinate};
 use arboard::Clipboard;
 use std::thread;
 use std::time::Duration;
@@ -21,6 +21,7 @@ pub struct CursorPosition {
 pub struct AppState {
     external_cursor_positions: Mutex<Vec<CursorPosition>>,
     is_focused: Mutex<bool>,
+    always_on_top: Mutex<bool>,
 }
 
 impl Default for AppState {
@@ -28,15 +29,18 @@ impl Default for AppState {
         Self {
             external_cursor_positions: Mutex::new(Vec::new()),
             is_focused: Mutex::new(false),
+            always_on_top: Mutex::new(false),
         }
     }
 }
 
 #[tauri::command]
-async fn toggle_always_on_top(window: tauri::Window) -> Result<bool, String> {
-    let is_always_on_top = window.is_always_on_top().map_err(|e| e.to_string())?;
-    window.set_always_on_top(!is_always_on_top).map_err(|e| e.to_string())?;
-    Ok(!is_always_on_top)
+async fn toggle_always_on_top(window: tauri::Window, state: State<'_, AppState>) -> Result<bool, String> {
+    let mut always_on_top = state.always_on_top.lock().unwrap();
+    let new_state = !*always_on_top;
+    window.set_always_on_top(new_state).map_err(|e| e.to_string())?;
+    *always_on_top = new_state;
+    Ok(new_state)
 }
 
 #[tauri::command]
@@ -83,8 +87,8 @@ async fn get_system_info() -> Result<SystemInfo, String> {
 
 #[tauri::command]
 async fn get_cursor_position() -> Result<CursorPosition, String> {
-    let enigo = Enigo::new();
-    let (x, y) = enigo.mouse_location();
+    let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
+    let (x, y) = enigo.location().map_err(|e| e.to_string())?;
     Ok(CursorPosition {
         x,
         y,
@@ -112,15 +116,16 @@ async fn perform_injection_at_position(text: String, x: i32, y: i32) -> Result<(
     
     thread::sleep(Duration::from_millis(50));
     
-    let mut enigo = Enigo::new();
-    enigo.mouse_move_to(x, y);
+    let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
+    enigo.move_mouse(x, y, Coordinate::Abs).map_err(|e| e.to_string())?;
     thread::sleep(Duration::from_millis(50));
-    enigo.mouse_click(enigo::MouseButton::Left);
+    enigo.button(Button::Left, Direction::Press).map_err(|e| e.to_string())?;
+    enigo.button(Button::Left, Direction::Release).map_err(|e| e.to_string())?;
     thread::sleep(Duration::from_millis(50));
     
-    enigo.key_down(enigo::Key::Control);
-    enigo.key_click(enigo::Key::Layout('v'));
-    enigo.key_up(enigo::Key::Control);
+    enigo.key(Key::Control, Direction::Press).map_err(|e| e.to_string())?;
+    enigo.key(Key::Unicode('v'), Direction::Click).map_err(|e| e.to_string())?;
+    enigo.key(Key::Control, Direction::Release).map_err(|e| e.to_string())?;
     
     thread::sleep(Duration::from_millis(100));
     
@@ -140,10 +145,10 @@ async fn perform_injection(text: String) -> Result<(), String> {
     
     thread::sleep(Duration::from_millis(50));
     
-    let mut enigo = Enigo::new();
-    enigo.key_down(enigo::Key::Control);
-    enigo.key_click(enigo::Key::Layout('v'));
-    enigo.key_up(enigo::Key::Control);
+    let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
+    enigo.key(Key::Control, Direction::Press).map_err(|e| e.to_string())?;
+    enigo.key(Key::Unicode('v'), Direction::Click).map_err(|e| e.to_string())?;
+    enigo.key(Key::Control, Direction::Release).map_err(|e| e.to_string())?;
     
     thread::sleep(Duration::from_millis(100));
     
@@ -198,8 +203,11 @@ fn main() {
                 }
                 "always_on_top" => {
                     let window = app.get_window("main").unwrap();
-                    let is_always_on_top = window.is_always_on_top().unwrap();
-                    window.set_always_on_top(!is_always_on_top).unwrap();
+                    let state = app.state::<AppState>();
+                    let mut always_on_top = state.always_on_top.lock().unwrap();
+                    let new_state = !*always_on_top;
+                    window.set_always_on_top(new_state).unwrap();
+                    *always_on_top = new_state;
                 }
                 _ => {}
             },

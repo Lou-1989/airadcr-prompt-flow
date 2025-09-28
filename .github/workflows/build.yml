@@ -61,6 +61,9 @@ jobs:
       - name: Generate icons from source
         run: npx tauri icon src/assets/airadcr-logo.png -o src-tauri/icons
 
+      - name: Force PNG icons to RGBA
+        run: node scripts/force-icons-rgba.js
+
       - name: Validate icons
         run: node scripts/validate-icons.cjs
 

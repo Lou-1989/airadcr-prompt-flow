@@ -44,7 +44,14 @@ export const useInjection = () => {
   // Fonction pour capturer la position externe
   const captureExternalPosition = useCallback(async () => {
     try {
-      // CORRECTION: Capturer la position en continu, pas seulement quand l'app n'a pas le focus
+      // ✅ SOLUTION: Capturer uniquement quand l'app N'A PAS le focus
+      const hasFocus = await checkAppFocus();
+      
+      if (hasFocus) {
+        // Ne pas capturer si on est dans AirADCR
+        return;
+      }
+      
       const position = await getCursorPosition();
       if (position) {
         const newPosition: CursorPosition = {
@@ -54,14 +61,14 @@ export const useInjection = () => {
         
         setExternalPositions(prev => {
           const updated = [newPosition, ...prev.slice(0, 2)]; // Garder les 3 dernières
-          logger.debug('[Monitoring] Position capturée:', newPosition);
+          logger.debug('[Monitoring] Position EXTERNE capturée:', newPosition);
           return updated;
         });
       }
     } catch (error) {
       logger.warn('[Monitoring] Erreur capture position:', error);
     }
-  }, [getCursorPosition]);
+  }, [getCursorPosition, checkAppFocus]);
   
   // Démarrer/arrêter la surveillance
   const startMonitoring = useCallback(() => {

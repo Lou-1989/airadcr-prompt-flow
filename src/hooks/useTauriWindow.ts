@@ -59,24 +59,28 @@ export const useTauriWindow = () => {
             setIsAlwaysOnTop(true);
             logger.debug('Always-on-top forcé au démarrage');
             
-            // Surveillance continue du statut always-on-top via invoke command
+            // Surveillance aggressive du statut always-on-top
             const intervalId = setInterval(async () => {
               try {
-                // Utiliser invoke command au lieu de appWindow.isAlwaysOnTop()
                 const currentState = await invoke('get_always_on_top_status');
                 if (currentState !== isAlwaysOnTop) {
                   setIsAlwaysOnTop(currentState as boolean);
                   if (!currentState) {
-                    // Réactiver automatiquement si désactivé
+                    // Réactiver automatiquement avec focus forcé
                     await invoke('set_always_on_top', { alwaysOnTop: true });
+                    try {
+                      await invoke('restore_from_tray');
+                    } catch (e) {
+                      // Ignorer l'erreur si pas dans le tray
+                    }
                     setIsAlwaysOnTop(true);
-                    logger.debug('Always-on-top réactivé automatiquement');
+                    logger.debug('Always-on-top réactivé automatiquement avec focus');
                   }
                 }
               } catch (error) {
                 logger.warn('Erreur surveillance always-on-top:', error);
               }
-            }, 2000); // Vérification toutes les 2 secondes
+            }, 500); // Surveillance plus agressive : toutes les 500ms
             
             // Nettoyage de l'intervalle
             return () => clearInterval(intervalId);
@@ -91,6 +95,26 @@ export const useTauriWindow = () => {
 
     checkTauri();
   }, []);
+
+  // Listener pour réactiver always-on-top quand la fenêtre perd le focus
+  useEffect(() => {
+    if (!isTauriApp) return;
+
+    const handleBlur = async () => {
+      try {
+        // Petit délai pour éviter les conflits
+        setTimeout(async () => {
+          await invoke('set_always_on_top', { alwaysOnTop: true });
+          logger.debug('Always-on-top réactivé après perte de focus');
+        }, 100);
+      } catch (error) {
+        logger.error('Erreur réactivation après blur:', error);
+      }
+    };
+
+    window.addEventListener('blur', handleBlur);
+    return () => window.removeEventListener('blur', handleBlur);
+  }, [isTauriApp]);
 
   // Basculer always-on-top avec vraie API Tauri
   const toggleAlwaysOnTop = useCallback(async () => {

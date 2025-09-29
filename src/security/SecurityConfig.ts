@@ -23,8 +23,8 @@ export const SECURITY_CONFIG = {
   IFRAME_SECURITY: {
     // Permissions strictement nécessaires
     allow: 'clipboard-read; clipboard-write; fullscreen',
-    // Sandbox avec permissions minimales
-    sandbox: 'allow-same-origin allow-scripts allow-forms allow-navigation allow-popups',
+    // Sandbox avec permissions minimales incluant clipboard
+    sandbox: 'allow-same-origin allow-scripts allow-forms allow-navigation allow-popups allow-clipboard-read allow-clipboard-write',
     // Politique de référent pour protéger les données
     referrerPolicy: 'strict-origin-when-cross-origin' as const,
   },

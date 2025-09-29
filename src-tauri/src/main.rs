@@ -236,8 +236,16 @@ async fn perform_injection(text: String, state: State<'_, AppState>) -> Result<(
 }
 
 #[tauri::command]
-fn get_always_on_top_status(window: tauri::Window) -> Result<bool, String> {
-    window.is_always_on_top().map_err(|e| e.to_string())
+fn get_always_on_top_status(state: State<'_, AppState>) -> Result<bool, String> {
+    let always_on_top = match state.always_on_top.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            eprintln!("Mutex poisoned in get_always_on_top_status, recovering...");
+            poisoned.into_inner()
+        }
+    };
+    
+    Ok(*always_on_top)
 }
 
 fn main() {

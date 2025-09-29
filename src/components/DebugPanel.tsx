@@ -10,13 +10,10 @@ interface DebugPanelProps {
   isAlwaysOnTop: boolean;
   isLocked: boolean;
   isMonitoring: boolean;
-  isClipboardMonitoring: boolean;
-  detectedReports: number;
   onToggleAlwaysOnTop: () => void;
   onTestInjection: () => void;
   onLockPosition: () => void;
   onUnlockPosition: () => void;
-  onTestClipboard: () => void;
 }
 
 export const DebugPanel = ({
@@ -24,13 +21,10 @@ export const DebugPanel = ({
   isAlwaysOnTop,
   isLocked,
   isMonitoring,
-  isClipboardMonitoring,
-  detectedReports,
   onToggleAlwaysOnTop,
   onTestInjection,
   onLockPosition,
-  onUnlockPosition,
-  onTestClipboard
+  onUnlockPosition
 }: DebugPanelProps) => {
   const [isVisible, setIsVisible] = useState(false);
 
@@ -90,18 +84,6 @@ export const DebugPanel = ({
           {getStatusBadge(isAlwaysOnTop, "Always-On-Top")}
           {getStatusBadge(isLocked, "Position Verrouillée")}
           {getStatusBadge(isMonitoring, "Surveillance Position")}
-          {getStatusBadge(isClipboardMonitoring, "Surveillance Clipboard")}
-        </div>
-
-        <Separator />
-
-        {/* Statistiques */}
-        <div className="space-y-2">
-          <h4 className="text-sm font-semibold">Statistiques</h4>
-          <div className="flex items-center justify-between p-2 bg-background/50 rounded">
-            <span className="text-sm">Rapports Détectés</span>
-            <Badge variant="outline">{detectedReports}</Badge>
-          </div>
         </div>
 
         <Separator />
@@ -150,15 +132,6 @@ export const DebugPanel = ({
               🔓 Unlock
             </Button>
           </div>
-
-          <Button
-            onClick={() => testFunction("Test Clipboard", onTestClipboard)}
-            variant="outline"
-            size="sm"
-            className="w-full justify-start"
-          >
-            📋 Test Clipboard
-          </Button>
         </div>
       </CardContent>
     </Card>

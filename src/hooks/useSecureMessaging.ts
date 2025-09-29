@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { isValidMessage, SECURITY_CONFIG } from '@/security/SecurityConfig';
 import { useInjection } from './useInjection';
 import { logger } from '@/utils/logger';
@@ -14,6 +14,10 @@ export const useSecureMessaging = () => {
     updateLockedPosition,
     isLocked 
   } = useInjection();
+  
+  // 🔒 DEBOUNCE: Protection contre injections multiples
+  const lastInjectionTimeRef = useRef<number>(0);
+  const INJECTION_COOLDOWN = 1000; // 1 seconde entre injections
 
   // Envoi de message sécurisé vers l'iframe (déclaré AVANT handleSecureMessage)
   const sendSecureMessage = useCallback((type: string, payload?: any) => {
@@ -57,8 +61,23 @@ export const useSecureMessaging = () => {
         break;
         
       case 'airadcr:inject':
+        // 🔒 DEBOUNCE: Vérifier si cooldown actif
+        const now = Date.now();
+        const timeSinceLastInjection = now - lastInjectionTimeRef.current;
+        
+        if (timeSinceLastInjection < INJECTION_COOLDOWN) {
+          logger.warn('[Sécurisé] Injection ignorée (cooldown actif)', {
+            timeSinceLastInjection,
+            cooldown: INJECTION_COOLDOWN
+          });
+          return;
+        }
+        
         logger.debug('[Sécurisé] Demande d\'injection reçue:', payload);
+        
         if (payload && payload.text) {
+          lastInjectionTimeRef.current = now;
+          
           performInjection(payload.text).then(success => {
             if (success) {
               logger.debug('[Sécurisé] Injection réalisée avec succès');

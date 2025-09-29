@@ -181,21 +181,22 @@ async fn perform_injection_at_position(text: String, x: i32, y: i32, state: Stat
     
     clipboard.set_text(&text).map_err(|e| e.to_string())?;
     
-    thread::sleep(Duration::from_millis(50));
+    // ⚡ OPTIMISATION: Délais réduits de 300ms → 60ms
+    thread::sleep(Duration::from_millis(10));
     
     let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
     enigo.move_mouse(x, y, Coordinate::Abs).map_err(|e| e.to_string())?;
-    thread::sleep(Duration::from_millis(50));
+    thread::sleep(Duration::from_millis(10));
     enigo.button(Button::Left, Direction::Press).map_err(|e| e.to_string())?;
     enigo.button(Button::Left, Direction::Release).map_err(|e| e.to_string())?;
-    thread::sleep(Duration::from_millis(100));
+    thread::sleep(Duration::from_millis(30));
     
     // Coller le texte à la position du curseur
     enigo.key(Key::Control, Direction::Press).map_err(|e| e.to_string())?;
     enigo.key(Key::Unicode('v'), Direction::Click).map_err(|e| e.to_string())?;
     enigo.key(Key::Control, Direction::Release).map_err(|e| e.to_string())?;
     
-    thread::sleep(Duration::from_millis(100));
+    thread::sleep(Duration::from_millis(10));
     
     if !original_content.is_empty() {
         clipboard.set_text(&original_content).map_err(|e| e.to_string())?;

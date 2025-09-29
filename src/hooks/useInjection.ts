@@ -18,6 +18,8 @@ export const useInjection = () => {
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [lockedPosition, setLockedPosition] = useState<LockedPosition | null>(null);
   const [isLocked, setIsLocked] = useState(false);
+  const [isInjecting, setIsInjecting] = useState(false);
+  const [injectionQueue, setInjectionQueue] = useState<string[]>([]);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   
   // Fonction pour vérifier si l'app a le focus
@@ -97,25 +99,40 @@ export const useInjection = () => {
   
   // getCursorPosition déjà défini plus haut
   
-  // Fonction principale d'injection avec position préventive et ancrage
+  // 🔒 FONCTION PRINCIPALE: Injection sécurisée avec protections critiques
   const performInjection = useCallback(async (text: string): Promise<boolean> => {
+    // 🔒 PROTECTION: Bloquer si injection en cours
+    if (isInjecting) {
+      logger.warn('[Injection] Injection en cours, ajout à la queue');
+      setInjectionQueue(prev => [...prev, text]);
+      return false;
+    }
+    
     if (!text || text.trim().length === 0) {
       logger.warn('[Injection] Texte vide, injection annulée');
       return false;
     }
     
+    setIsInjecting(true);
+    stopMonitoring(); // ✅ Arrêter la capture pendant l'injection
+    
+    logger.debug('=== DÉBUT INJECTION ===');
+    logger.debug('[Injection] Texte à injecter:', text);
+    logger.debug('[Injection] Position verrouillée disponible:', !!lockedPosition);
+    logger.debug('[Injection] Positions externes disponibles:', externalPositions.length);
+    logger.debug('[Injection] Statut verrouillage:', isLocked);
+    
     try {
-      // CORRECTION: Logs détaillés pour debugging
-      logger.debug('=== DÉBUT INJECTION ===');
-      logger.debug('[Injection] Texte à injecter:', text);
-      logger.debug('[Injection] Position verrouillée disponible:', !!lockedPosition);
-      logger.debug('[Injection] Positions externes disponibles:', externalPositions.length);
-      logger.debug('[Injection] Statut verrouillage:', isLocked);
+      // ⏱️ TIMEOUT: Maximum 5 secondes pour l'injection
+      const timeoutPromise = new Promise<boolean>((_, reject) => 
+        setTimeout(() => reject(new Error('Injection timeout (5s)')), 5000)
+      );
       
-      // PRIORITÉ 1: Position verrouillée si active
-      if (isLocked && lockedPosition) {
-        logger.debug(`[Injection] Utilisation position verrouillée: (${lockedPosition.x}, ${lockedPosition.y}) - App: ${lockedPosition.application}`);
-        
+      const injectionPromise = (async () => {
+        // PRIORITÉ 1: Position verrouillée si active
+        if (isLocked && lockedPosition) {
+          logger.debug(`[Injection] Utilisation position verrouillée: (${lockedPosition.x}, ${lockedPosition.y}) - App: ${lockedPosition.application}`);
+          
           await invoke('perform_injection_at_position', {
             text,
             x: lockedPosition.x,
@@ -123,49 +140,68 @@ export const useInjection = () => {
           });
           
           logger.debug(`=== INJECTION RÉUSSIE (verrouillée) à (${lockedPosition.x}, ${lockedPosition.y}) ===`);
-        return true;
-      }
-      
-      // PRIORITÉ 2: Utiliser la dernière position externe si disponible
-      const lastExternalPosition = externalPositions[0];
-      
-      if (lastExternalPosition) {
-        // Vérifier que la position n'est pas trop ancienne (max 30 secondes)
-        const timeDiff = Date.now() - lastExternalPosition.timestamp;
-        const isPositionRecent = timeDiff < 30000;
-        
-        logger.debug(`[Injection] Temps écoulé depuis dernière position externe: ${timeDiff}ms`);
-        
-        if (isPositionRecent) {
-          logger.debug(`[Injection] Utilisation position externe: (${lastExternalPosition.x}, ${lastExternalPosition.y})`);
-          
-          // Effectuer l'injection à la position sauvegardée
-          await invoke('perform_injection_at_position', {
-            text,
-            x: lastExternalPosition.x,
-            y: lastExternalPosition.y
-          });
-          
-          logger.debug(`=== INJECTION RÉUSSIE (externe) à (${lastExternalPosition.x}, ${lastExternalPosition.y}) ===`);
           return true;
-        } else {
-          logger.warn('[Injection] Position externe trop ancienne, utilisation position actuelle');
         }
-      } else {
-        logger.warn('[Injection] Aucune position externe disponible, utilisation position actuelle');
-      }
+        
+        // PRIORITÉ 2: Utiliser la dernière position externe si disponible
+        const lastExternalPosition = externalPositions[0];
+        
+        if (lastExternalPosition) {
+          // Vérifier que la position n'est pas trop ancienne (max 30 secondes)
+          const timeDiff = Date.now() - lastExternalPosition.timestamp;
+          const isPositionRecent = timeDiff < 30000;
+          
+          logger.debug(`[Injection] Temps écoulé depuis dernière position externe: ${timeDiff}ms`);
+          
+          if (isPositionRecent) {
+            logger.debug(`[Injection] Utilisation position externe: (${lastExternalPosition.x}, ${lastExternalPosition.y})`);
+            
+            await invoke('perform_injection_at_position', {
+              text,
+              x: lastExternalPosition.x,
+              y: lastExternalPosition.y
+            });
+            
+            logger.debug(`=== INJECTION RÉUSSIE (externe) à (${lastExternalPosition.x}, ${lastExternalPosition.y}) ===`);
+            return true;
+          } else {
+            logger.warn('[Injection] Position externe trop ancienne, utilisation position actuelle');
+          }
+        } else {
+          logger.warn('[Injection] Aucune position externe disponible, utilisation position actuelle');
+        }
+        
+        // Fallback: utiliser la méthode normale
+        logger.debug('[Injection] Injection à la position actuelle du curseur');
+        await invoke('perform_injection', { text });
+        logger.debug('=== INJECTION RÉUSSIE (position actuelle) ===');
+        return true;
+      })();
       
-      // Fallback: utiliser la méthode normale
-      logger.debug('[Injection] Injection à la position actuelle du curseur');
-      await invoke('perform_injection', { text });
-      logger.debug('=== INJECTION RÉUSSIE (position actuelle) ===');
-      return true;
+      // Race entre injection et timeout
+      const success = await Promise.race([injectionPromise, timeoutPromise]);
+      return success;
       
     } catch (error) {
       logger.error('=== ERREUR INJECTION ===', error);
       return false;
+      
+    } finally {
+      // 🔄 REDÉMARRAGE: Après 500ms, redémarrer monitoring et traiter queue
+      setTimeout(() => {
+        startMonitoring();
+        setIsInjecting(false);
+        
+        // Traiter la queue si des injections sont en attente
+        if (injectionQueue.length > 0) {
+          const nextText = injectionQueue[0];
+          setInjectionQueue(prev => prev.slice(1));
+          logger.debug('[Injection] Traitement queue, reste:', injectionQueue.length - 1);
+          performInjection(nextText);
+        }
+      }, 500);
     }
-  }, [externalPositions, isLocked, lockedPosition]);
+  }, [isInjecting, injectionQueue, externalPositions, isLocked, lockedPosition, stopMonitoring, startMonitoring]);
   
   // Fonction pour tester la disponibilité de l'injection
   const testInjectionAvailability = useCallback(async (): Promise<boolean> => {

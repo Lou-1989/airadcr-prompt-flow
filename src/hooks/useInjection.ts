@@ -8,10 +8,16 @@ interface CursorPosition {
   timestamp: number;
 }
 
+interface LockedPosition extends CursorPosition {
+  application: string;
+}
+
 // Hook spécialisé pour la gestion de l'injection sécurisée avec capture préventive
 export const useInjection = () => {
   const [externalPositions, setExternalPositions] = useState<CursorPosition[]>([]);
   const [isMonitoring, setIsMonitoring] = useState(false);
+  const [lockedPosition, setLockedPosition] = useState<LockedPosition | null>(null);
+  const [isLocked, setIsLocked] = useState(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   
   // Fonction pour vérifier si l'app a le focus
@@ -86,7 +92,7 @@ export const useInjection = () => {
     }
   }, []);
   
-  // Fonction principale d'injection avec position préventive
+  // Fonction principale d'injection avec position préventive et ancrage
   const performInjection = useCallback(async (text: string): Promise<boolean> => {
     if (!text || text.trim().length === 0) {
       logger.warn('[Injection] Texte vide, injection annulée');
@@ -96,7 +102,21 @@ export const useInjection = () => {
     try {
       logger.debug('[Injection] Démarrage injection sécurisée...');
       
-      // Utiliser la dernière position externe si disponible
+      // PRIORITÉ 1: Position verrouillée si active
+      if (isLocked && lockedPosition) {
+        logger.debug(`[Injection] Utilisation position verrouillée: (${lockedPosition.x}, ${lockedPosition.y}) - App: ${lockedPosition.application}`);
+        
+        const [x, y] = await invoke<[number, number]>('perform_injection_at_position', {
+          text,
+          x: lockedPosition.x,
+          y: lockedPosition.y
+        });
+        
+        logger.debug(`[Injection] Injection réussie à la position verrouillée (${x}, ${y})`);
+        return true;
+      }
+      
+      // PRIORITÉ 2: Utiliser la dernière position externe si disponible
       const lastExternalPosition = externalPositions[0];
       
       if (lastExternalPosition) {
@@ -144,6 +164,69 @@ export const useInjection = () => {
     }
   }, []);
   
+  // Fonctions de gestion de l'ancrage verrouillé
+  const lockCurrentPosition = useCallback(async (): Promise<boolean> => {
+    try {
+      const hasFocus = await checkAppFocus();
+      if (hasFocus) {
+        logger.warn('[Lock] Impossible de verrouiller - app a le focus');
+        return false;
+      }
+      
+      const position = await getCursorPosition();
+      if (!position) {
+        logger.error('[Lock] Impossible d\'obtenir la position actuelle');
+        return false;
+      }
+      
+      // Obtenir le nom de l'application active (simulation pour l'instant)
+      const application = 'Application'; // TODO: Récupérer le nom réel de l'app
+      
+      const newLockedPosition: LockedPosition = {
+        ...position,
+        timestamp: Date.now(),
+        application
+      };
+      
+      setLockedPosition(newLockedPosition);
+      setIsLocked(true);
+      
+      logger.debug(`[Lock] Position verrouillée: (${position.x}, ${position.y}) - App: ${application}`);
+      return true;
+    } catch (error) {
+      logger.error('[Lock] Erreur verrouillage position:', error);
+      return false;
+    }
+  }, [checkAppFocus, getCursorPosition]);
+  
+  const unlockPosition = useCallback(() => {
+    setIsLocked(false);
+    setLockedPosition(null);
+    logger.debug('[Lock] Position déverrouillée');
+  }, []);
+  
+  const updateLockedPosition = useCallback(async (): Promise<boolean> => {
+    if (!isLocked) {
+      logger.warn('[Lock] Aucune position à mettre à jour');
+      return false;
+    }
+    
+    const position = await getCursorPosition();
+    if (!position || !lockedPosition) {
+      return false;
+    }
+    
+    const updatedPosition: LockedPosition = {
+      ...position,
+      timestamp: Date.now(),
+      application: lockedPosition.application
+    };
+    
+    setLockedPosition(updatedPosition);
+    logger.debug(`[Lock] Position verrouillée mise à jour: (${position.x}, ${position.y})`);
+    return true;
+  }, [isLocked, lockedPosition, getCursorPosition]);
+
   return {
     getCursorPosition,
     performInjection,
@@ -152,5 +235,11 @@ export const useInjection = () => {
     isMonitoring,
     startMonitoring,
     stopMonitoring,
+    // Nouvelles fonctions d'ancrage
+    lockCurrentPosition,
+    unlockPosition,
+    updateLockedPosition,
+    isLocked,
+    lockedPosition,
   };
 };

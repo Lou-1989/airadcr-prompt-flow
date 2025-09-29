@@ -65,6 +65,34 @@ async fn toggle_always_on_top(window: tauri::Window, state: State<'_, AppState>)
 }
 
 #[tauri::command]
+async fn set_always_on_top(window: tauri::Window, state: State<'_, AppState>, always_on_top: bool) -> Result<bool, String> {
+    let mut current_state = match state.always_on_top.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            eprintln!("Mutex poisoned in set_always_on_top, recovering...");
+            poisoned.into_inner()
+        }
+    };
+    
+    // Retry logic for window operations
+    let mut retry_count = 0;
+    while retry_count < 3 {
+        match window.set_always_on_top(always_on_top) {
+            Ok(_) => break,
+            Err(_e) if retry_count < 2 => {
+                retry_count += 1;
+                thread::sleep(Duration::from_millis(50));
+                continue;
+            },
+            Err(e) => return Err(format!("Failed to set always on top after retries: {}", e))
+        }
+    }
+    
+    *current_state = always_on_top;
+    Ok(always_on_top)
+}
+
+#[tauri::command]
 async fn set_window_position(window: tauri::Window, x: i32, y: i32) -> Result<(), String> {
     window.set_position(tauri::Position::Physical(tauri::PhysicalPosition { x, y }))
         .map_err(|e| e.to_string())?;
@@ -286,6 +314,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             toggle_always_on_top,
+            set_always_on_top,
             set_window_position,
             get_window_position,
             minimize_to_tray,

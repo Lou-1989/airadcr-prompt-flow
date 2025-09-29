@@ -7,7 +7,13 @@ type MessageHandler = (data: any) => void;
 
 // Hook pour la communication sécurisée avec l'iframe AirADCR
 export const useSecureMessaging = () => {
-  const { performInjection } = useInjection();
+  const { 
+    performInjection, 
+    lockCurrentPosition, 
+    unlockPosition, 
+    updateLockedPosition,
+    isLocked 
+  } = useInjection();
   // Gestionnaire de messages sécurisé
   const handleSecureMessage = useCallback((event: MessageEvent) => {
     // Validation stricte du message
@@ -39,6 +45,31 @@ export const useSecureMessaging = () => {
         
       case 'airadcr:status':
         logger.debug('[Sécurisé] Statut AirADCR:', payload);
+        break;
+        
+      case 'airadcr:lock':
+        logger.debug('[Sécurisé] Demande de verrouillage reçue');
+        lockCurrentPosition().then(success => {
+          sendSecureMessage('airadcr:lock_status', { locked: success });
+          if (success) {
+            logger.debug('[Sécurisé] Position verrouillée avec succès');
+          } else {
+            logger.error('[Sécurisé] Échec du verrouillage');
+          }
+        });
+        break;
+        
+      case 'airadcr:unlock':
+        logger.debug('[Sécurisé] Demande de déverrouillage reçue');
+        unlockPosition();
+        sendSecureMessage('airadcr:lock_status', { locked: false });
+        break;
+        
+      case 'airadcr:update_lock':
+        logger.debug('[Sécurisé] Demande de mise à jour position verrouillée');
+        updateLockedPosition().then(success => {
+          sendSecureMessage('airadcr:lock_status', { locked: success });
+        });
         break;
         
       default:
@@ -84,5 +115,6 @@ export const useSecureMessaging = () => {
   
   return {
     sendSecureMessage,
+    isLocked, // Exposer l'état de verrouillage pour l'interface
   };
 };

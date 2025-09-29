@@ -58,10 +58,10 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Build all required icons
-        run: node scripts/build-icons.cjs
+      - name: Build all required icons (robust)
+        run: node scripts/build-icons-robust.cjs
 
-      - name: Validate all icons and assets
+      - name: Validate all icons and assets  
         run: node scripts/validate-icons.cjs
 
       - name: Build the app

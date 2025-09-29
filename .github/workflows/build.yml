@@ -69,12 +69,40 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+      - name: Debug bundle contents
         if: always()
+        run: |
+          echo "Listing bundle directory contents:"
+          ls -la src-tauri/target/release/bundle/ || echo "Bundle directory not found"
+          find src-tauri/target/ -name "*.exe" -o -name "*.msi" -o -name "*.dmg" -o -name "*.deb" -o -name "*.AppImage" || echo "No build artifacts found"
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        if: matrix.settings.platform == 'windows-latest'
         with:
-          name: build-${{ matrix.settings.platform }}
+          name: build-windows-latest
           path: |
-            src-tauri/target/release/bundle/**/*
-            !src-tauri/target/release/bundle/**/deps/
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/*.exe
+          retention-days: 30
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        if: matrix.settings.platform == 'macos-latest'
+        with:
+          name: build-macos-${{ contains(matrix.settings.args, 'aarch64') && 'arm64' || 'intel' }}
+          path: |
+            src-tauri/target/*/release/bundle/dmg/*.dmg
+            src-tauri/target/*/release/bundle/macos/*.app
+          retention-days: 30
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        if: matrix.settings.platform == 'ubuntu-22.04'
+        with:
+          name: build-ubuntu-22.04
+          path: |
+            src-tauri/target/release/bundle/deb/*.deb
+            src-tauri/target/release/bundle/appimage/*.AppImage
           retention-days: 30

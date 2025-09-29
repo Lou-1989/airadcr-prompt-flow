@@ -29,32 +29,39 @@ export const useInjection = () => {
       return true; // Par défaut, considérer qu'on a le focus en cas d'erreur
     }
   }, []);
+
+  // Fonction pour obtenir la position actuelle du curseur
+  const getCursorPosition = useCallback(async (): Promise<{ x: number; y: number } | null> => {
+    try {
+      const position = await invoke<{ x: number; y: number; timestamp: number }>('get_cursor_position');
+      return { x: position.x, y: position.y };
+    } catch (error) {
+      logger.error('[Injection] Erreur récupération position curseur:', error);
+      return null;
+    }
+  }, []);
   
   // Fonction pour capturer la position externe
   const captureExternalPosition = useCallback(async () => {
     try {
-      const hasFocus = await checkAppFocus();
-      
-      // Ne capturer que si l'app n'a PAS le focus
-      if (!hasFocus) {
-        const position = await getCursorPosition();
-        if (position) {
-          const newPosition: CursorPosition = {
-            ...position,
-            timestamp: Date.now()
-          };
-          
-          setExternalPositions(prev => {
-            const updated = [newPosition, ...prev.slice(0, 2)]; // Garder les 3 dernières
-            logger.debug('[Monitoring] Position externe capturée:', newPosition);
-            return updated;
-          });
-        }
+      // CORRECTION: Capturer la position en continu, pas seulement quand l'app n'a pas le focus
+      const position = await getCursorPosition();
+      if (position) {
+        const newPosition: CursorPosition = {
+          ...position,
+          timestamp: Date.now()
+        };
+        
+        setExternalPositions(prev => {
+          const updated = [newPosition, ...prev.slice(0, 2)]; // Garder les 3 dernières
+          logger.debug('[Monitoring] Position capturée:', newPosition);
+          return updated;
+        });
       }
     } catch (error) {
-      logger.warn('[Monitoring] Erreur capture position externe:', error);
+      logger.warn('[Monitoring] Erreur capture position:', error);
     }
-  }, []);
+  }, [getCursorPosition]);
   
   // Démarrer/arrêter la surveillance
   const startMonitoring = useCallback(() => {
@@ -81,16 +88,7 @@ export const useInjection = () => {
     return () => stopMonitoring();
   }, [startMonitoring, stopMonitoring]);
   
-  // Fonction pour obtenir la position actuelle du curseur
-  const getCursorPosition = useCallback(async (): Promise<{ x: number; y: number } | null> => {
-    try {
-      const [x, y] = await invoke<[number, number]>('get_cursor_position');
-      return { x, y };
-    } catch (error) {
-      logger.error('[Injection] Erreur récupération position curseur:', error);
-      return null;
-    }
-  }, []);
+  // getCursorPosition déjà défini plus haut
   
   // Fonction principale d'injection avec position préventive et ancrage
   const performInjection = useCallback(async (text: string): Promise<boolean> => {
@@ -100,7 +98,12 @@ export const useInjection = () => {
     }
     
     try {
-      logger.debug('[Injection] Démarrage injection sécurisée...');
+      // CORRECTION: Logs détaillés pour debugging
+      logger.debug('=== DÉBUT INJECTION ===');
+      logger.debug('[Injection] Texte à injecter:', text);
+      logger.debug('[Injection] Position verrouillée disponible:', !!lockedPosition);
+      logger.debug('[Injection] Positions externes disponibles:', externalPositions.length);
+      logger.debug('[Injection] Statut verrouillage:', isLocked);
       
       // PRIORITÉ 1: Position verrouillée si active
       if (isLocked && lockedPosition) {
@@ -112,7 +115,7 @@ export const useInjection = () => {
           y: lockedPosition.y
         });
         
-        logger.debug(`[Injection] Injection réussie à la position verrouillée (${x}, ${y})`);
+        logger.debug(`=== INJECTION RÉUSSIE (verrouillée) à (${x}, ${y}) ===`);
         return true;
       }
       
@@ -121,7 +124,10 @@ export const useInjection = () => {
       
       if (lastExternalPosition) {
         // Vérifier que la position n'est pas trop ancienne (max 30 secondes)
-        const isPositionRecent = (Date.now() - lastExternalPosition.timestamp) < 30000;
+        const timeDiff = Date.now() - lastExternalPosition.timestamp;
+        const isPositionRecent = timeDiff < 30000;
+        
+        logger.debug(`[Injection] Temps écoulé depuis dernière position externe: ${timeDiff}ms`);
         
         if (isPositionRecent) {
           logger.debug(`[Injection] Utilisation position externe: (${lastExternalPosition.x}, ${lastExternalPosition.y})`);
@@ -133,7 +139,7 @@ export const useInjection = () => {
             y: lastExternalPosition.y
           });
           
-          logger.debug(`[Injection] Injection réussie à la position externe (${x}, ${y})`);
+          logger.debug(`=== INJECTION RÉUSSIE (externe) à (${x}, ${y}) ===`);
           return true;
         } else {
           logger.warn('[Injection] Position externe trop ancienne, utilisation position actuelle');
@@ -143,15 +149,16 @@ export const useInjection = () => {
       }
       
       // Fallback: utiliser la méthode normale
+      logger.debug('[Injection] Injection à la position actuelle du curseur');
       const [x, y] = await invoke<[number, number]>('perform_injection', { text });
-      logger.debug(`[Injection] Injection réussie à la position actuelle (${x}, ${y})`);
+      logger.debug(`=== INJECTION RÉUSSIE (actuelle) à (${x}, ${y}) ===`);
       return true;
       
     } catch (error) {
-      logger.error('[Injection] Erreur lors de l\'injection:', error);
+      logger.error('=== ERREUR INJECTION ===', error);
       return false;
     }
-  }, [externalPositions]);
+  }, [externalPositions, isLocked, lockedPosition]);
   
   // Fonction pour tester la disponibilité de l'injection
   const testInjectionAvailability = useCallback(async (): Promise<boolean> => {
@@ -167,12 +174,7 @@ export const useInjection = () => {
   // Fonctions de gestion de l'ancrage verrouillé
   const lockCurrentPosition = useCallback(async (): Promise<boolean> => {
     try {
-      const hasFocus = await checkAppFocus();
-      if (hasFocus) {
-        logger.warn('[Lock] Impossible de verrouiller - app a le focus');
-        return false;
-      }
-      
+      // CORRECTION: Permettre le verrouillage même quand l'app a le focus
       const position = await getCursorPosition();
       if (!position) {
         logger.error('[Lock] Impossible d\'obtenir la position actuelle');
@@ -197,7 +199,7 @@ export const useInjection = () => {
       logger.error('[Lock] Erreur verrouillage position:', error);
       return false;
     }
-  }, [checkAppFocus, getCursorPosition]);
+  }, [getCursorPosition]);
   
   const unlockPosition = useCallback(() => {
     setIsLocked(false);

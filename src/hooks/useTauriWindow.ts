@@ -53,11 +53,33 @@ export const useTauriWindow = () => {
           
           logger.debug('Environnement Tauri détecté');
           
-          // CORRECTION: Forcer always-on-top au démarrage au lieu de toggle
+          // CORRECTION: Forcer always-on-top au démarrage et surveillance continue
           try {
             await invoke('set_always_on_top', { alwaysOnTop: true });
             setIsAlwaysOnTop(true);
             logger.debug('Always-on-top forcé au démarrage');
+            
+            // Surveillance continue du statut always-on-top via invoke command
+            const intervalId = setInterval(async () => {
+              try {
+                // Utiliser invoke command au lieu de appWindow.isAlwaysOnTop()
+                const currentState = await invoke('get_always_on_top_status');
+                if (currentState !== isAlwaysOnTop) {
+                  setIsAlwaysOnTop(currentState as boolean);
+                  if (!currentState) {
+                    // Réactiver automatiquement si désactivé
+                    await invoke('set_always_on_top', { alwaysOnTop: true });
+                    setIsAlwaysOnTop(true);
+                    logger.debug('Always-on-top réactivé automatiquement');
+                  }
+                }
+              } catch (error) {
+                logger.warn('Erreur surveillance always-on-top:', error);
+              }
+            }, 2000); // Vérification toutes les 2 secondes
+            
+            // Nettoyage de l'intervalle
+            return () => clearInterval(intervalId);
           } catch (error) {
             logger.error('Erreur activation always-on-top:', error);
           }

@@ -69,8 +69,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Debug bundle contents
-        if: always()
+      - name: Debug bundle contents (Windows)
+        if: matrix.settings.platform == 'windows-latest'
+        run: |
+          echo "Listing Windows bundle directory contents:"
+          if (Test-Path "src-tauri/target/release/bundle/") { Get-ChildItem -Path "src-tauri/target/release/bundle/" -Recurse } else { echo "Bundle directory not found" }
+          Get-ChildItem -Path "src-tauri/target/" -Include "*.exe","*.msi" -Recurse -ErrorAction SilentlyContinue
+        shell: powershell
+
+      - name: Debug bundle contents (Unix)
+        if: matrix.settings.platform != 'windows-latest'
         run: |
           echo "Listing bundle directory contents:"
           ls -la src-tauri/target/release/bundle/ || echo "Bundle directory not found"

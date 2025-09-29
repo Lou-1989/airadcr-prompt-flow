@@ -109,13 +109,13 @@ export const useInjection = () => {
       if (isLocked && lockedPosition) {
         logger.debug(`[Injection] Utilisation position verrouillée: (${lockedPosition.x}, ${lockedPosition.y}) - App: ${lockedPosition.application}`);
         
-        const [x, y] = await invoke<[number, number]>('perform_injection_at_position', {
-          text,
-          x: lockedPosition.x,
-          y: lockedPosition.y
-        });
-        
-        logger.debug(`=== INJECTION RÉUSSIE (verrouillée) à (${x}, ${y}) ===`);
+          await invoke('perform_injection_at_position', {
+            text,
+            x: lockedPosition.x,
+            y: lockedPosition.y
+          });
+          
+          logger.debug(`=== INJECTION RÉUSSIE (verrouillée) à (${lockedPosition.x}, ${lockedPosition.y}) ===`);
         return true;
       }
       
@@ -133,13 +133,13 @@ export const useInjection = () => {
           logger.debug(`[Injection] Utilisation position externe: (${lastExternalPosition.x}, ${lastExternalPosition.y})`);
           
           // Effectuer l'injection à la position sauvegardée
-          const [x, y] = await invoke<[number, number]>('perform_injection_at_position', {
+          await invoke('perform_injection_at_position', {
             text,
             x: lastExternalPosition.x,
             y: lastExternalPosition.y
           });
           
-          logger.debug(`=== INJECTION RÉUSSIE (externe) à (${x}, ${y}) ===`);
+          logger.debug(`=== INJECTION RÉUSSIE (externe) à (${lastExternalPosition.x}, ${lastExternalPosition.y}) ===`);
           return true;
         } else {
           logger.warn('[Injection] Position externe trop ancienne, utilisation position actuelle');
@@ -150,8 +150,8 @@ export const useInjection = () => {
       
       // Fallback: utiliser la méthode normale
       logger.debug('[Injection] Injection à la position actuelle du curseur');
-      const [x, y] = await invoke<[number, number]>('perform_injection', { text });
-      logger.debug(`=== INJECTION RÉUSSIE (actuelle) à (${x}, ${y}) ===`);
+      await invoke('perform_injection', { text });
+      logger.debug('=== INJECTION RÉUSSIE (position actuelle) ===');
       return true;
       
     } catch (error) {

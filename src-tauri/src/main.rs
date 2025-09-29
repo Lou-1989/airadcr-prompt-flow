@@ -235,6 +235,11 @@ async fn perform_injection(text: String, state: State<'_, AppState>) -> Result<(
     Ok(())
 }
 
+#[tauri::command]
+fn get_always_on_top_status(window: tauri::Window) -> Result<bool, String> {
+    window.is_always_on_top().map_err(|e| e.to_string())
+}
+
 fn main() {
     let quit = CustomMenuItem::new("quit".to_string(), "Quitter");
     let show = CustomMenuItem::new("show".to_string(), "Afficher");
@@ -322,6 +327,7 @@ fn main() {
             get_system_info,
             get_cursor_position,
             check_app_focus,
+            get_always_on_top_status,
             perform_injection_at_position,
             perform_injection
         ])

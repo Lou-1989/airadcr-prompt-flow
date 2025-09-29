@@ -188,8 +188,15 @@ async fn perform_injection_at_position(text: String, x: i32, y: i32, state: Stat
     thread::sleep(Duration::from_millis(50));
     enigo.button(Button::Left, Direction::Press).map_err(|e| e.to_string())?;
     enigo.button(Button::Left, Direction::Release).map_err(|e| e.to_string())?;
+    thread::sleep(Duration::from_millis(100));
+    
+    // Support pour contenteditable (Google Docs, etc.) : Sélectionner tout avant de coller
+    enigo.key(Key::Control, Direction::Press).map_err(|e| e.to_string())?;
+    enigo.key(Key::Unicode('a'), Direction::Click).map_err(|e| e.to_string())?;
+    enigo.key(Key::Control, Direction::Release).map_err(|e| e.to_string())?;
     thread::sleep(Duration::from_millis(50));
     
+    // Coller le texte
     enigo.key(Key::Control, Direction::Press).map_err(|e| e.to_string())?;
     enigo.key(Key::Unicode('v'), Direction::Click).map_err(|e| e.to_string())?;
     enigo.key(Key::Control, Direction::Release).map_err(|e| e.to_string())?;

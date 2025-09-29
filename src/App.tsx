@@ -9,6 +9,7 @@ import NotFound from "./pages/NotFound";
 import { useTauriWindow } from "@/hooks/useTauriWindow";
 import { useInjection } from "@/hooks/useInjection";
 import { useClipboardBridge } from "@/hooks/useClipboardBridge";
+import { useSecureMessaging } from "@/hooks/useSecureMessaging";
 import { DebugPanel } from "@/components/DebugPanel";
 import { logger } from "@/utils/logger";
 
@@ -29,6 +30,9 @@ const App = () => {
     isLocked,
     isMonitoring
   } = useInjection();
+
+  // Active le système de communication sécurisée postMessage
+  useSecureMessaging();
 
   // Clipboard Bridge avec auto-injection
   const clipboardBridge = useClipboardBridge(async (reportContent: string) => {

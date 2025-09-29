@@ -20,7 +20,8 @@ const EXPECTED_ICONS = [
   { file: '128x128.png', type: 'PNG', minSize: 128 * 128 },
   { file: '128x128@2x.png', type: 'PNG', minSize: 256 * 256 },
   { file: 'icon.png', type: 'PNG', minSize: 256 * 256, optional: true },
-  { file: 'icon.ico', type: 'ICO', minSize: 1000 }
+  { file: 'icon.ico', type: 'ICO', minSize: 1000 },
+  { file: 'icon.icns', type: 'ICNS', minSize: 2000 }
 ];
 
 /**
@@ -101,9 +102,25 @@ function validateAllIcons() {
 
   for (const iconConfig of EXPECTED_ICONS) {
     const filePath = path.join(ICONS_DIR, iconConfig.file);
-    const signature = iconConfig.type === 'PNG' ? PNG_SIGNATURE : ICO_SIGNATURE;
+    const signature = iconConfig.type === 'PNG' ? PNG_SIGNATURE : (iconConfig.type === 'ICO' ? ICO_SIGNATURE : null);
     
     totalIcons++;
+    
+    // Pour ICNS, vérifier seulement l'existence et la taille
+    if (iconConfig.type === 'ICNS') {
+      if (!fs.existsSync(filePath)) {
+        console.error(`❌ Fichier manquant: ${filePath}`);
+        hasErrors = true;
+        continue;
+      }
+      const stats = fs.statSync(filePath);
+      if (stats.size < iconConfig.minSize) {
+        console.warn(`⚠️  ${iconConfig.file}: Taille potentiellement trop petite (${stats.size} bytes)`);
+      }
+      console.log(`✅ ${iconConfig.file}: ICNS présent (${stats.size} bytes)`);
+      validIcons++;
+      continue;
+    }
     
     const result = validateSignature(filePath, signature, iconConfig.type);
     

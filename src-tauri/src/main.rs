@@ -19,7 +19,6 @@ pub struct CursorPosition {
 }
 
 pub struct AppState {
-    external_cursor_positions: Arc<Mutex<Vec<CursorPosition>>>,
     is_focused: Arc<Mutex<bool>>,
     always_on_top: Arc<Mutex<bool>>,
     clipboard_lock: Arc<Mutex<()>>,

@@ -19,6 +19,7 @@ pub struct CursorPosition {
 }
 
 pub struct AppState {
+    external_cursor_positions: Arc<Mutex<Vec<CursorPosition>>>,
     is_focused: Arc<Mutex<bool>>,
     always_on_top: Arc<Mutex<bool>>,
     clipboard_lock: Arc<Mutex<()>>,
@@ -27,6 +28,7 @@ pub struct AppState {
 impl Default for AppState {
     fn default() -> Self {
         Self {
+            external_cursor_positions: Arc::new(Mutex::new(Vec::new())),
             is_focused: Arc::new(Mutex::new(false)),
             always_on_top: Arc::new(Mutex::new(false)),
             clipboard_lock: Arc::new(Mutex::new(())),

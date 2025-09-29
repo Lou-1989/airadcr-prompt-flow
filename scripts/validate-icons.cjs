@@ -14,13 +14,13 @@ const ICONS_DIR = path.join(__dirname, '../src-tauri/icons');
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
 const ICO_SIGNATURE = Buffer.from([0x00, 0x00, 0x01, 0x00]);
 
-// Configuration des icônes attendues
 const EXPECTED_ICONS = [
-  { file: '32x32.png', type: 'PNG', minSize: 32 * 32 },
-  { file: '128x128.png', type: 'PNG', minSize: 128 * 128 },
-  { file: '128x128@2x.png', type: 'PNG', minSize: 256 * 256 },
-  { file: 'icon.png', type: 'PNG', minSize: 256 * 256, optional: true },
-  { file: 'icon.ico', type: 'ICO', minSize: 1000 }
+  { file: '32x32.png', type: 'PNG', minSize: 1000, dir: ICONS_DIR },
+  { file: '128x128.png', type: 'PNG', minSize: 5000, dir: ICONS_DIR },
+  { file: '128x128@2x.png', type: 'PNG', minSize: 10000, dir: ICONS_DIR },
+  { file: 'icon.png', type: 'PNG', minSize: 20000, dir: ICONS_DIR },
+  { file: 'icon.ico', type: 'ICO', minSize: 5000, dir: ICONS_DIR },
+  { file: 'installer.ico', type: 'ICO', minSize: 5000, dir: path.join(__dirname, '../src-tauri/assets') }
 ];
 
 /**
@@ -93,62 +93,70 @@ function validatePngRgba(buffer, filePath) {
  * Valide toutes les icônes
  */
 function validateAllIcons() {
-  console.log('🔍 Validation des icônes Tauri...\n');
+  console.log('🔍 VALIDATION DES ICÔNES TAURI\n');
 
   let hasErrors = false;
   let totalIcons = 0;
   let validIcons = 0;
 
   for (const iconConfig of EXPECTED_ICONS) {
-    const filePath = path.join(ICONS_DIR, iconConfig.file);
+    const filePath = path.join(iconConfig.dir, iconConfig.file);
     const signature = iconConfig.type === 'PNG' ? PNG_SIGNATURE : ICO_SIGNATURE;
     
     totalIcons++;
+    console.log(`📋 Validation: ${iconConfig.file} (${iconConfig.type})`);
     
     const result = validateSignature(filePath, signature, iconConfig.type);
     
     if (!result.valid) {
       if (iconConfig.optional && result.error.includes('Fichier manquant')) {
-        console.log(`⚠️  ${iconConfig.file} (optionnel): Ignoré`);
+        console.log(`  ⚠️  Fichier optionnel manquant, ignoré`);
         totalIcons--; // Ne pas compter les optionnels manquants
         continue;
       }
       
-      console.error(`❌ ${result.error}`);
+      console.log(`  ❌ ERREUR: ${result.error}`);
       hasErrors = true;
-    } else {
-      // Validation RGBA spécifique pour les PNG
-      if (iconConfig.type === 'PNG') {
-        const buffer = fs.readFileSync(filePath);
-        const rgbaResult = validatePngRgba(buffer, filePath);
-        
-        if (!rgbaResult.valid) {
-          console.error(`❌ ${rgbaResult.error}`);
-          hasErrors = true;
-          continue;
-        } else {
-          console.log(`✅ ${iconConfig.file}: PNG RGBA valide (${result.size} bytes, bitDepth=${rgbaResult.bitDepth}, colorType=${rgbaResult.colorType})`);
-        }
-      }
-      
-      validIcons++;
-      
-      if (result.size < iconConfig.minSize) {
-        console.warn(`⚠️  ${iconConfig.file}: Taille potentiellement trop petite (${result.size} bytes)`);
-      } else if (iconConfig.type !== 'PNG') {
-        console.log(`✅ ${iconConfig.file}: Signature ${iconConfig.type} valide (${result.size} bytes)`);
-      }
+      continue;
     }
+    
+    if (result.size < iconConfig.minSize) {
+      console.log(`  ❌ ERREUR: Fichier trop petit (${result.size} < ${iconConfig.minSize} bytes)`);
+      hasErrors = true;
+      continue;
+    }
+    
+    // Validation RGBA spécifique pour les PNG
+    if (iconConfig.type === 'PNG') {
+      const buffer = fs.readFileSync(filePath);
+      const rgbaResult = validatePngRgba(buffer, filePath);
+      
+      if (!rgbaResult.valid) {
+        console.log(`  ❌ ERREUR: ${rgbaResult.error}`);
+        hasErrors = true;
+        continue;
+      }
+      
+      console.log(`  ✅ VALIDE: PNG RGBA (${result.size} bytes, ${rgbaResult.bitDepth}bit, colorType=${rgbaResult.colorType})`);
+    } else {
+      console.log(`  ✅ VALIDE: ICO authentique (${result.size} bytes)`);
+    }
+    
+    validIcons++;
   }
 
-  console.log(`\n📊 Résumé: ${validIcons}/${totalIcons} icônes valides`);
+  console.log(`\n📊 RÉSUMÉ DE VALIDATION:`);
+  console.log(`   Total des icônes: ${totalIcons}`);
+  console.log(`   Icônes valides: ${validIcons}`);
+  console.log(`   Icônes invalides: ${totalIcons - validIcons}`);
 
   if (hasErrors) {
-    console.error('\n❌ Validation échouée: Des icônes ont des signatures invalides');
-    console.error('Cela causera des erreurs "Invalid PNG signature" ou "Invalid ICO format" dans Tauri');
+    console.log('\n❌ VALIDATION ÉCHOUÉE - Des erreurs ont été détectées');
+    console.log('Cela causera des erreurs "Invalid PNG signature", "Invalid ICO format" ou "Failed to create app icon" dans Tauri');
     process.exit(1);
   } else {
-    console.log('\n✅ Toutes les icônes sont valides pour la compilation Tauri');
+    console.log('\n✅ VALIDATION RÉUSSIE - Toutes les icônes sont conformes');
+    console.log('✅ Prêt pour npx tauri build');
     process.exit(0);
   }
 }

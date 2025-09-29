@@ -58,13 +58,10 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Generate icons from source
-        run: npx tauri icon src/assets/airadcr-logo.png -o src-tauri/icons
+      - name: Build all required icons
+        run: node scripts/build-icons.cjs
 
-      - name: Force PNG icons to RGBA
-        run: node scripts/force-icons-rgba.cjs
-
-      - name: Validate icons
+      - name: Validate all icons and assets
         run: node scripts/validate-icons.cjs
 
       - name: Build the app

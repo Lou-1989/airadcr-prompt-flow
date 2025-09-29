@@ -64,9 +64,6 @@ jobs:
       - name: Debug generated icons
         run: ls -al src-tauri/icons
 
-      - name: Force PNG icons to RGBA
-        run: node scripts/force-icons-rgba.cjs
-
       - name: Validate icons
         run: node scripts/validate-icons.cjs
 

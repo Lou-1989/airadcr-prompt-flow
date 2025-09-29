@@ -78,21 +78,6 @@
         "digestAlgorithm": "sha256",
         "timestampUrl": "",
         "tsp": false,
-        "wix": {
-          "language": "fr-FR",
-          "template": "main.wxs",
-          "fragmentPaths": [],
-          "componentGroupRefs": [],
-          "componentRefs": [],
-          "featureGroupRefs": [],
-          "featureRefs": [],
-          "mergeRefs": [],
-          "skipWebviewInstall": false,
-          "license": "LICENSE.rtf",
-          "enableElevatedUpdateTask": true,
-          "bannerPath": "assets/banner.bmp",
-          "dialogImagePath": "assets/dialog.bmp"
-        },
         "nsis": {
           "license": "LICENSE.txt",
           "headerImage": "assets/header.bmp",

@@ -38,6 +38,7 @@ export const SECURITY_CONFIG = {
     'airadcr:unlock',
     'airadcr:update_lock',
     'airadcr:lock_status', // Feedback du statut de verrouillage
+    'airadcr:request_status', // Demande du statut initial
   ] as const,
 } as const;
 

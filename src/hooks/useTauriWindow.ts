@@ -16,20 +16,18 @@ interface SystemInfo {
 }
 
 export const useTauriWindow = () => {
-  const [isAlwaysOnTop, setIsAlwaysOnTop] = useState(false);
+  const [isAlwaysOnTop, setIsAlwaysOnTop] = useState(true);
   const [windowPosition, setWindowPosition] = useState<WindowPosition>({ x: 0, y: 0 });
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const [isTauriApp, setIsTauriApp] = useState(false);
 
-  // Détection si on est dans l'app Tauri et récupération info système
+  // Détection Tauri et récupération info système
   useEffect(() => {
     const checkTauri = async () => {
       try {
-        // Check if we're in Tauri environment
         if (typeof window !== 'undefined' && (window as any).__TAURI__) {
           setIsTauriApp(true);
           
-          // Récupération info système réelle
           try {
             const [platformName, archName, versionName] = await Promise.all([
               platform(),
@@ -52,41 +50,6 @@ export const useTauriWindow = () => {
           }
           
           logger.debug('Environnement Tauri détecté');
-          
-          // CORRECTION: Forcer always-on-top au démarrage et surveillance continue
-          try {
-            await invoke('set_always_on_top', { alwaysOnTop: true });
-            setIsAlwaysOnTop(true);
-            logger.debug('Always-on-top forcé au démarrage');
-            
-            // Surveillance aggressive du statut always-on-top
-            const intervalId = setInterval(async () => {
-              try {
-                const currentState = await invoke('get_always_on_top_status');
-                if (currentState !== isAlwaysOnTop) {
-                  setIsAlwaysOnTop(currentState as boolean);
-                  if (!currentState) {
-                    // Réactiver automatiquement avec focus forcé
-                    await invoke('set_always_on_top', { alwaysOnTop: true });
-                    try {
-                      await invoke('restore_from_tray');
-                    } catch (e) {
-                      // Ignorer l'erreur si pas dans le tray
-                    }
-                    setIsAlwaysOnTop(true);
-                    logger.debug('Always-on-top réactivé automatiquement avec focus');
-                  }
-                }
-              } catch (error) {
-                logger.warn('Erreur surveillance always-on-top:', error);
-              }
-            }, 500); // Surveillance plus agressive : toutes les 500ms
-            
-            // Nettoyage de l'intervalle
-            return () => clearInterval(intervalId);
-          } catch (error) {
-            logger.error('Erreur activation always-on-top:', error);
-          }
         }
       } catch (error) {
         logger.info('Environnement web standard détecté');
@@ -96,20 +59,79 @@ export const useTauriWindow = () => {
     checkTauri();
   }, []);
 
+  // Initialisation always-on-top au démarrage (une seule fois)
+  useEffect(() => {
+    if (!isTauriApp) return;
+    
+    const initAlwaysOnTop = async () => {
+      try {
+        await invoke('set_always_on_top', { alwaysOnTop: true });
+        await new Promise(resolve => setTimeout(resolve, 200));
+        const confirmedStatus = await invoke('get_always_on_top_status');
+        setIsAlwaysOnTop(confirmedStatus as boolean);
+        logger.debug(`Always-on-top confirmé au démarrage: ${confirmedStatus}`);
+      } catch (error) {
+        logger.error('Erreur initialisation always-on-top:', error);
+      }
+    };
+    
+    initAlwaysOnTop();
+  }, [isTauriApp]);
+
+  // Surveillance continue du statut always-on-top
+  useEffect(() => {
+    if (!isTauriApp) return;
+    
+    const intervalId = setInterval(async () => {
+      try {
+        const currentState = await invoke('get_always_on_top_status');
+        if (currentState !== isAlwaysOnTop) {
+          setIsAlwaysOnTop(currentState as boolean);
+          if (!currentState) {
+            await invoke('set_always_on_top', { alwaysOnTop: true });
+            try {
+              await invoke('restore_from_tray');
+            } catch (e) {
+              // Ignorer si pas dans le tray
+            }
+            setIsAlwaysOnTop(true);
+            logger.debug('Always-on-top réactivé automatiquement');
+          }
+        }
+      } catch (error) {
+        logger.warn('Erreur surveillance always-on-top:', error);
+      }
+    }, 500);
+    
+    return () => clearInterval(intervalId);
+  }, [isTauriApp, isAlwaysOnTop]);
+
   // Listener pour réactiver always-on-top quand la fenêtre perd le focus
   useEffect(() => {
     if (!isTauriApp) return;
 
     const handleBlur = async () => {
-      try {
-        // Petit délai pour éviter les conflits
-        setTimeout(async () => {
+      setTimeout(async () => {
+        try {
           await invoke('set_always_on_top', { alwaysOnTop: true });
-          logger.debug('Always-on-top réactivé après perte de focus');
-        }, 100);
-      } catch (error) {
-        logger.error('Erreur réactivation après blur:', error);
-      }
+          
+          setTimeout(async () => {
+            try {
+              const status = await invoke('get_always_on_top_status');
+              if (!status) {
+                await invoke('set_always_on_top', { alwaysOnTop: true });
+                logger.debug('Double réactivation après blur');
+              }
+            } catch (e) {
+              logger.error('Erreur double-check blur:', e);
+            }
+          }, 50);
+          
+          logger.debug('Always-on-top réactivé après blur');
+        } catch (error) {
+          logger.error('Erreur réactivation blur:', error);
+        }
+      }, 50);
     };
 
     window.addEventListener('blur', handleBlur);

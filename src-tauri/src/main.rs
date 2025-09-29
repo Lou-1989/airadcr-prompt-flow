@@ -28,7 +28,7 @@ impl Default for AppState {
     fn default() -> Self {
         Self {
             is_focused: Arc::new(Mutex::new(false)),
-            always_on_top: Arc::new(Mutex::new(false)),
+            always_on_top: Arc::new(Mutex::new(true)),
             clipboard_lock: Arc::new(Mutex::new(())),
         }
     }
@@ -264,7 +264,7 @@ fn main() {
 
     let system_tray = SystemTray::new().with_menu(tray_menu);
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .manage(AppState::default())
         .system_tray(system_tray)
         .on_system_tray_event(|app, event| match event {
@@ -339,6 +339,15 @@ fn main() {
             perform_injection_at_position,
             perform_injection
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(|app_handle, event| {
+        if let tauri::RunEvent::Ready = event {
+            if let Some(window) = app_handle.get_window("main") {
+                let _ = window.set_always_on_top(true);
+                println!("✅ Always-on-top activé au démarrage");
+            }
+        }
+    });
 }

@@ -2,7 +2,7 @@
   "build": {
     "beforeBuildCommand": "npm run build",
     "beforeDevCommand": "npm run dev",
-    "devPath": "http://localhost:5173",
+    "devPath": "http://localhost:8080",
     "distDir": "../dist"
   },
   "package": {
@@ -61,7 +61,6 @@
       "targets": ["nsis", "deb", "appimage", "dmg"],
       "identifier": "com.airadcr.desktop",
       "icon": [
-        "icons/icon.icns",
         "icons/32x32.png",
         "icons/128x128.png",
         "icons/128x128@2x.png", 
@@ -78,6 +77,21 @@
         "digestAlgorithm": "sha256",
         "timestampUrl": "",
         "tsp": false,
+        "wix": {
+          "language": "fr-FR",
+          "template": "main.wxs",
+          "fragmentPaths": [],
+          "componentGroupRefs": [],
+          "componentRefs": [],
+          "featureGroupRefs": [],
+          "featureRefs": [],
+          "mergeRefs": [],
+          "skipWebviewInstall": false,
+          "license": "LICENSE.rtf",
+          "enableElevatedUpdateTask": true,
+          "bannerPath": "assets/banner.bmp",
+          "dialogImagePath": "assets/dialog.bmp"
+        },
         "nsis": {
           "license": "LICENSE.txt",
           "headerImage": "assets/header.bmp",

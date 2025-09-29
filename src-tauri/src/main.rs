@@ -27,6 +27,7 @@ pub struct AppState {
 impl Default for AppState {
     fn default() -> Self {
         Self {
+            external_cursor_positions: Arc::new(Mutex::new(Vec::new())),
             is_focused: Arc::new(Mutex::new(false)),
             always_on_top: Arc::new(Mutex::new(false)),
             clipboard_lock: Arc::new(Mutex::new(())),

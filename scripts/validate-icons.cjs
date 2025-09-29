@@ -14,15 +14,13 @@ const ICONS_DIR = path.join(__dirname, '../src-tauri/icons');
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
 const ICO_SIGNATURE = Buffer.from([0x00, 0x00, 0x01, 0x00]);
 
-// Configuration des icônes attendues (dépend de la plateforme)
-const isMac = process.platform === 'darwin';
+// Configuration des icônes attendues
 const EXPECTED_ICONS = [
   { file: '32x32.png', type: 'PNG', minSize: 32 * 32 },
   { file: '128x128.png', type: 'PNG', minSize: 128 * 128 },
   { file: '128x128@2x.png', type: 'PNG', minSize: 256 * 256 },
   { file: 'icon.png', type: 'PNG', minSize: 256 * 256, optional: true },
-  { file: 'icon.ico', type: 'ICO', minSize: 1000 },
-  ...(isMac ? [{ file: 'icon.icns', type: 'ICNS', minSize: 2000 }] : [])
+  { file: 'icon.ico', type: 'ICO', minSize: 1000 }
 ];
 
 /**
@@ -103,25 +101,9 @@ function validateAllIcons() {
 
   for (const iconConfig of EXPECTED_ICONS) {
     const filePath = path.join(ICONS_DIR, iconConfig.file);
-    const signature = iconConfig.type === 'PNG' ? PNG_SIGNATURE : (iconConfig.type === 'ICO' ? ICO_SIGNATURE : null);
+    const signature = iconConfig.type === 'PNG' ? PNG_SIGNATURE : ICO_SIGNATURE;
     
     totalIcons++;
-    
-    // Pour ICNS, vérifier seulement l'existence et la taille
-    if (iconConfig.type === 'ICNS') {
-      if (!fs.existsSync(filePath)) {
-        console.error(`❌ Fichier manquant: ${filePath}`);
-        hasErrors = true;
-        continue;
-      }
-      const stats = fs.statSync(filePath);
-      if (stats.size < iconConfig.minSize) {
-        console.warn(`⚠️  ${iconConfig.file}: Taille potentiellement trop petite (${stats.size} bytes)`);
-      }
-      console.log(`✅ ${iconConfig.file}: ICNS présent (${stats.size} bytes)`);
-      validIcons++;
-      continue;
-    }
     
     const result = validateSignature(filePath, signature, iconConfig.type);
     

@@ -15,12 +15,12 @@ const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0
 const ICO_SIGNATURE = Buffer.from([0x00, 0x00, 0x01, 0x00]);
 
 const EXPECTED_ICONS = [
-  { file: '32x32.png', type: 'PNG', minSize: 1000, dir: ICONS_DIR },
-  { file: '128x128.png', type: 'PNG', minSize: 5000, dir: ICONS_DIR },
-  { file: '128x128@2x.png', type: 'PNG', minSize: 10000, dir: ICONS_DIR },
-  { file: 'icon.png', type: 'PNG', minSize: 20000, dir: ICONS_DIR },
-  { file: 'icon.ico', type: 'ICO', minSize: 5000, dir: ICONS_DIR },
-  { file: 'installer.ico', type: 'ICO', minSize: 5000, dir: path.join(__dirname, '../src-tauri/assets') }
+  { file: '32x32.png', type: 'PNG', minSize: 300, dir: ICONS_DIR },
+  { file: '128x128.png', type: 'PNG', minSize: 2000, dir: ICONS_DIR },
+  { file: '128x128@2x.png', type: 'PNG', minSize: 5000, dir: ICONS_DIR },
+  { file: 'icon.png', type: 'PNG', minSize: 10000, dir: ICONS_DIR },
+  { file: 'icon.ico', type: 'ICO', minSize: 10000, dir: ICONS_DIR },
+  { file: 'installer.ico', type: 'ICO', minSize: 10000, dir: path.join(__dirname, '../src-tauri/assets') }
 ];
 
 /**

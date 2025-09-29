@@ -117,65 +117,93 @@ export const useInjection = () => {
     stopMonitoring(); // ✅ Arrêter la capture pendant l'injection
     
     logger.debug('=== DÉBUT INJECTION ===');
-    logger.debug('[Injection] Texte à injecter:', text);
+    logger.debug('[Injection] Texte à injecter:', text.substring(0, 50) + '...');
     logger.debug('[Injection] Position verrouillée disponible:', !!lockedPosition);
     logger.debug('[Injection] Positions externes disponibles:', externalPositions.length);
     logger.debug('[Injection] Statut verrouillage:', isLocked);
     
+    // Variable pour tracer la raison d'échec
+    let failureReason = 'UNKNOWN_ERROR';
+    
     try {
       // ⏱️ TIMEOUT: Maximum 5 secondes pour l'injection
       const timeoutPromise = new Promise<boolean>((_, reject) => 
-        setTimeout(() => reject(new Error('Injection timeout (5s)')), 5000)
+        setTimeout(() => {
+          failureReason = 'TIMEOUT';
+          reject(new Error('Injection timeout (5s)'));
+        }, 5000)
       );
       
       const injectionPromise = (async () => {
-        // PRIORITÉ 1: Position verrouillée si active
-        if (isLocked && lockedPosition) {
-          logger.debug(`[Injection] Utilisation position verrouillée: (${lockedPosition.x}, ${lockedPosition.y}) - App: ${lockedPosition.application}`);
+        // 🔓 ALWAYS-ON-TOP: Récupérer l'état actuel et désactiver temporairement
+        let previousAlwaysOnTop = false;
+        try {
+          previousAlwaysOnTop = await invoke<boolean>('get_always_on_top_status');
+          logger.debug(`[Injection] État always-on-top actuel: ${previousAlwaysOnTop}`);
           
-          await invoke('perform_injection_at_position', {
-            text,
-            x: lockedPosition.x,
-            y: lockedPosition.y
-          });
-          
-          logger.debug(`=== INJECTION RÉUSSIE (verrouillée) à (${lockedPosition.x}, ${lockedPosition.y}) ===`);
-          return true;
+          if (previousAlwaysOnTop) {
+            await invoke('set_always_on_top', { alwaysOnTop: false });
+            logger.debug('[Injection] Always-on-top DÉSACTIVÉ temporairement');
+          }
+        } catch (error) {
+          logger.warn('[Injection] Impossible de gérer always-on-top:', error);
         }
         
-        // PRIORITÉ 2: Utiliser la dernière position externe si disponible
-        const lastExternalPosition = externalPositions[0];
-        
-        if (lastExternalPosition) {
-          // Vérifier que la position n'est pas trop ancienne (max 30 secondes)
-          const timeDiff = Date.now() - lastExternalPosition.timestamp;
-          const isPositionRecent = timeDiff < 30000;
-          
-          logger.debug(`[Injection] Temps écoulé depuis dernière position externe: ${timeDiff}ms`);
-          
-          if (isPositionRecent) {
-            logger.debug(`[Injection] Utilisation position externe: (${lastExternalPosition.x}, ${lastExternalPosition.y})`);
+        try {
+          // PRIORITÉ 1: Position verrouillée si active
+          if (isLocked && lockedPosition) {
+            const age = Date.now() - lockedPosition.timestamp;
+            logger.debug(`[Injection] Utilisation position verrouillée: (${lockedPosition.x}, ${lockedPosition.y}) - App: ${lockedPosition.application} - Âge: ${age}ms`);
             
             await invoke('perform_injection_at_position', {
               text,
-              x: lastExternalPosition.x,
-              y: lastExternalPosition.y
+              x: lockedPosition.x,
+              y: lockedPosition.y
             });
             
-            logger.debug(`=== INJECTION RÉUSSIE (externe) à (${lastExternalPosition.x}, ${lastExternalPosition.y}) ===`);
+            logger.debug(`=== INJECTION RÉUSSIE (verrouillée) à (${lockedPosition.x}, ${lockedPosition.y}) ===`);
             return true;
-          } else {
-            logger.warn('[Injection] Position externe trop ancienne, utilisation position actuelle');
           }
-        } else {
-          logger.warn('[Injection] Aucune position externe disponible, utilisation position actuelle');
+          
+          // PRIORITÉ 2: Utiliser la dernière position externe si disponible ET récente
+          const lastExternalPosition = externalPositions[0];
+          
+          if (lastExternalPosition) {
+            const age = Date.now() - lastExternalPosition.timestamp;
+            const isPositionRecent = age < 30000; // Max 30 secondes
+            
+            logger.debug(`[Injection] Dernière position externe: (${lastExternalPosition.x}, ${lastExternalPosition.y}) - Âge: ${age}ms - Valide: ${isPositionRecent}`);
+            
+            if (isPositionRecent) {
+              await invoke('perform_injection_at_position', {
+                text,
+                x: lastExternalPosition.x,
+                y: lastExternalPosition.y
+              });
+              
+              logger.debug(`=== INJECTION RÉUSSIE (externe) à (${lastExternalPosition.x}, ${lastExternalPosition.y}) ===`);
+              return true;
+            } else {
+              failureReason = 'POSITION_TOO_OLD';
+              logger.error(`[Injection] ❌ Position externe trop ancienne (${age}ms). Cliquez d'abord dans RIS/Word puis réessayez.`);
+              return false;
+            }
+          } else {
+            failureReason = 'NO_EXTERNAL_POSITION';
+            logger.error('[Injection] ❌ Aucune position externe capturée. Cliquez d\'abord dans RIS/Word puis réessayez.');
+            return false;
+          }
+        } finally {
+          // 🔒 ALWAYS-ON-TOP: Restaurer l'état précédent
+          if (previousAlwaysOnTop) {
+            try {
+              await invoke('set_always_on_top', { alwaysOnTop: true });
+              logger.debug('[Injection] Always-on-top RESTAURÉ');
+            } catch (error) {
+              logger.warn('[Injection] Impossible de restaurer always-on-top:', error);
+            }
+          }
         }
-        
-        // Fallback: utiliser la méthode normale
-        logger.debug('[Injection] Injection à la position actuelle du curseur');
-        await invoke('perform_injection', { text });
-        logger.debug('=== INJECTION RÉUSSIE (position actuelle) ===');
-        return true;
       })();
       
       // Race entre injection et timeout
@@ -184,6 +212,9 @@ export const useInjection = () => {
       
     } catch (error) {
       logger.error('=== ERREUR INJECTION ===', error);
+      if (failureReason === 'TIMEOUT') {
+        logger.error('[Injection] L\'injection a expiré après 5 secondes');
+      }
       return false;
       
     } finally {

@@ -39,6 +39,8 @@ export const SECURITY_CONFIG = {
     'airadcr:update_lock',
     'airadcr:lock_status', // Feedback du statut de verrouillage
     'airadcr:request_status', // Demande du statut initial
+    'airadcr:injection_ack', // Acknowledgment immédiat de la requête d'injection
+    'airadcr:injection_status', // Statut final de l'injection (success/fail + reason)
   ] as const,
 } as const;
 

@@ -18,6 +18,10 @@ export const useSecureMessaging = () => {
   // 🔒 DEBOUNCE: Protection contre injections multiples
   const lastInjectionTimeRef = useRef<number>(0);
   const INJECTION_COOLDOWN = 1000; // 1 seconde entre injections
+  
+  // 🔒 DEDUPLICATION: Éviter les doublons de requêtes
+  const recentRequestsRef = useRef<Map<string, number>>(new Map());
+  const REQUEST_DEDUP_WINDOW = 2000; // 2 secondes
 
   // Envoi de message sécurisé vers l'iframe (déclaré AVANT handleSecureMessage)
   const sendSecureMessage = useCallback((type: string, payload?: any) => {
@@ -54,6 +58,7 @@ export const useSecureMessaging = () => {
     }
     
     const { type, payload } = event.data;
+    logger.debug(`[Sécurisé] Message reçu: ${type}`, { origin: event.origin, payload });
     
     switch (type) {
       case 'airadcr:ready':
@@ -61,8 +66,32 @@ export const useSecureMessaging = () => {
         break;
         
       case 'airadcr:inject':
-        // 🔒 DEBOUNCE: Vérifier si cooldown actif
         const now = Date.now();
+        
+        // 🔒 DEDUPLICATION: Générer un ID unique pour cette requête
+        const requestId = payload?.id || `${payload?.text?.substring(0, 20)}_${Math.floor(now / 1000)}`;
+        
+        // Nettoyer les anciennes entrées (> 2s)
+        recentRequestsRef.current.forEach((timestamp, id) => {
+          if (now - timestamp > REQUEST_DEDUP_WINDOW) {
+            recentRequestsRef.current.delete(id);
+          }
+        });
+        
+        // Vérifier si c'est un doublon
+        if (recentRequestsRef.current.has(requestId)) {
+          const timeSinceDuplicate = now - (recentRequestsRef.current.get(requestId) || 0);
+          logger.warn('[Sécurisé] Injection DUPLIQUÉE ignorée', {
+            requestId,
+            timeSinceDuplicate
+          });
+          return;
+        }
+        
+        // Enregistrer cette requête
+        recentRequestsRef.current.set(requestId, now);
+        
+        // 🔒 DEBOUNCE: Vérifier si cooldown actif (filet de sécurité)
         const timeSinceLastInjection = now - lastInjectionTimeRef.current;
         
         if (timeSinceLastInjection < INJECTION_COOLDOWN) {
@@ -70,23 +99,61 @@ export const useSecureMessaging = () => {
             timeSinceLastInjection,
             cooldown: INJECTION_COOLDOWN
           });
+          // Envoyer ACK négatif
+          sendSecureMessage('airadcr:injection_ack', { 
+            id: requestId, 
+            accepted: false, 
+            reason: 'COOLDOWN_ACTIVE' 
+          });
           return;
         }
         
-        logger.debug('[Sécurisé] Demande d\'injection reçue:', payload);
+        // ✅ ACK IMMÉDIAT: Confirmer réception pour stopper les retries
+        logger.debug(`[Sécurisé] Envoi ACK pour requête ${requestId}`);
+        sendSecureMessage('airadcr:injection_ack', { 
+          id: requestId, 
+          accepted: true 
+        });
         
         if (payload && payload.text) {
           lastInjectionTimeRef.current = now;
           
           performInjection(payload.text).then(success => {
+            // 📊 STATUT FINAL: Envoyer le résultat de l'injection
+            const status = {
+              id: requestId,
+              success,
+              reason: success ? 'SUCCESS' : 'UNKNOWN_ERROR',
+              timestamp: Date.now()
+            };
+            
+            logger.debug(`[Sécurisé] Envoi statut final pour ${requestId}:`, status);
+            sendSecureMessage('airadcr:injection_status', status);
+            
             if (success) {
               logger.debug('[Sécurisé] Injection réalisée avec succès');
             } else {
               logger.error('[Sécurisé] Échec de l\'injection');
             }
+          }).catch(error => {
+            // Envoyer statut d'erreur
+            logger.error('[Sécurisé] Erreur lors de l\'injection:', error);
+            sendSecureMessage('airadcr:injection_status', {
+              id: requestId,
+              success: false,
+              reason: 'INJECTION_ERROR',
+              error: error.message,
+              timestamp: Date.now()
+            });
           });
         } else {
           logger.warn('[Sécurisé] Payload d\'injection invalide');
+          sendSecureMessage('airadcr:injection_status', {
+            id: requestId,
+            success: false,
+            reason: 'INVALID_PAYLOAD',
+            timestamp: Date.now()
+          });
         }
         break;
         

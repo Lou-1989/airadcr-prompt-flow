@@ -157,7 +157,7 @@ async fn perform_injection_at_position(text: String, x: i32, y: i32, state: Stat
     
     thread::sleep(Duration::from_millis(50));
     
-    let enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
+    let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
     enigo.move_mouse(x, y, Coordinate::Abs).map_err(|e| e.to_string())?;
     thread::sleep(Duration::from_millis(50));
     enigo.button(Button::Left, Direction::Press).map_err(|e| e.to_string())?;
@@ -195,7 +195,7 @@ async fn perform_injection(text: String, state: State<'_, AppState>) -> Result<(
     
     thread::sleep(Duration::from_millis(50));
     
-    let enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
+    let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
     enigo.key(Key::Control, Direction::Press).map_err(|e| e.to_string())?;
     enigo.key(Key::Unicode('v'), Direction::Click).map_err(|e| e.to_string())?;
     enigo.key(Key::Control, Direction::Release).map_err(|e| e.to_string())?;

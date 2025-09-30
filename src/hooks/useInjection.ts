@@ -100,7 +100,7 @@ export const useInjection = () => {
   // getCursorPosition déjà défini plus haut
   
   // 🔒 FONCTION PRINCIPALE: Injection sécurisée avec click-through professionnel
-  const performInjection = useCallback(async (text: string): Promise<boolean> => {
+  const performInjection = useCallback(async (text: string, injectionType?: string): Promise<boolean> => {
     // 🔒 PROTECTION: Bloquer si injection en cours
     if (isInjecting) {
       logger.warn('[Injection] Injection en cours, ajout à la queue');
@@ -117,6 +117,7 @@ export const useInjection = () => {
     stopMonitoring(); // ✅ Arrêter la capture pendant l'injection
     
     logger.debug('=== DÉBUT INJECTION PROFESSIONNELLE ===');
+    logger.debug('[Injection] TYPE:', injectionType || 'default');
     logger.debug('[Injection] Texte à injecter:', text.substring(0, 50) + '...');
     logger.debug('[Injection] Longueur:', text.length, 'caractères');
     logger.debug('[Injection] Position verrouillée:', !!lockedPosition);
@@ -149,7 +150,7 @@ export const useInjection = () => {
             y: lockedPosition.y
           });
           
-          logger.debug(`✅ INJECTION RÉUSSIE (verrouillée) à (${lockedPosition.x}, ${lockedPosition.y})`);
+          logger.debug(`✅ INJECTION RÉUSSIE (${injectionType || 'default'}) verrouillée à (${lockedPosition.x}, ${lockedPosition.y})`);
           return true;
         }
         
@@ -169,7 +170,7 @@ export const useInjection = () => {
               y: lastExternalPosition.y
             });
             
-            logger.debug(`✅ INJECTION RÉUSSIE (externe) à (${lastExternalPosition.x}, ${lastExternalPosition.y})`);
+            logger.debug(`✅ INJECTION RÉUSSIE (${injectionType || 'default'}) externe à (${lastExternalPosition.x}, ${lastExternalPosition.y})`);
             return true;
           } else {
             failureReason = 'POSITION_TOO_OLD';

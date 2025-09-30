@@ -78,6 +78,8 @@ export const useSecureMessaging = () => {
         const requestId = payload?.id || 
           `${injectionType}_${contentHash}_${Math.floor(now / 100)}`; // 100ms de précision
         
+        logger.debug(`[Sécurisé] 🎯 INJECTION DEMANDÉE - Type: "${injectionType}", ID: ${requestId}`);
+        
         // Nettoyer les anciennes entrées (> 2s)
         recentRequestsRef.current.forEach((timestamp, id) => {
           if (now - timestamp > REQUEST_DEDUP_WINDOW) {
@@ -132,7 +134,12 @@ export const useSecureMessaging = () => {
         if (payload && payload.text) {
           lastInjectionTimeRef.current = now;
           
-          performInjection(payload.text).then(success => {
+          logger.debug(`[Sécurisé] 📝 Contenu à injecter (${injectionType}):`, {
+            preview: payload.text.substring(0, 100) + '...',
+            length: payload.text.length
+          });
+          
+          performInjection(payload.text, injectionType).then(success => {
             // 📊 STATUT FINAL: Envoyer le résultat de l'injection
             const status = {
               id: requestId,

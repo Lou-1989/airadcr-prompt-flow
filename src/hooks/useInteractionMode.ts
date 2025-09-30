@@ -14,6 +14,7 @@ export const useInteractionMode = (isInjecting: boolean) => {
   const cornerDetectionRef = useRef<CornerDetection>({ inCorner: false, enteredAt: null });
   const interactionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const lastInjectionEndRef = useRef<number>(0); // 🔒 Timestamp de la dernière injection
 
   // Vérifier si on est dans Tauri au montage
   useEffect(() => {
@@ -98,7 +99,19 @@ export const useInteractionMode = (isInjecting: boolean) => {
   // Désactiver le mode interaction
   const deactivateInteractionMode = useCallback(async () => {
     try {
-      // Réactiver click-through
+      // 🔒 GARDE-FOU: Ne pas réactiver click-through si une injection vient juste de finir
+      const timeSinceLastInjection = Date.now() - lastInjectionEndRef.current;
+      if (timeSinceLastInjection < 1000) {
+        logger.debug('[InteractionMode] ⚠️ Réactivation click-through BLOQUÉE (injection récente)');
+        setIsInteractionMode(false);
+        if (interactionTimeoutRef.current) {
+          clearTimeout(interactionTimeoutRef.current);
+          interactionTimeoutRef.current = null;
+        }
+        return;
+      }
+      
+      // Réactiver click-through uniquement si sûr
       await invoke('set_ignore_cursor_events', { ignore: true });
       setIsInteractionMode(false);
       
@@ -137,6 +150,14 @@ export const useInteractionMode = (isInjecting: boolean) => {
     if (isInjecting && isInteractionMode) {
       logger.debug('[InteractionMode] Injection détectée, désactivation auto');
       deactivateInteractionMode();
+    }
+    
+    // 🔒 Tracker quand l'injection se termine
+    if (!isInjecting && lastInjectionEndRef.current === 0) {
+      // Première initialisation, ne pas tracker
+    } else if (!isInjecting) {
+      lastInjectionEndRef.current = Date.now();
+      logger.debug('[InteractionMode] 🔒 Injection terminée, protection activée (1s)');
     }
   }, [isInjecting, isInteractionMode, deactivateInteractionMode]);
 

@@ -201,15 +201,19 @@ export const useInjection = () => {
         logger.warn('[Injection] Erreur désactivation click-through (ignorée)');
       });
       
+      // 🔒 DOUBLE-SÉCURITÉ: Reforcer ignore:false après 300ms pour contrer les races conditions
+      setTimeout(() => {
+        invoke('set_ignore_cursor_events', { ignore: false }).catch(() => {
+          logger.warn('[Injection] Erreur double-sécurité click-through (ignorée)');
+        });
+      }, 300);
+      
       // 🔄 REDÉMARRAGE: Après 500ms, redémarrer monitoring et traiter queue
       setTimeout(() => {
         startMonitoring();
         setIsInjecting(false);
         
-        // Réactiver le click-through après avoir laissé l'utilisateur interagir
-        invoke('set_ignore_cursor_events', { ignore: true }).catch(err => {
-          logger.warn('[Injection] Erreur réactivation click-through:', err);
-        });
+        // ⚠️ NE PLUS RÉACTIVER LE CLICK-THROUGH - L'UI reste cliquable définitivement
         
         // Traiter la queue si des injections sont en attente
         if (injectionQueue.length > 0) {

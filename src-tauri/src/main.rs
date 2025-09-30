@@ -268,7 +268,7 @@ async fn perform_injection_at_position_direct(text: String, x: i32, y: i32, stat
         }
     };
     
-    println!("🎯 Injection directe à position ({}, {}) - {} caractères", x, y, text.len());
+    println!("🎯 Injection Ctrl+V à position ({}, {}) - {} caractères", x, y, text.len());
     
     thread::sleep(Duration::from_millis(10));
     
@@ -279,24 +279,16 @@ async fn perform_injection_at_position_direct(text: String, x: i32, y: i32, stat
     enigo.button(Button::Left, Direction::Release).map_err(|e| e.to_string())?;
     thread::sleep(Duration::from_millis(30));
     
-    // Textes courts: frappe directe caractère par caractère
-    if text.len() < 500 {
-        for c in text.chars() {
-            enigo.key(Key::Unicode(c), Direction::Click).map_err(|e| e.to_string())?;
-        }
-        println!("✅ Injection directe réussie ({} caractères)", text.len());
-    } else {
-        // Textes longs: utiliser le clipboard SANS restauration
-        let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
-        clipboard.set_text(&text).map_err(|e| e.to_string())?;
-        thread::sleep(Duration::from_millis(10));
-        
-        enigo.key(Key::Control, Direction::Press).map_err(|e| e.to_string())?;
-        enigo.key(Key::Unicode('v'), Direction::Click).map_err(|e| e.to_string())?;
-        enigo.key(Key::Control, Direction::Release).map_err(|e| e.to_string())?;
-        
-        println!("✅ Injection clipboard réussie ({} caractères)", text.len());
-    }
+    // UNIQUEMENT Ctrl+V pour toutes les longueurs de texte
+    let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
+    clipboard.set_text(&text).map_err(|e| e.to_string())?;
+    thread::sleep(Duration::from_millis(10));
+    
+    enigo.key(Key::Control, Direction::Press).map_err(|e| e.to_string())?;
+    enigo.key(Key::Unicode('v'), Direction::Click).map_err(|e| e.to_string())?;
+    enigo.key(Key::Control, Direction::Release).map_err(|e| e.to_string())?;
+    
+    println!("✅ Injection Ctrl+V réussie ({} caractères)", text.len());
     
     Ok(())
 }

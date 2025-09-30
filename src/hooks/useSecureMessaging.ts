@@ -1,6 +1,6 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { isValidMessage, SECURITY_CONFIG } from '@/security/SecurityConfig';
-import { useInjection } from './useInjection';
+import { useInjectionContext } from '@/contexts/InjectionContext';
 import { logger } from '@/utils/logger';
 
 type MessageHandler = (data: any) => void;
@@ -13,7 +13,7 @@ export const useSecureMessaging = () => {
     unlockPosition, 
     updateLockedPosition,
     isLocked 
-  } = useInjection();
+  } = useInjectionContext();
   
   // 🔒 DEBOUNCE: Protection contre injections multiples
   const lastInjectionTimeRef = useRef<number>(0);

@@ -2,7 +2,7 @@ import { cn } from '@/lib/utils';
 import { PRODUCTION_CONFIG } from '@/config/production';
 import { SECURITY_CONFIG, validateAirADCRUrl } from '@/security/SecurityConfig';
 import { useSecureMessaging } from '@/hooks/useSecureMessaging';
-import { useInjection } from '@/hooks/useInjection';
+import { useInjectionContext } from '@/contexts/InjectionContext';
 import { useInteractionMode } from '@/hooks/useInteractionMode';
 import { useEffect, useState } from 'react';
 import { logger } from '@/utils/logger';
@@ -15,7 +15,7 @@ export const WebViewContainer = ({ className }: WebViewContainerProps) => {
   const [isSecureUrl, setIsSecureUrl] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const { sendSecureMessage } = useSecureMessaging();
-  const { isInjecting } = useInjection();
+  const { isInjecting } = useInjectionContext();
   const { isInteractionMode } = useInteractionMode(isInjecting);
   
   // Validation de l'URL au chargement

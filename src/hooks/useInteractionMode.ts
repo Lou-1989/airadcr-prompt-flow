@@ -11,9 +11,19 @@ interface CornerDetection {
 // Hook pour détecter l'intention d'interaction utilisateur via coin d'écran
 export const useInteractionMode = (isInjecting: boolean) => {
   const [isInteractionMode, setIsInteractionMode] = useState(false);
+  const [isTauriApp, setIsTauriApp] = useState(false);
   const cornerDetectionRef = useRef<CornerDetection>({ inCorner: false, enteredAt: null });
   const interactionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Vérifier si on est dans Tauri au montage
+  useEffect(() => {
+    const checkTauri = () => {
+      const isTauri = typeof window !== 'undefined' && (window as any).__TAURI__;
+      setIsTauriApp(isTauri);
+    };
+    checkTauri();
+  }, []);
 
   // Détection si le curseur est dans le coin top-right
   const checkCornerPosition = useCallback(async () => {
@@ -108,8 +118,13 @@ export const useInteractionMode = (isInjecting: boolean) => {
     }
   }, []);
 
-  // Polling de la position du curseur toutes les 150ms
+  // Polling de la position du curseur toutes les 150ms (seulement dans Tauri)
   useEffect(() => {
+    if (!isTauriApp) {
+      logger.debug('[InteractionMode] Mode non disponible hors Tauri');
+      return;
+    }
+
     pollingIntervalRef.current = setInterval(checkCornerPosition, 150);
 
     return () => {
@@ -120,7 +135,7 @@ export const useInteractionMode = (isInjecting: boolean) => {
         clearTimeout(interactionTimeoutRef.current);
       }
     };
-  }, [checkCornerPosition]);
+  }, [checkCornerPosition, isTauriApp]);
 
   // Désactiver automatiquement si une injection démarre
   useEffect(() => {

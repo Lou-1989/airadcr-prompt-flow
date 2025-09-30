@@ -7,14 +7,15 @@ import { toast } from "sonner";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import { useTauriWindow } from "@/hooks/useTauriWindow";
-import { useInjection } from "@/hooks/useInjection";
+import { InjectionProvider, useInjectionContext } from "@/contexts/InjectionContext";
 import { useSecureMessaging } from "@/hooks/useSecureMessaging";
 import { DebugPanel } from "@/components/DebugPanel";
 import { logger } from "@/utils/logger";
 
 const queryClient = new QueryClient();
 
-const App = () => {
+// Composant interne qui utilise le contexte
+const AppContent = () => {
   const { 
     isTauriApp, 
     isAlwaysOnTop, 
@@ -28,7 +29,7 @@ const App = () => {
     unlockPosition,
     isLocked,
     isMonitoring
-  } = useInjection();
+  } = useInjectionContext();
 
   // Active le système de communication sécurisée postMessage
   useSecureMessaging();
@@ -41,29 +42,39 @@ const App = () => {
   };
 
   return (
+    <>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Index />} />
+          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </BrowserRouter>
+      
+      {/* Debug Panel */}
+      <DebugPanel
+        isTauriApp={isTauriApp}
+        isAlwaysOnTop={isAlwaysOnTop}
+        isLocked={isLocked}
+        isMonitoring={isMonitoring}
+        onToggleAlwaysOnTop={toggleAlwaysOnTop}
+        onTestInjection={handleTestInjection}
+        onLockPosition={lockCurrentPosition}
+        onUnlockPosition={unlockPosition}
+      />
+    </>
+  );
+};
+
+const App = () => {
+  return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
         <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Index />} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-        
-        {/* Debug Panel */}
-        <DebugPanel
-          isTauriApp={isTauriApp}
-          isAlwaysOnTop={isAlwaysOnTop}
-          isLocked={isLocked}
-          isMonitoring={isMonitoring}
-          onToggleAlwaysOnTop={toggleAlwaysOnTop}
-          onTestInjection={handleTestInjection}
-          onLockPosition={lockCurrentPosition}
-          onUnlockPosition={unlockPosition}
-        />
+        <InjectionProvider>
+          <AppContent />
+        </InjectionProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );

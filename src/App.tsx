@@ -3,7 +3,6 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { toast } from "sonner";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import { useTauriWindow } from "@/hooks/useTauriWindow";
@@ -38,7 +37,7 @@ const AppContent = () => {
   const handleTestInjection = async () => {
     const testText = "Test d'injection AirADCR - " + new Date().toLocaleTimeString();
     await performInjection(testText);
-    toast.info('Test d\'injection lancé');
+    logger.debug('Test d\'injection lancé');
   };
 
   return (

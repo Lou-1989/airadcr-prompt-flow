@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
 import { logger } from '@/utils/logger';
-import { toast } from 'sonner';
 
 interface CornerDetection {
   inCorner: boolean;
@@ -78,10 +77,6 @@ export const useInteractionMode = (isInjecting: boolean) => {
       setIsInteractionMode(true);
       
       logger.debug('[InteractionMode] ✅ Mode interaction ACTIVÉ (5s) - Clics autorisés');
-      toast.info('🖱️ Interaction activée (5s)', {
-        duration: 5000,
-        position: 'top-center',
-      });
 
       // Réinitialiser le coin
       cornerDetectionRef.current = { inCorner: false, enteredAt: null };

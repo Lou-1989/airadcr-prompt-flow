@@ -279,14 +279,25 @@ async fn perform_injection_at_position_direct(text: String, x: i32, y: i32, stat
     enigo.button(Button::Left, Direction::Release).map_err(|e| e.to_string())?;
     thread::sleep(Duration::from_millis(30));
     
-    // UNIQUEMENT Ctrl+V pour toutes les longueurs de texte
+    // ✅ SAUVEGARDE du clipboard original
     let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
+    let original_clipboard = clipboard.get_text().unwrap_or_default();
+    
+    // Injection via Ctrl+V
     clipboard.set_text(&text).map_err(|e| e.to_string())?;
     thread::sleep(Duration::from_millis(10));
     
     enigo.key(Key::Control, Direction::Press).map_err(|e| e.to_string())?;
     enigo.key(Key::Unicode('v'), Direction::Click).map_err(|e| e.to_string())?;
     enigo.key(Key::Control, Direction::Release).map_err(|e| e.to_string())?;
+    
+    thread::sleep(Duration::from_millis(50));
+    
+    // ✅ RESTAURATION du clipboard original
+    if !original_clipboard.is_empty() {
+        clipboard.set_text(&original_clipboard).map_err(|e| e.to_string())?;
+        println!("✅ Clipboard restauré ({} caractères)", original_clipboard.len());
+    }
     
     println!("✅ Injection Ctrl+V réussie ({} caractères)", text.len());
     

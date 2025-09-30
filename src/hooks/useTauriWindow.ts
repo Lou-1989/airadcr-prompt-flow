@@ -80,14 +80,14 @@ export const useTauriWindow = () => {
   }, [isTauriApp]);
 
   // Surveillance ULTRA-RENFORCÉE du statut always-on-top
-  // Ré-applique always-on-top toutes les 1s de manière inconditionnelle
+  // Ré-applique always-on-top toutes les 500ms de manière inconditionnelle
   // SANS toucher au click-through (géré par useInteractionMode)
   useEffect(() => {
     if (!isTauriApp) return;
     
     const intervalId = setInterval(async () => {
       try {
-        // Ré-appliquer always-on-top de manière inconditionnelle
+        // Ré-appliquer always-on-top de manière inconditionnelle et AGRESSIVE
         await invoke('set_always_on_top', { always_on_top: true });
         
         // Vérifier le statut pour le state React
@@ -104,37 +104,38 @@ export const useTauriWindow = () => {
       } catch (error) {
         logger.warn('Erreur surveillance fenêtre:', error);
       }
-    }, 1000); // 1 seconde pour un watchdog plus réactif
+    }, 500); // 500ms pour une réactivité maximale
     
     return () => clearInterval(intervalId);
   }, [isTauriApp, isAlwaysOnTop]);
 
-  // Listener pour réactiver always-on-top après blur (SANS click-through)
+  // Listener pour réactiver always-on-top après blur (TRIPLE vérification)
   useEffect(() => {
     if (!isTauriApp) return;
 
     const handleBlur = async () => {
-      setTimeout(async () => {
-        try {
-          await invoke('set_always_on_top', { always_on_top: true });
-          
-          setTimeout(async () => {
-            try {
-              const status = await invoke('get_always_on_top_status');
-              if (!status) {
-                await invoke('set_always_on_top', { always_on_top: true });
-                logger.debug('⚠️ Double réactivation always-on-top après blur');
-              }
-            } catch (e) {
-              logger.error('Erreur double-check blur:', e);
+      // Triple vérification à 50ms, 150ms et 300ms
+      const delays = [50, 150, 300];
+      
+      delays.forEach(delay => {
+        setTimeout(async () => {
+          try {
+            await invoke('set_always_on_top', { always_on_top: true });
+            const status = await invoke('get_always_on_top_status');
+            
+            if (!status) {
+              // Si toujours pas activé, forcer avec double appel
+              await invoke('set_always_on_top', { always_on_top: true });
+              await invoke('set_always_on_top', { always_on_top: true });
+              logger.warn(`⚠️ Triple réactivation always-on-top après blur (${delay}ms)`);
+            } else {
+              logger.debug(`✅ Always-on-top confirmé après blur (${delay}ms)`);
             }
-          }, 50);
-          
-          logger.debug('✅ Always-on-top réactivé après blur');
-        } catch (error) {
-          logger.error('❌ Erreur réactivation blur:', error);
-        }
-      }, 50);
+          } catch (error) {
+            logger.error(`❌ Erreur réactivation blur (${delay}ms):`, error);
+          }
+        }, delay);
+      });
     };
 
     window.addEventListener('blur', handleBlur);

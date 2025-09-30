@@ -79,32 +79,36 @@ export const useTauriWindow = () => {
     initWindow();
   }, [isTauriApp]);
 
-  // Surveillance continue du statut always-on-top + click-through
-  // NOTE: Ce watchdog doit être suspendu pendant l'injection
+  // Surveillance continue du statut always-on-top RENFORCÉE
+  // Ré-applique always-on-top toutes les 2s de manière inconditionnelle
   useEffect(() => {
     if (!isTauriApp) return;
     
     const intervalId = setInterval(async () => {
       try {
+        // Ré-appliquer always-on-top de manière inconditionnelle
+        await invoke('set_always_on_top', { always_on_top: true });
+        
+        // Vérifier le statut pour le state React
         const currentState = await invoke('get_always_on_top_status');
         if (currentState !== isAlwaysOnTop) {
           setIsAlwaysOnTop(currentState as boolean);
-          if (!currentState) {
-            await invoke('set_always_on_top', { always_on_top: true });
-            await invoke('set_ignore_cursor_events', { ignore: true });
-            try {
-              await invoke('restore_from_tray');
-            } catch (e) {
-              // Ignorer si pas dans le tray
-            }
-            setIsAlwaysOnTop(true);
-            logger.debug('Always-on-top + click-through réactivés automatiquement');
+        }
+        
+        if (!currentState) {
+          // Si jamais l'état est false, forcer la restauration
+          await invoke('set_ignore_cursor_events', { ignore: true });
+          try {
+            await invoke('restore_from_tray');
+          } catch (e) {
+            // Ignorer si pas dans le tray
           }
+          logger.debug('Always-on-top forcé + click-through réactivés');
         }
       } catch (error) {
         logger.warn('Erreur surveillance fenêtre:', error);
       }
-    }, 500);
+    }, 2000); // 2 secondes au lieu de 500ms
     
     return () => clearInterval(intervalId);
   }, [isTauriApp, isAlwaysOnTop]);

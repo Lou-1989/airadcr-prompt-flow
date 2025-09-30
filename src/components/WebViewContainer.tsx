@@ -2,6 +2,8 @@ import { cn } from '@/lib/utils';
 import { PRODUCTION_CONFIG } from '@/config/production';
 import { SECURITY_CONFIG, validateAirADCRUrl } from '@/security/SecurityConfig';
 import { useSecureMessaging } from '@/hooks/useSecureMessaging';
+import { useInjection } from '@/hooks/useInjection';
+import { useInteractionMode } from '@/hooks/useInteractionMode';
 import { useEffect, useState } from 'react';
 import { logger } from '@/utils/logger';
 
@@ -13,6 +15,8 @@ export const WebViewContainer = ({ className }: WebViewContainerProps) => {
   const [isSecureUrl, setIsSecureUrl] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const { sendSecureMessage } = useSecureMessaging();
+  const { isInjecting } = useInjection();
+  const { isInteractionMode } = useInteractionMode(isInjecting);
   
   // Validation de l'URL au chargement
   useEffect(() => {
@@ -85,7 +89,14 @@ export const WebViewContainer = ({ className }: WebViewContainerProps) => {
   }
   
   return (
-    <div className={cn("h-full w-full", className)}>
+    <div className={cn("h-full w-full relative", className)}>
+      {/* Bannière mode interaction */}
+      {isInteractionMode && (
+        <div className="absolute top-0 left-0 right-0 z-50 bg-primary/90 text-primary-foreground px-4 py-2 text-center text-sm font-medium shadow-lg">
+          🖱️ Mode Interaction Activé (5s)
+        </div>
+      )}
+      
       <iframe
         src={PRODUCTION_CONFIG.AIRADCR_URL}
         className="w-full h-full border-0"

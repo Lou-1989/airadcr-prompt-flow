@@ -135,9 +135,9 @@ export const useInjection = () => {
       
       const injectionPromise = (async () => {
         try {
-          // 🖱️ PHASE 1: Désactiver click-through temporairement
-          await invoke('set_ignore_cursor_events', { ignore: false });
-          logger.debug('[Injection] Click-through DÉSACTIVÉ');
+          // 🖱️ PHASE 1: MAINTENIR click-through activé pour injection externe
+          await invoke('set_ignore_cursor_events', { ignore: true });
+          logger.debug('[Injection] Click-through MAINTENU (injection externe)');
           
           // PRIORITÉ 1: Position verrouillée si active
           if (isLocked && lockedPosition) {

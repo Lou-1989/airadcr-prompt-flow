@@ -63,6 +63,8 @@ export const useSecureMessaging = () => {
     switch (type) {
       case 'airadcr:ready':
         logger.debug('[Sécurisé] AirADCR iframe prête');
+        // Synchronisation initiale: demander le statut
+        sendSecureMessage('airadcr:request_status');
         break;
         
       case 'airadcr:inject':
@@ -184,6 +186,11 @@ export const useSecureMessaging = () => {
         updateLockedPosition().then(success => {
           sendSecureMessage('airadcr:lock_status', { locked: success });
         });
+        break;
+        
+      case 'airadcr:request_status':
+        logger.debug('[Sécurisé] Demande de statut reçue');
+        sendSecureMessage('airadcr:lock_status', { locked: isLocked });
         break;
         
       default:

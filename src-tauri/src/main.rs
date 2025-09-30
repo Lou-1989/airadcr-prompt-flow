@@ -392,9 +392,10 @@ fn main() {
     app.run(|app_handle, event| {
         if let tauri::RunEvent::Ready = event {
             if let Some(window) = app_handle.get_window("main") {
+                // Activer UNIQUEMENT always-on-top au démarrage
+                // Le click-through sera géré par useInteractionMode
                 let _ = window.set_always_on_top(true);
-                let _ = window.set_ignore_cursor_events(true);
-                println!("✅ Always-on-top + Click-through activés au démarrage");
+                println!("✅ Always-on-top activé au démarrage");
             }
         }
     });

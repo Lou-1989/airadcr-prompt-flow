@@ -59,28 +59,29 @@ export const useTauriWindow = () => {
     checkTauri();
   }, []);
 
-  // Initialisation always-on-top + click-through au démarrage
+  // Initialisation always-on-top au démarrage UNIQUEMENT
+  // Le click-through est désormais géré par useInteractionMode
   useEffect(() => {
     if (!isTauriApp) return;
     
     const initWindow = async () => {
       try {
         await invoke('set_always_on_top', { always_on_top: true });
-        await invoke('set_ignore_cursor_events', { ignore: true });
         await new Promise(resolve => setTimeout(resolve, 200));
         const confirmedStatus = await invoke('get_always_on_top_status');
         setIsAlwaysOnTop(confirmedStatus as boolean);
-        logger.debug(`Always-on-top + click-through confirmés au démarrage: ${confirmedStatus}`);
+        logger.debug(`✅ Always-on-top confirmé au démarrage: ${confirmedStatus}`);
       } catch (error) {
-        logger.error('Erreur initialisation fenêtre:', error);
+        logger.error('❌ Erreur initialisation always-on-top:', error);
       }
     };
     
     initWindow();
   }, [isTauriApp]);
 
-  // Surveillance continue du statut always-on-top RENFORCÉE
-  // Ré-applique always-on-top toutes les 2s de manière inconditionnelle
+  // Surveillance ULTRA-RENFORCÉE du statut always-on-top
+  // Ré-applique always-on-top toutes les 1s de manière inconditionnelle
+  // SANS toucher au click-through (géré par useInteractionMode)
   useEffect(() => {
     if (!isTauriApp) return;
     
@@ -93,27 +94,22 @@ export const useTauriWindow = () => {
         const currentState = await invoke('get_always_on_top_status');
         if (currentState !== isAlwaysOnTop) {
           setIsAlwaysOnTop(currentState as boolean);
-        }
-        
-        if (!currentState) {
-          // Si jamais l'état est false, forcer la restauration
-          await invoke('set_ignore_cursor_events', { ignore: true });
+          logger.warn(`⚠️ Always-on-top restauré: ${currentState}`);
           try {
             await invoke('restore_from_tray');
           } catch (e) {
             // Ignorer si pas dans le tray
           }
-          logger.debug('Always-on-top forcé + click-through réactivés');
         }
       } catch (error) {
         logger.warn('Erreur surveillance fenêtre:', error);
       }
-    }, 2000); // 2 secondes au lieu de 500ms
+    }, 1000); // 1 seconde pour un watchdog plus réactif
     
     return () => clearInterval(intervalId);
   }, [isTauriApp, isAlwaysOnTop]);
 
-  // Listener pour réactiver always-on-top + click-through après blur
+  // Listener pour réactiver always-on-top après blur (SANS click-through)
   useEffect(() => {
     if (!isTauriApp) return;
 
@@ -121,24 +117,22 @@ export const useTauriWindow = () => {
       setTimeout(async () => {
         try {
           await invoke('set_always_on_top', { always_on_top: true });
-          await invoke('set_ignore_cursor_events', { ignore: true });
           
           setTimeout(async () => {
             try {
               const status = await invoke('get_always_on_top_status');
               if (!status) {
                 await invoke('set_always_on_top', { always_on_top: true });
-                await invoke('set_ignore_cursor_events', { ignore: true });
-                logger.debug('Double réactivation après blur');
+                logger.debug('⚠️ Double réactivation always-on-top après blur');
               }
             } catch (e) {
               logger.error('Erreur double-check blur:', e);
             }
           }, 50);
           
-          logger.debug('Always-on-top + click-through réactivés après blur');
+          logger.debug('✅ Always-on-top réactivé après blur');
         } catch (error) {
-          logger.error('Erreur réactivation blur:', error);
+          logger.error('❌ Erreur réactivation blur:', error);
         }
       }, 50);
     };

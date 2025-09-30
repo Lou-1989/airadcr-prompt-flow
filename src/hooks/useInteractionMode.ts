@@ -68,17 +68,17 @@ export const useInteractionMode = (isInjecting: boolean) => {
   // Activer le mode interaction pour 5 secondes
   const activateInteractionMode = useCallback(async () => {
     if (isInjecting) {
-      logger.debug('[InteractionMode] Activation bloquée: injection en cours');
+      logger.debug('[InteractionMode] ⚠️ Activation bloquée: injection en cours');
       return;
     }
 
     try {
-      // Désactiver click-through
+      // Désactiver click-through pour permettre les interactions
       await invoke('set_ignore_cursor_events', { ignore: false });
       setIsInteractionMode(true);
       
-      logger.debug('[InteractionMode] Mode interaction ACTIVÉ (5s)');
-      toast.info('Mode interaction activé (5s)', {
+      logger.debug('[InteractionMode] ✅ Mode interaction ACTIVÉ (5s) - Clics autorisés');
+      toast.info('🖱️ Interaction activée (5s)', {
         duration: 5000,
         position: 'top-center',
       });
@@ -107,14 +107,14 @@ export const useInteractionMode = (isInjecting: boolean) => {
       await invoke('set_ignore_cursor_events', { ignore: true });
       setIsInteractionMode(false);
       
-      logger.debug('[InteractionMode] Mode interaction DÉSACTIVÉ');
+      logger.debug('[InteractionMode] ✅ Mode interaction DÉSACTIVÉ - Click-through réactivé');
       
       if (interactionTimeoutRef.current) {
         clearTimeout(interactionTimeoutRef.current);
         interactionTimeoutRef.current = null;
       }
     } catch (error) {
-      logger.error('[InteractionMode] Erreur désactivation:', error);
+      logger.error('[InteractionMode] ❌ Erreur désactivation:', error);
     }
   }, []);
 

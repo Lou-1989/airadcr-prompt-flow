@@ -250,6 +250,57 @@ fn get_always_on_top_status(state: State<'_, AppState>) -> Result<bool, String> 
     Ok(*always_on_top)
 }
 
+#[tauri::command]
+async fn set_ignore_cursor_events(window: tauri::Window, ignore: bool) -> Result<(), String> {
+    window.set_ignore_cursor_events(ignore)
+        .map_err(|e| e.to_string())?;
+    println!("🖱️  Click-through {}", if ignore { "activé" } else { "désactivé" });
+    Ok(())
+}
+
+#[tauri::command]
+async fn perform_injection_at_position_direct(text: String, x: i32, y: i32, state: State<'_, AppState>) -> Result<(), String> {
+    let _clipboard_guard = match state.clipboard_lock.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            eprintln!("Clipboard mutex poisoned, recovering...");
+            poisoned.into_inner()
+        }
+    };
+    
+    println!("🎯 Injection directe à position ({}, {}) - {} caractères", x, y, text.len());
+    
+    thread::sleep(Duration::from_millis(10));
+    
+    let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
+    enigo.move_mouse(x, y, Coordinate::Abs).map_err(|e| e.to_string())?;
+    thread::sleep(Duration::from_millis(10));
+    enigo.button(Button::Left, Direction::Press).map_err(|e| e.to_string())?;
+    enigo.button(Button::Left, Direction::Release).map_err(|e| e.to_string())?;
+    thread::sleep(Duration::from_millis(30));
+    
+    // Textes courts: frappe directe caractère par caractère
+    if text.len() < 500 {
+        for c in text.chars() {
+            enigo.key(Key::Unicode(c), Direction::Click).map_err(|e| e.to_string())?;
+        }
+        println!("✅ Injection directe réussie ({} caractères)", text.len());
+    } else {
+        // Textes longs: utiliser le clipboard SANS restauration
+        let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
+        clipboard.set_text(&text).map_err(|e| e.to_string())?;
+        thread::sleep(Duration::from_millis(10));
+        
+        enigo.key(Key::Control, Direction::Press).map_err(|e| e.to_string())?;
+        enigo.key(Key::Unicode('v'), Direction::Click).map_err(|e| e.to_string())?;
+        enigo.key(Key::Control, Direction::Release).map_err(|e| e.to_string())?;
+        
+        println!("✅ Injection clipboard réussie ({} caractères)", text.len());
+    }
+    
+    Ok(())
+}
+
 fn main() {
     let quit = CustomMenuItem::new("quit".to_string(), "Quitter");
     let show = CustomMenuItem::new("show".to_string(), "Afficher");
@@ -339,7 +390,9 @@ fn main() {
             check_app_focus,
             get_always_on_top_status,
             perform_injection_at_position,
-            perform_injection
+            perform_injection,
+            set_ignore_cursor_events,
+            perform_injection_at_position_direct
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
@@ -348,7 +401,8 @@ fn main() {
         if let tauri::RunEvent::Ready = event {
             if let Some(window) = app_handle.get_window("main") {
                 let _ = window.set_always_on_top(true);
-                println!("✅ Always-on-top activé au démarrage");
+                let _ = window.set_ignore_cursor_events(true);
+                println!("✅ Always-on-top + Click-through activés au démarrage");
             }
         }
     });

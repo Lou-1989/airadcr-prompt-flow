@@ -70,8 +70,13 @@ export const useSecureMessaging = () => {
       case 'airadcr:inject':
         const now = Date.now();
         
-        // 🔒 DEDUPLICATION: Générer un ID unique pour cette requête
-        const requestId = payload?.id || `${payload?.text?.substring(0, 20)}_${Math.floor(now / 1000)}`;
+        // 🔒 DEDUPLICATION AMÉLIORÉE: ID unique robuste
+        // Inclut type + hash du contenu + timestamp
+        const contentHash = payload?.text ? 
+          payload.text.substring(0, 30).replace(/\s/g, '') : '';
+        const injectionType = payload?.type || 'default'; // 'brut' ou 'structuré'
+        const requestId = payload?.id || 
+          `${injectionType}_${contentHash}_${Math.floor(now / 100)}`; // 100ms de précision
         
         // Nettoyer les anciennes entrées (> 2s)
         recentRequestsRef.current.forEach((timestamp, id) => {
@@ -85,7 +90,14 @@ export const useSecureMessaging = () => {
           const timeSinceDuplicate = now - (recentRequestsRef.current.get(requestId) || 0);
           logger.warn('[Sécurisé] Injection DUPLIQUÉE ignorée', {
             requestId,
+            type: injectionType,
             timeSinceDuplicate
+          });
+          // Envoyer ACK négatif immédiat
+          sendSecureMessage('airadcr:injection_ack', { 
+            id: requestId, 
+            accepted: false, 
+            reason: 'DUPLICATE_REQUEST' 
           });
           return;
         }

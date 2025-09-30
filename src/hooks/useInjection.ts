@@ -134,64 +134,52 @@ export const useInjection = () => {
       );
       
       const injectionPromise = (async () => {
-        try {
-          // 🖱️ PHASE 1: MAINTENIR click-through activé pour injection externe
-          await invoke('set_ignore_cursor_events', { ignore: true });
-          logger.debug('[Injection] Click-through MAINTENU (injection externe)');
+        // 🖱️ PHASE 1: MAINTENIR click-through activé pour injection externe
+        await invoke('set_ignore_cursor_events', { ignore: true });
+        logger.debug('[Injection] Click-through MAINTENU (injection externe)');
+        
+        // PRIORITÉ 1: Position verrouillée si active
+        if (isLocked && lockedPosition) {
+          const age = Date.now() - lockedPosition.timestamp;
+          logger.debug(`[Injection] Position verrouillée: (${lockedPosition.x}, ${lockedPosition.y}) - Âge: ${age}ms`);
           
-          // PRIORITÉ 1: Position verrouillée si active
-          if (isLocked && lockedPosition) {
-            const age = Date.now() - lockedPosition.timestamp;
-            logger.debug(`[Injection] Position verrouillée: (${lockedPosition.x}, ${lockedPosition.y}) - Âge: ${age}ms`);
-            
+          await invoke('perform_injection_at_position_direct', {
+            text,
+            x: lockedPosition.x,
+            y: lockedPosition.y
+          });
+          
+          logger.debug(`✅ INJECTION RÉUSSIE (verrouillée) à (${lockedPosition.x}, ${lockedPosition.y})`);
+          return true;
+        }
+        
+        // PRIORITÉ 2: Dernière position externe si récente
+        const lastExternalPosition = externalPositions[0];
+        
+        if (lastExternalPosition) {
+          const age = Date.now() - lastExternalPosition.timestamp;
+          const isPositionRecent = age < 30000; // Max 30 secondes
+          
+          logger.debug(`[Injection] Position externe: (${lastExternalPosition.x}, ${lastExternalPosition.y}) - Âge: ${age}ms`);
+          
+          if (isPositionRecent) {
             await invoke('perform_injection_at_position_direct', {
               text,
-              x: lockedPosition.x,
-              y: lockedPosition.y
+              x: lastExternalPosition.x,
+              y: lastExternalPosition.y
             });
             
-            logger.debug(`✅ INJECTION RÉUSSIE (verrouillée) à (${lockedPosition.x}, ${lockedPosition.y})`);
+            logger.debug(`✅ INJECTION RÉUSSIE (externe) à (${lastExternalPosition.x}, ${lastExternalPosition.y})`);
             return true;
-          }
-          
-          // PRIORITÉ 2: Dernière position externe si récente
-          const lastExternalPosition = externalPositions[0];
-          
-          if (lastExternalPosition) {
-            const age = Date.now() - lastExternalPosition.timestamp;
-            const isPositionRecent = age < 30000; // Max 30 secondes
-            
-            logger.debug(`[Injection] Position externe: (${lastExternalPosition.x}, ${lastExternalPosition.y}) - Âge: ${age}ms`);
-            
-            if (isPositionRecent) {
-              await invoke('perform_injection_at_position_direct', {
-                text,
-                x: lastExternalPosition.x,
-                y: lastExternalPosition.y
-              });
-              
-              logger.debug(`✅ INJECTION RÉUSSIE (externe) à (${lastExternalPosition.x}, ${lastExternalPosition.y})`);
-              return true;
-            } else {
-              failureReason = 'POSITION_TOO_OLD';
-              logger.error(`❌ Position trop ancienne (${age}ms). Cliquez dans RIS/Word puis réessayez.`);
-              return false;
-            }
           } else {
-            failureReason = 'NO_EXTERNAL_POSITION';
-            logger.error('❌ Aucune position capturée. Cliquez dans RIS/Word puis réessayez.');
+            failureReason = 'POSITION_TOO_OLD';
+            logger.error(`❌ Position trop ancienne (${age}ms). Cliquez dans RIS/Word puis réessayez.`);
             return false;
           }
-        } finally {
-          // 🖱️ PHASE 3: Réactiver click-through après un court délai
-          setTimeout(async () => {
-            try {
-              await invoke('set_ignore_cursor_events', { ignore: true });
-              logger.debug('[Injection] Click-through RÉACTIVÉ');
-            } catch (error) {
-              logger.warn('[Injection] Erreur réactivation click-through:', error);
-            }
-          }, 200);
+        } else {
+          failureReason = 'NO_EXTERNAL_POSITION';
+          logger.error('❌ Aucune position capturée. Cliquez dans RIS/Word puis réessayez.');
+          return false;
         }
       })();
       

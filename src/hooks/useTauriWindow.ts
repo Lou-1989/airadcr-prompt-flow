@@ -79,67 +79,90 @@ export const useTauriWindow = () => {
     initWindow();
   }, [isTauriApp]);
 
-  // Surveillance ULTRA-RENFORCÉE du statut always-on-top
-  // Ré-applique always-on-top toutes les 500ms de manière inconditionnelle
-  // SANS toucher au click-through (géré par useInteractionMode)
+  // Surveillance INTELLIGENTE du statut always-on-top
+  // Vérifie l'état réel et ne force que si nécessaire
   useEffect(() => {
     if (!isTauriApp) return;
     
     const intervalId = setInterval(async () => {
       try {
-        // Ré-appliquer always-on-top de manière inconditionnelle et AGRESSIVE
-        await invoke('set_always_on_top', { always_on_top: true });
-        
-        // Vérifier le statut pour le state React
+        // 1. Vérifier l'état réel actuel
         const currentState = await invoke('get_always_on_top_status');
-        if (currentState !== isAlwaysOnTop) {
-          setIsAlwaysOnTop(currentState as boolean);
-          logger.warn(`⚠️ Always-on-top restauré: ${currentState}`);
+        
+        // 2. Ne forcer que si l'état a changé
+        if (!currentState) {
+          logger.warn('⚠️ Always-on-top désactivé détecté, restauration...');
+          
+          // Force sync avec triple vérification
+          await invoke('set_always_on_top', { always_on_top: true });
+          await new Promise(resolve => setTimeout(resolve, 50));
+          
+          const verifiedState = await invoke('get_always_on_top_status');
+          if (!verifiedState) {
+            // Double tentative si échec
+            await invoke('set_always_on_top', { always_on_top: true });
+            await new Promise(resolve => setTimeout(resolve, 50));
+          }
+          
+          const finalState = await invoke('get_always_on_top_status');
+          setIsAlwaysOnTop(finalState as boolean);
+          logger.debug(`✅ Always-on-top restauré: ${finalState}`);
+          
           try {
             await invoke('restore_from_tray');
           } catch (e) {
             // Ignorer si pas dans le tray
           }
+        } else if (currentState !== isAlwaysOnTop) {
+          // Synchroniser le state React
+          setIsAlwaysOnTop(currentState as boolean);
         }
       } catch (error) {
         logger.warn('Erreur surveillance fenêtre:', error);
       }
-    }, 500); // 500ms pour une réactivité maximale
+    }, 2000); // 2 secondes - moins agressif
     
     return () => clearInterval(intervalId);
   }, [isTauriApp, isAlwaysOnTop]);
 
-  // Listener pour réactiver always-on-top après blur (TRIPLE vérification)
+  // Listener pour synchroniser always-on-top après focus/blur
   useEffect(() => {
     if (!isTauriApp) return;
 
-    const handleBlur = async () => {
-      // Triple vérification à 50ms, 150ms et 300ms
-      const delays = [50, 150, 300];
-      
-      delays.forEach(delay => {
-        setTimeout(async () => {
-          try {
+    const handleFocusChange = async () => {
+      // Attendre 100ms pour stabiliser
+      setTimeout(async () => {
+        try {
+          // Vérifier l'état réel
+          const currentStatus = await invoke('get_always_on_top_status');
+          
+          if (!currentStatus) {
+            // Restaurer si nécessaire
             await invoke('set_always_on_top', { always_on_top: true });
-            const status = await invoke('get_always_on_top_status');
+            await new Promise(resolve => setTimeout(resolve, 50));
             
-            if (!status) {
-              // Si toujours pas activé, forcer avec double appel
-              await invoke('set_always_on_top', { always_on_top: true });
-              await invoke('set_always_on_top', { always_on_top: true });
-              logger.warn(`⚠️ Triple réactivation always-on-top après blur (${delay}ms)`);
+            const verified = await invoke('get_always_on_top_status');
+            if (verified) {
+              logger.debug('✅ Always-on-top restauré après changement focus');
             } else {
-              logger.debug(`✅ Always-on-top confirmé après blur (${delay}ms)`);
+              logger.warn('⚠️ Échec restauration always-on-top');
             }
-          } catch (error) {
-            logger.error(`❌ Erreur réactivation blur (${delay}ms):`, error);
           }
-        }, delay);
-      });
+          
+          setIsAlwaysOnTop(currentStatus as boolean);
+        } catch (error) {
+          logger.error('❌ Erreur synchronisation focus:', error);
+        }
+      }, 100);
     };
 
-    window.addEventListener('blur', handleBlur);
-    return () => window.removeEventListener('blur', handleBlur);
+    window.addEventListener('blur', handleFocusChange);
+    window.addEventListener('focus', handleFocusChange);
+    
+    return () => {
+      window.removeEventListener('blur', handleFocusChange);
+      window.removeEventListener('focus', handleFocusChange);
+    };
   }, [isTauriApp]);
 
   // Basculer always-on-top avec vraie API Tauri

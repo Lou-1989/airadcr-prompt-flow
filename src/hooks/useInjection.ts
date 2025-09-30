@@ -196,10 +196,23 @@ export const useInjection = () => {
       return false;
       
     } finally {
+      // 🔓 CRITIQUE: Désactiver click-through immédiatement pour rendre l'UI cliquable
+      try {
+        await invoke('set_ignore_cursor_events', { ignore: false });
+        logger.debug('[Injection] Click-through DÉSACTIVÉ - UI cliquable');
+      } catch (error) {
+        logger.error('[Injection] Erreur désactivation click-through:', error);
+      }
+      
       // 🔄 REDÉMARRAGE: Après 500ms, redémarrer monitoring et traiter queue
       setTimeout(() => {
         startMonitoring();
         setIsInjecting(false);
+        
+        // Réactiver le click-through après avoir laissé l'utilisateur interagir
+        invoke('set_ignore_cursor_events', { ignore: true }).catch(err => {
+          logger.warn('[Injection] Erreur réactivation click-through:', err);
+        });
         
         // Traiter la queue si des injections sont en attente
         if (injectionQueue.length > 0) {

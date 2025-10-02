@@ -1,4 +1,4 @@
-name: 'Build AirADCR Desktop'
+name: 'Build AIRADCR'
 
 on:
   workflow_dispatch:

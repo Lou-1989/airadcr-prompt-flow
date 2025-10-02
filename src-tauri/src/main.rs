@@ -282,7 +282,7 @@ async fn get_active_window_info() -> Result<WindowInfo, String> {
                 height: active_window.position.height as i32,
             })
         },
-        Err(e) => Err(format!("Erreur récupération fenêtre active: {}", e))
+        Err(_) => Err("Erreur récupération fenêtre active".to_string())
     }
 }
 

@@ -10,6 +10,7 @@ use enigo::{Enigo, Button, Key, Settings, Direction, Coordinate, Mouse, Keyboard
 use arboard::Clipboard;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use active_win_pos_rs::get_active_window;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CursorPosition {
@@ -123,6 +124,16 @@ pub struct SystemInfo {
     platform: String,
     arch: String,
     version: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct WindowInfo {
+    pub title: String,
+    pub app_name: String,
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
 }
 
 #[tauri::command]
@@ -256,6 +267,23 @@ async fn set_ignore_cursor_events(window: tauri::Window, ignore: bool) -> Result
         .map_err(|e| e.to_string())?;
     println!("🖱️  Click-through {}", if ignore { "activé" } else { "désactivé" });
     Ok(())
+}
+
+#[tauri::command]
+async fn get_active_window_info() -> Result<WindowInfo, String> {
+    match get_active_window() {
+        Ok(active_window) => {
+            Ok(WindowInfo {
+                title: active_window.title,
+                app_name: active_window.app_name,
+                x: active_window.position.x as i32,
+                y: active_window.position.y as i32,
+                width: active_window.position.width as i32,
+                height: active_window.position.height as i32,
+            })
+        },
+        Err(e) => Err(format!("Erreur récupération fenêtre active: {}", e))
+    }
 }
 
 #[tauri::command]
@@ -395,7 +423,8 @@ fn main() {
             perform_injection_at_position,
             perform_injection,
             set_ignore_cursor_events,
-            perform_injection_at_position_direct
+            perform_injection_at_position_direct,
+            get_active_window_info
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

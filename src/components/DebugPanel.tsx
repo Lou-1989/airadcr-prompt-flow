@@ -3,6 +3,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { logger } from '@/utils/logger';
+import { useInjectionContext } from '@/contexts/InjectionContext';
 
 interface DebugPanelProps {
   isTauriApp: boolean;
@@ -29,6 +30,7 @@ export const DebugPanel = ({
   onUnlockPosition,
   onClose
 }: DebugPanelProps) => {
+  const { activeWindow, lockedPosition } = useInjectionContext();
 
   const getStatusBadge = (status: boolean, label: string) => (
     <div className="flex items-center justify-between p-2 bg-background/50 rounded">
@@ -78,6 +80,37 @@ export const DebugPanel = ({
           {getStatusBadge(isLocked, "Position Verrouillée")}
           {getStatusBadge(isMonitoring, "Surveillance Position")}
         </div>
+
+        <Separator />
+
+        {/* Fenêtre active */}
+        {activeWindow && (
+          <div className="space-y-2">
+            <h4 className="text-sm font-semibold">Fenêtre Active</h4>
+            <div className="text-xs space-y-1 p-2 bg-background/50 rounded">
+              <div><span className="font-medium">App:</span> {activeWindow.app_name}</div>
+              <div><span className="font-medium">Titre:</span> {activeWindow.title.substring(0, 30)}...</div>
+              <div><span className="font-medium">Position:</span> ({activeWindow.x}, {activeWindow.y})</div>
+              <div><span className="font-medium">Taille:</span> {activeWindow.width} × {activeWindow.height}</div>
+            </div>
+          </div>
+        )}
+
+        {/* Position verrouillée */}
+        {isLocked && lockedPosition && (
+          <div className="space-y-2">
+            <h4 className="text-sm font-semibold">Position Verrouillée</h4>
+            <div className="text-xs space-y-1 p-2 bg-background/50 rounded">
+              <div><span className="font-medium">App:</span> {lockedPosition.application}</div>
+              {lockedPosition.relativePosition && (
+                <>
+                  <div><span className="font-medium">Relative:</span> ({lockedPosition.relativePosition.relative_x}, {lockedPosition.relativePosition.relative_y})</div>
+                  <div><span className="font-medium">Absolue:</span> ({lockedPosition.x}, {lockedPosition.y})</div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         <Separator />
 

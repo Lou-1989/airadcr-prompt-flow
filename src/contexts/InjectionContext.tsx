@@ -1,6 +1,15 @@
 import { createContext, useContext, ReactNode } from 'react';
 import { useInjection } from '@/hooks/useInjection';
 
+interface WindowInfo {
+  title: string;
+  app_name: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 interface InjectionContextType {
   getCursorPosition: () => Promise<{ x: number; y: number } | null>;
   performInjection: (text: string, injectionType?: string) => Promise<boolean>;
@@ -15,6 +24,8 @@ interface InjectionContextType {
   isLocked: boolean;
   lockedPosition: any;
   isInjecting: boolean;
+  activeWindow: WindowInfo | null;
+  getActiveWindowInfo: () => Promise<WindowInfo | null>;
 }
 
 const InjectionContext = createContext<InjectionContextType | null>(null);

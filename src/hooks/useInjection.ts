@@ -8,8 +8,25 @@ interface CursorPosition {
   timestamp: number;
 }
 
+interface WindowInfo {
+  title: string;
+  app_name: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface RelativePosition {
+  relative_x: number;
+  relative_y: number;
+  timestamp: number;
+}
+
 interface LockedPosition extends CursorPosition {
   application: string;
+  windowInfo?: WindowInfo;
+  relativePosition?: RelativePosition;
 }
 
 // Hook spécialisé pour la gestion de l'injection sécurisée avec capture préventive
@@ -20,8 +37,34 @@ export const useInjection = () => {
   const [isLocked, setIsLocked] = useState(false);
   const [isInjecting, setIsInjecting] = useState(false);
   const [injectionQueue, setInjectionQueue] = useState<string[]>([]);
+  const [activeWindow, setActiveWindow] = useState<WindowInfo | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   
+  // Charger les positions sauvegardées depuis localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem('airadcr_locked_positions');
+    if (saved) {
+      try {
+        const positions = JSON.parse(saved);
+        logger.debug('[Storage] Positions restaurées:', Object.keys(positions));
+      } catch (error) {
+        logger.warn('[Storage] Erreur chargement positions:', error);
+      }
+    }
+  }, []);
+  
+  // Fonction pour obtenir les infos de la fenêtre active
+  const getActiveWindowInfo = useCallback(async (): Promise<WindowInfo | null> => {
+    try {
+      const windowInfo = await invoke<WindowInfo>('get_active_window_info');
+      setActiveWindow(windowInfo);
+      return windowInfo;
+    } catch (error) {
+      logger.warn('[Window] Erreur récupération fenêtre active:', error);
+      return null;
+    }
+  }, []);
+
   // Fonction pour vérifier si l'app a le focus
   const checkAppFocus = useCallback(async (): Promise<boolean> => {
     try {
@@ -139,18 +182,39 @@ export const useInjection = () => {
         await invoke('set_ignore_cursor_events', { ignore: true });
         logger.debug('[Injection] Click-through MAINTENU (injection externe)');
         
-        // PRIORITÉ 1: Position verrouillée si active
+        // PRIORITÉ 1: Position verrouillée avec conversion relative → absolue
         if (isLocked && lockedPosition) {
           const age = Date.now() - lockedPosition.timestamp;
-          logger.debug(`[Injection] Position verrouillée: (${lockedPosition.x}, ${lockedPosition.y}) - Âge: ${age}ms`);
+          
+          // Si on a une position relative, convertir en absolue en fonction de la fenêtre actuelle
+          let targetX = lockedPosition.x;
+          let targetY = lockedPosition.y;
+          
+          if (lockedPosition.relativePosition && lockedPosition.windowInfo) {
+            // Obtenir la fenêtre active actuelle
+            const currentWindow = await getActiveWindowInfo();
+            
+            if (currentWindow && currentWindow.app_name === lockedPosition.windowInfo.app_name) {
+              // Convertir position relative → absolue avec la nouvelle position de fenêtre
+              targetX = currentWindow.x + lockedPosition.relativePosition.relative_x;
+              targetY = currentWindow.y + lockedPosition.relativePosition.relative_y;
+              
+              logger.debug(`[Injection] Position relative convertie: (${lockedPosition.relativePosition.relative_x}, ${lockedPosition.relativePosition.relative_y}) → (${targetX}, ${targetY})`);
+              logger.debug(`[Injection] Fenêtre déplacée de (${lockedPosition.windowInfo.x}, ${lockedPosition.windowInfo.y}) → (${currentWindow.x}, ${currentWindow.y})`);
+            } else {
+              logger.warn(`[Injection] Application différente: ${currentWindow?.app_name} vs ${lockedPosition.windowInfo.app_name}`);
+            }
+          }
+          
+          logger.debug(`[Injection] Position verrouillée: (${targetX}, ${targetY}) - Âge: ${age}ms`);
           
           await invoke('perform_injection_at_position_direct', {
             text,
-            x: lockedPosition.x,
-            y: lockedPosition.y
+            x: targetX,
+            y: targetY
           });
           
-          logger.debug(`✅ INJECTION RÉUSSIE (${injectionType || 'default'}) verrouillée à (${lockedPosition.x}, ${lockedPosition.y})`);
+          logger.debug(`✅ INJECTION RÉUSSIE (${injectionType || 'default'}) verrouillée à (${targetX}, ${targetY})`);
           return true;
         }
         
@@ -237,35 +301,65 @@ export const useInjection = () => {
     }
   }, []);
   
-  // Fonctions de gestion de l'ancrage verrouillé
+  // Sauvegarder les positions dans localStorage
+  const saveLockedPositions = useCallback((appName: string, position: LockedPosition) => {
+    try {
+      const saved = localStorage.getItem('airadcr_locked_positions');
+      const positions = saved ? JSON.parse(saved) : {};
+      positions[appName] = position;
+      localStorage.setItem('airadcr_locked_positions', JSON.stringify(positions));
+      logger.debug(`[Storage] Position sauvegardée pour ${appName}`);
+    } catch (error) {
+      logger.warn('[Storage] Erreur sauvegarde position:', error);
+    }
+  }, []);
+
+  // Fonctions de gestion de l'ancrage verrouillé avec positionnement relatif
   const lockCurrentPosition = useCallback(async (): Promise<boolean> => {
     try {
-      // CORRECTION: Permettre le verrouillage même quand l'app a le focus
       const position = await getCursorPosition();
       if (!position) {
         logger.error('[Lock] Impossible d\'obtenir la position actuelle');
         return false;
       }
       
-      // Obtenir le nom de l'application active (simulation pour l'instant)
-      const application = 'Application'; // TODO: Récupérer le nom réel de l'app
+      // Obtenir les informations de la fenêtre active
+      const windowInfo = await getActiveWindowInfo();
+      if (!windowInfo) {
+        logger.error('[Lock] Impossible d\'obtenir les infos de la fenêtre active');
+        return false;
+      }
+      
+      // Calculer la position RELATIVE par rapport à la fenêtre
+      const relativePosition: RelativePosition = {
+        relative_x: position.x - windowInfo.x,
+        relative_y: position.y - windowInfo.y,
+        timestamp: Date.now()
+      };
       
       const newLockedPosition: LockedPosition = {
         ...position,
         timestamp: Date.now(),
-        application
+        application: windowInfo.app_name,
+        windowInfo,
+        relativePosition
       };
       
       setLockedPosition(newLockedPosition);
       setIsLocked(true);
       
-      logger.debug(`[Lock] Position verrouillée: (${position.x}, ${position.y}) - App: ${application}`);
+      // Sauvegarder dans localStorage
+      saveLockedPositions(windowInfo.app_name, newLockedPosition);
+      
+      logger.debug(`[Lock] Position verrouillée RELATIVE: (${relativePosition.relative_x}, ${relativePosition.relative_y}) dans ${windowInfo.app_name}`);
+      logger.debug(`[Lock] Position absolue: (${position.x}, ${position.y})`);
+      logger.debug(`[Lock] Fenêtre: "${windowInfo.title}" à (${windowInfo.x}, ${windowInfo.y})`);
       return true;
     } catch (error) {
       logger.error('[Lock] Erreur verrouillage position:', error);
       return false;
     }
-  }, [getCursorPosition]);
+  }, [getCursorPosition, getActiveWindowInfo, saveLockedPositions]);
   
   const unlockPosition = useCallback(() => {
     setIsLocked(false);
@@ -303,12 +397,13 @@ export const useInjection = () => {
     isMonitoring,
     startMonitoring,
     stopMonitoring,
-    // Nouvelles fonctions d'ancrage
     lockCurrentPosition,
     unlockPosition,
     updateLockedPosition,
     isLocked,
     lockedPosition,
-    isInjecting, // ✅ Exposer pour le watchdog
+    isInjecting,
+    activeWindow,
+    getActiveWindowInfo,
   };
 };

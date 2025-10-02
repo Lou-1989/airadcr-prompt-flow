@@ -8,6 +8,7 @@ import NotFound from "./pages/NotFound";
 import { useTauriWindow } from "@/hooks/useTauriWindow";
 import { InjectionProvider, useInjectionContext } from "@/contexts/InjectionContext";
 import { useSecureMessaging } from "@/hooks/useSecureMessaging";
+import { useGlobalShortcuts } from "@/hooks/useGlobalShortcuts";
 import { DebugPanel } from "@/components/DebugPanel";
 import { logger } from "@/utils/logger";
 
@@ -40,6 +41,12 @@ const AppContent = () => {
     logger.debug('Test d\'injection lancé');
   };
 
+  // Raccourcis clavier globaux
+  const { isDebugVisible, setIsDebugVisible } = useGlobalShortcuts({
+    onTestInjection: handleTestInjection,
+    isTauriApp,
+  });
+
   return (
     <>
       <BrowserRouter>
@@ -50,16 +57,18 @@ const AppContent = () => {
         </Routes>
       </BrowserRouter>
       
-      {/* Debug Panel */}
+      {/* Debug Panel - Accessible uniquement par F12 */}
       <DebugPanel
         isTauriApp={isTauriApp}
         isAlwaysOnTop={isAlwaysOnTop}
         isLocked={isLocked}
         isMonitoring={isMonitoring}
+        isVisible={isDebugVisible}
         onToggleAlwaysOnTop={toggleAlwaysOnTop}
         onTestInjection={handleTestInjection}
         onLockPosition={lockCurrentPosition}
         onUnlockPosition={unlockPosition}
+        onClose={() => setIsDebugVisible(false)}
       />
     </>
   );

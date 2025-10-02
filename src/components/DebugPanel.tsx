@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -10,10 +9,12 @@ interface DebugPanelProps {
   isAlwaysOnTop: boolean;
   isLocked: boolean;
   isMonitoring: boolean;
+  isVisible: boolean;
   onToggleAlwaysOnTop: () => void;
   onTestInjection: () => void;
   onLockPosition: () => void;
   onUnlockPosition: () => void;
+  onClose: () => void;
 }
 
 export const DebugPanel = ({
@@ -21,12 +22,13 @@ export const DebugPanel = ({
   isAlwaysOnTop,
   isLocked,
   isMonitoring,
+  isVisible,
   onToggleAlwaysOnTop,
   onTestInjection,
   onLockPosition,
-  onUnlockPosition
+  onUnlockPosition,
+  onClose
 }: DebugPanelProps) => {
-  const [isVisible, setIsVisible] = useState(false);
 
   const getStatusBadge = (status: boolean, label: string) => (
     <div className="flex items-center justify-between p-2 bg-background/50 rounded">
@@ -48,25 +50,16 @@ export const DebugPanel = ({
   };
 
   if (!isVisible) {
-    return (
-      <Button
-        onClick={() => setIsVisible(true)}
-        variant="outline"
-        size="sm"
-        className="fixed top-4 right-4 z-50 bg-background/80 backdrop-blur"
-      >
-        Debug
-      </Button>
-    );
+    return null;
   }
 
   return (
     <Card className="fixed top-4 right-4 w-80 z-50 bg-background/95 backdrop-blur border shadow-lg">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-sm">Panel Debug AirADCR</CardTitle>
+          <CardTitle className="text-sm">Panel Debug AirADCR (F12 pour fermer)</CardTitle>
           <Button
-            onClick={() => setIsVisible(false)}
+            onClick={onClose}
             variant="ghost"
             size="sm"
             className="h-6 w-6 p-0"

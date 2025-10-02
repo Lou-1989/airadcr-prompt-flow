@@ -90,12 +90,7 @@ export const WebViewContainer = ({ className }: WebViewContainerProps) => {
   
   return (
     <div className={cn("h-full w-full relative", className)}>
-      {/* Bannière mode interaction */}
-      {isInteractionMode && (
-        <div className="absolute top-0 left-0 right-0 z-50 bg-primary/90 text-primary-foreground px-4 py-2 text-center text-sm font-medium shadow-lg">
-          🖱️ Mode Interaction Activé (5s)
-        </div>
-      )}
+      {/* Bannière mode interaction - MASQUÉE pour interface commerciale 100% invisible */}
       
       <iframe
         src={PRODUCTION_CONFIG.AIRADCR_URL}

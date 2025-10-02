@@ -6,7 +6,7 @@
     "distDir": "../dist"
   },
   "package": {
-    "productName": "AirADCR Desktop",
+    "productName": "AIRADCR",
     "version": "1.0.0"
   },
   "tauri": {
@@ -68,10 +68,10 @@
       ],
       "resources": [],
       "externalBin": [],
-      "copyright": "Copyright © 2025 AirADCR. Tous droits réservés.",
+      "copyright": "Copyright © 2025 AIRADCR. Tous droits réservés.",
       "category": "Medical",
       "shortDescription": "Dictée intelligente pour radiologie",
-      "longDescription": "AirADCR améliore la qualité des comptes rendus radiologiques grâce à une dictée intelligente optimisée pour la radiologie. La solution structure automatiquement les rapports, réduisant la variabilité inter-utilisateurs et le temps de dictée.",
+      "longDescription": "AIRADCR améliore la qualité des comptes rendus radiologiques grâce à une dictée intelligente optimisée pour la radiologie. La solution structure automatiquement les rapports, réduisant la variabilité inter-utilisateurs et le temps de dictée.",
       "windows": {
         "certificateThumbprint": null,
         "digestAlgorithm": "sha256",
@@ -141,7 +141,7 @@
         "fullscreen": false,
         "height": 900,
         "resizable": true,
-        "title": "AirADCR Desktop",
+        "title": "AIRADCR",
         "width": 1400,
         "minWidth": 1000,
         "minHeight": 700,
@@ -163,7 +163,7 @@
       "iconPath": "icons/32x32.png",
       "iconAsTemplate": true,
       "menuOnLeftClick": false,
-      "title": "AirADCR Desktop"
+      "title": "AIRADCR"
     }
   }
 }

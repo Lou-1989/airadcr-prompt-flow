@@ -67,6 +67,7 @@ export const useTauriWindow = () => {
     const initWindow = async () => {
       try {
         await invoke('set_always_on_top', { always_on_top: true });
+        await appWindow.setFocus(); // Force Z-order refresh
         await new Promise(resolve => setTimeout(resolve, 200));
         const confirmedStatus = await invoke('get_always_on_top_status');
         setIsAlwaysOnTop(confirmedStatus as boolean);
@@ -93,14 +94,16 @@ export const useTauriWindow = () => {
         if (!currentState) {
           logger.warn('⚠️ Always-on-top désactivé détecté, restauration...');
           
-          // Force sync avec triple vérification
+          // Force sync avec triple vérification + Z-order refresh
           await invoke('set_always_on_top', { always_on_top: true });
+          await appWindow.setFocus(); // Force Z-order
           await new Promise(resolve => setTimeout(resolve, 50));
           
           const verifiedState = await invoke('get_always_on_top_status');
           if (!verifiedState) {
             // Double tentative si échec
             await invoke('set_always_on_top', { always_on_top: true });
+            await appWindow.setFocus();
             await new Promise(resolve => setTimeout(resolve, 50));
           }
           
@@ -137,8 +140,9 @@ export const useTauriWindow = () => {
           const currentStatus = await invoke('get_always_on_top_status');
           
           if (!currentStatus) {
-            // Restaurer si nécessaire
+            // Restaurer si nécessaire avec Z-order refresh
             await invoke('set_always_on_top', { always_on_top: true });
+            await appWindow.setFocus(); // Force Z-order
             await new Promise(resolve => setTimeout(resolve, 50));
             
             const verified = await invoke('get_always_on_top_status');

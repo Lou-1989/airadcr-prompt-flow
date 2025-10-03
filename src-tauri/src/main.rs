@@ -432,10 +432,10 @@ fn main() {
     app.run(|app_handle, event| {
         if let tauri::RunEvent::Ready = event {
             if let Some(window) = app_handle.get_window("main") {
-                // Activer UNIQUEMENT always-on-top au démarrage
-                // Le click-through sera géré par useInteractionMode
+                // Activer always-on-top ET forcer au premier plan
                 let _ = window.set_always_on_top(true);
-                println!("✅ Always-on-top activé au démarrage");
+                let _ = window.set_focus(); // Force Z-order refresh
+                println!("✅ Always-on-top activé et fenêtre au premier plan");
             }
         }
     });

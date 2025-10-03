@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { appWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/tauri';
 import { platform, arch, version } from '@tauri-apps/api/os';
@@ -21,6 +21,7 @@ export const useTauriWindow = () => {
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const [isTauriApp, setIsTauriApp] = useState(false);
   const [isInjectionInProgress, setIsInjectionInProgress] = useState(false);
+  const lastInjectionEndRef = useRef<number>(0);
 
   // Détection Tauri et récupération info système
   useEffect(() => {
@@ -98,6 +99,7 @@ export const useTauriWindow = () => {
     
     const handleInjectionEnd = async () => {
       setIsInjectionInProgress(false);
+      lastInjectionEndRef.current = Date.now(); // 🔒 Timestamp pour grace period
       
       try {
         // ⏳ Attendre stabilisation de l'injection (300ms)
@@ -130,6 +132,13 @@ export const useTauriWindow = () => {
       // ⛔ SKIP si injection en cours pour éviter conflit Z-order
       if (isInjectionInProgress) {
         logger.debug('⏸️ Surveillance always-on-top suspendue (injection en cours)');
+        return;
+      }
+      
+      // 🔒 Grace period de 2 secondes après injection pour éviter race condition
+      const timeSinceLastInjection = Date.now() - lastInjectionEndRef.current;
+      if (timeSinceLastInjection < 2000) {
+        logger.debug('⏸️ Surveillance always-on-top suspendue (grace period post-injection)');
         return;
       }
       

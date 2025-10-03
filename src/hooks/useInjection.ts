@@ -157,6 +157,10 @@ export const useInjection = () => {
     }
     
     setIsInjecting(true);
+    
+    // 📡 Notifier les autres hooks que l'injection commence
+    window.dispatchEvent(new CustomEvent('airadcr-injection-start'));
+    
     stopMonitoring(); // ✅ Arrêter la capture pendant l'injection
     
     logger.debug('=== DÉBUT INJECTION PROFESSIONNELLE ===');
@@ -276,6 +280,9 @@ export const useInjection = () => {
       setTimeout(() => {
         startMonitoring();
         setIsInjecting(false);
+        
+        // 📡 Notifier les autres hooks que l'injection est terminée
+        window.dispatchEvent(new CustomEvent('airadcr-injection-end'));
         
         // ⚠️ NE PLUS RÉACTIVER LE CLICK-THROUGH - L'UI reste cliquable définitivement
         

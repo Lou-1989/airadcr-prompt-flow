@@ -20,6 +20,7 @@ export const useTauriWindow = () => {
   const [windowPosition, setWindowPosition] = useState<WindowPosition>({ x: 0, y: 0 });
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const [isTauriApp, setIsTauriApp] = useState(false);
+  const [isInjectionInProgress, setIsInjectionInProgress] = useState(false);
 
   // Détection Tauri et récupération info système
   useEffect(() => {
@@ -79,12 +80,39 @@ export const useTauriWindow = () => {
     initWindow();
   }, [isTauriApp]);
 
+  // 📡 Écouter les événements d'injection pour suspendre le monitoring
+  useEffect(() => {
+    const handleInjectionStart = () => {
+      setIsInjectionInProgress(true);
+      logger.debug('⏸️ Suspension monitoring always-on-top (injection démarrée)');
+    };
+    
+    const handleInjectionEnd = () => {
+      setIsInjectionInProgress(false);
+      logger.debug('▶️ Reprise monitoring always-on-top (injection terminée)');
+    };
+    
+    window.addEventListener('airadcr-injection-start', handleInjectionStart);
+    window.addEventListener('airadcr-injection-end', handleInjectionEnd);
+    
+    return () => {
+      window.removeEventListener('airadcr-injection-start', handleInjectionStart);
+      window.removeEventListener('airadcr-injection-end', handleInjectionEnd);
+    };
+  }, []);
+
   // Surveillance NON-INVASIVE du statut always-on-top
   // Vérifie toutes les 3 secondes et restaure UNIQUEMENT si perdu
   useEffect(() => {
     if (!isTauriApp) return;
     
     const intervalId = setInterval(async () => {
+      // ⛔ SKIP si injection en cours pour éviter conflit Z-order
+      if (isInjectionInProgress) {
+        logger.debug('⏸️ Surveillance always-on-top suspendue (injection en cours)');
+        return;
+      }
+      
       try {
         const currentState = await invoke('get_always_on_top_status');
         
@@ -102,7 +130,7 @@ export const useTauriWindow = () => {
     }, 3000); // 3 secondes - non-agressif
     
     return () => clearInterval(intervalId);
-  }, [isTauriApp]);
+  }, [isTauriApp, isInjectionInProgress]);
 
   // Basculer always-on-top avec vraie API Tauri
   const toggleAlwaysOnTop = useCallback(async () => {

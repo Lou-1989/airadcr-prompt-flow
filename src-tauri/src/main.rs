@@ -432,10 +432,25 @@ fn main() {
     app.run(|app_handle, event| {
         if let tauri::RunEvent::Ready = event {
             if let Some(window) = app_handle.get_window("main") {
-                // Activer UNIQUEMENT always-on-top au démarrage
-                // Le click-through sera géré par useInteractionMode
-                let _ = window.set_always_on_top(true);
-                println!("✅ Always-on-top activé au démarrage");
+                let window_clone = window.clone();
+                
+                // 🚀 Stratégie "Hammer" - 3 assertions différées pour couvrir tous les scénarios
+                thread::spawn(move || {
+                    // Frappe 1 : Après init WebView2
+                    thread::sleep(Duration::from_millis(300));
+                    let _ = window_clone.set_always_on_top(true);
+                    println!("✅ Always-on-top: Frappe 1 (300ms)");
+                    
+                    // Frappe 2 : Après stabilisation UI
+                    thread::sleep(Duration::from_millis(700)); // Total 1000ms
+                    let _ = window_clone.set_always_on_top(true);
+                    println!("✅ Always-on-top: Frappe 2 (1000ms)");
+                    
+                    // Frappe 3 : Sécurité finale pour Windows lents
+                    thread::sleep(Duration::from_millis(1500)); // Total 2500ms
+                    let _ = window_clone.set_always_on_top(true);
+                    println!("✅ Always-on-top: Frappe 3 (2500ms)");
+                });
             }
         }
     });

@@ -80,16 +80,36 @@ export const useTauriWindow = () => {
     initWindow();
   }, [isTauriApp]);
 
-  // 📡 Écouter les événements d'injection pour suspendre le monitoring
+  // 📡 Écouter les événements d'injection pour contrôle explicite always-on-top
   useEffect(() => {
-    const handleInjectionStart = () => {
+    if (!isTauriApp) return;
+    
+    const handleInjectionStart = async () => {
       setIsInjectionInProgress(true);
-      logger.debug('⏸️ Suspension monitoring always-on-top (injection démarrée)');
+      
+      try {
+        // 🎯 DÉSACTIVER always-on-top pour que l'application cible reste au premier plan
+        await invoke('set_always_on_top', { always_on_top: false });
+        logger.debug('⏸️ Always-on-top DÉSACTIVÉ (injection démarrée)');
+      } catch (error) {
+        logger.error('Erreur désactivation always-on-top:', error);
+      }
     };
     
-    const handleInjectionEnd = () => {
+    const handleInjectionEnd = async () => {
       setIsInjectionInProgress(false);
-      logger.debug('▶️ Reprise monitoring always-on-top (injection terminée)');
+      
+      try {
+        // ⏳ Attendre stabilisation de l'injection (300ms)
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        // 🎯 RÉACTIVER always-on-top après injection
+        await invoke('set_always_on_top', { always_on_top: true });
+        setIsAlwaysOnTop(true);
+        logger.debug('▶️ Always-on-top RÉACTIVÉ (injection terminée)');
+      } catch (error) {
+        logger.error('Erreur réactivation always-on-top:', error);
+      }
     };
     
     window.addEventListener('airadcr-injection-start', handleInjectionStart);
@@ -99,7 +119,7 @@ export const useTauriWindow = () => {
       window.removeEventListener('airadcr-injection-start', handleInjectionStart);
       window.removeEventListener('airadcr-injection-end', handleInjectionEnd);
     };
-  }, []);
+  }, [isTauriApp]);
 
   // Surveillance NON-INVASIVE du statut always-on-top
   // Vérifie toutes les 3 secondes et restaure UNIQUEMENT si perdu

@@ -38,6 +38,7 @@ export const useInjection = () => {
   const [isInjecting, setIsInjecting] = useState(false);
   const [injectionQueue, setInjectionQueue] = useState<string[]>([]);
   const [activeWindow, setActiveWindow] = useState<WindowInfo | null>(null);
+  const [lastExternalWindow, setLastExternalWindow] = useState<WindowInfo | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   
   // Charger les positions sauvegardées depuis localStorage
@@ -86,7 +87,7 @@ export const useInjection = () => {
     }
   }, []);
   
-  // Fonction pour capturer la position externe
+  // Fonction pour capturer la position externe ET la fenêtre externe
   const captureExternalPosition = useCallback(async () => {
     try {
       // ✅ SOLUTION: Capturer uniquement quand l'app N'A PAS le focus
@@ -98,22 +99,30 @@ export const useInjection = () => {
       }
       
       const position = await getCursorPosition();
-      if (position) {
+      const windowInfo = await getActiveWindowInfo(); // 🆕 Capturer la fenêtre EXTERNE
+      
+      if (position && windowInfo) {
         const newPosition: CursorPosition = {
           ...position,
           timestamp: Date.now()
         };
         
+        // 🆕 Stocker la dernière fenêtre externe capturée
+        setLastExternalWindow(windowInfo);
+        
         setExternalPositions(prev => {
           const updated = [newPosition, ...prev.slice(0, 2)]; // Garder les 3 dernières
-          logger.debug('[Monitoring] Position EXTERNE capturée:', newPosition);
+          logger.debug('[Monitoring] Position + Fenêtre EXTERNE capturées:', {
+            position: newPosition,
+            window: windowInfo.app_name
+          });
           return updated;
         });
       }
     } catch (error) {
       logger.warn('[Monitoring] Erreur capture position:', error);
     }
-  }, [getCursorPosition, checkAppFocus]);
+  }, [getCursorPosition, checkAppFocus, getActiveWindowInfo]);
   
   // Démarrer/arrêter la surveillance
   const startMonitoring = useCallback(() => {
@@ -330,10 +339,18 @@ export const useInjection = () => {
         return false;
       }
       
-      // Obtenir les informations de la fenêtre active
-      const windowInfo = await getActiveWindowInfo();
+      // 🔒 UTILISER LA DERNIÈRE FENÊTRE EXTERNE CAPTURÉE (pas getActiveWindowInfo!)
+      const windowInfo = lastExternalWindow;
+      
       if (!windowInfo) {
-        logger.error('[Lock] Impossible d\'obtenir les infos de la fenêtre active');
+        logger.error('[Lock] ❌ Aucune fenêtre externe capturée. Cliquez dans RIS/Word d\'abord.');
+        return false;
+      }
+      
+      // ✅ VÉRIFIER que ce n'est PAS AirADCR
+      const appNameLower = windowInfo.app_name.toLowerCase();
+      if (appNameLower.includes('airadcr') || appNameLower.includes('tauri')) {
+        logger.error('[Lock] ❌ Impossible de verrouiller AirADCR. Cliquez dans RIS/Word.');
         return false;
       }
       
@@ -358,7 +375,7 @@ export const useInjection = () => {
       // Sauvegarder dans localStorage
       saveLockedPositions(windowInfo.app_name, newLockedPosition);
       
-      logger.debug(`[Lock] Position verrouillée RELATIVE: (${relativePosition.relative_x}, ${relativePosition.relative_y}) dans ${windowInfo.app_name}`);
+      logger.debug(`[Lock] ✅ Position verrouillée RELATIVE: (${relativePosition.relative_x}, ${relativePosition.relative_y}) dans ${windowInfo.app_name}`);
       logger.debug(`[Lock] Position absolue: (${position.x}, ${position.y})`);
       logger.debug(`[Lock] Fenêtre: "${windowInfo.title}" à (${windowInfo.x}, ${windowInfo.y})`);
       return true;
@@ -366,7 +383,7 @@ export const useInjection = () => {
       logger.error('[Lock] Erreur verrouillage position:', error);
       return false;
     }
-  }, [getCursorPosition, getActiveWindowInfo, saveLockedPositions]);
+  }, [getCursorPosition, lastExternalWindow, saveLockedPositions]);
   
   const unlockPosition = useCallback(() => {
     setIsLocked(false);
@@ -411,6 +428,7 @@ export const useInjection = () => {
     lockedPosition,
     isInjecting,
     activeWindow,
+    lastExternalWindow,
     getActiveWindowInfo,
   };
 };

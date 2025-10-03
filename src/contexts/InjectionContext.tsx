@@ -25,6 +25,7 @@ interface InjectionContextType {
   lockedPosition: any;
   isInjecting: boolean;
   activeWindow: WindowInfo | null;
+  lastExternalWindow: WindowInfo | null;
   getActiveWindowInfo: () => Promise<WindowInfo | null>;
 }
 

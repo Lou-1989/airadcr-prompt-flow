@@ -215,47 +215,46 @@ export const useInjection = () => {
           let targetY = lockedPosition.y;
           
           if (lockedPosition.relativePosition && lockedPosition.windowInfo) {
-            // Obtenir la fenêtre active actuelle
-            const currentWindow = await getActiveWindowInfo();
+            let windowToUse: WindowInfo | null = null;
             
-            // 🆕 FALLBACK INTELLIGENT MULTI-ÉCRANS
-            if (currentWindow && currentWindow.app_name === lockedPosition.windowInfo.app_name) {
-              // ✅ CAS 1: Même application, utiliser ratio pour gérer redimensionnement
-              const usedWidth = currentWindow.width > 0 ? currentWindow.width : lockedPosition.windowInfo.width;
-              const usedHeight = currentWindow.height > 0 ? currentWindow.height : lockedPosition.windowInfo.height;
+            // PRIORITÉ 1: Utiliser lastExternalWindow si correspond
+            if (lastExternalWindow?.app_name === lockedPosition.windowInfo.app_name) {
+              windowToUse = lastExternalWindow;
+              logger.debug('[Injection] 🎯 Utilisation lastExternalWindow:', lastExternalWindow.app_name);
+            } 
+            // PRIORITÉ 2: Forcer capture fraîche si pas de match
+            else {
+              logger.warn('[Injection] lastExternalWindow ne correspond pas, capture fraîche...');
+              await captureExternalPosition();
               
-              targetX = currentWindow.x + Math.round(lockedPosition.relativePosition.ratio_x * usedWidth);
-              targetY = currentWindow.y + Math.round(lockedPosition.relativePosition.ratio_y * usedHeight);
-              
-              logger.debug(`[Injection] ✅ Position ratio convertie: ratio(${lockedPosition.relativePosition.ratio_x.toFixed(2)}, ${lockedPosition.relativePosition.ratio_y.toFixed(2)}) → (${targetX}, ${targetY})`);
-              logger.debug(`[Injection] Fenêtre: (${lockedPosition.windowInfo.x}, ${lockedPosition.windowInfo.y}) ${lockedPosition.windowInfo.width}x${lockedPosition.windowInfo.height} → (${currentWindow.x}, ${currentWindow.y}) ${currentWindow.width}x${currentWindow.height}`);
-            } else if (lastExternalWindow && lastExternalWindow.app_name === lockedPosition.windowInfo.app_name) {
-              // ⚠️ CAS 2: Application changée mais lastExternalWindow correspond → utiliser ratio
-              const usedWidth = lastExternalWindow.width > 0 ? lastExternalWindow.width : lockedPosition.windowInfo.width;
-              const usedHeight = lastExternalWindow.height > 0 ? lastExternalWindow.height : lockedPosition.windowInfo.height;
-              
-              targetX = lastExternalWindow.x + Math.round(lockedPosition.relativePosition.ratio_x * usedWidth);
-              targetY = lastExternalWindow.y + Math.round(lockedPosition.relativePosition.ratio_y * usedHeight);
-              
-              logger.warn(`[Injection] ⚠️ Application changée (${currentWindow?.app_name} vs ${lockedPosition.windowInfo.app_name})`);
-              logger.debug(`[Injection] 🔄 Utilisation lastExternalWindow: ratio(${lockedPosition.relativePosition.ratio_x.toFixed(2)}, ${lockedPosition.relativePosition.ratio_y.toFixed(2)}) → (${targetX}, ${targetY})`);
-              logger.debug(`[Injection] Fenêtre externe: "${lastExternalWindow.title}" à (${lastExternalWindow.x}, ${lastExternalWindow.y}) ${lastExternalWindow.width}x${lastExternalWindow.height}`);
-            } else {
-              // ❌ CAS 3: Fallback position absolue
-              logger.warn(`[Injection] ❌ Aucune fenêtre correspondante, utilisation position absolue: (${targetX}, ${targetY})`);
-              logger.debug(`[Injection] locked.app=${lockedPosition.windowInfo.app_name}, current.app=${currentWindow?.app_name}, lastExt.app=${lastExternalWindow?.app_name}`);
+              // Re-vérifier après capture
+              if (lastExternalWindow?.app_name === lockedPosition.windowInfo.app_name) {
+                windowToUse = lastExternalWindow;
+                logger.debug('[Injection] ✅ Capture fraîche: windowToUse =', lastExternalWindow.app_name);
+              } else {
+                const currentWindow = await getActiveWindowInfo();
+                if (currentWindow?.app_name === lockedPosition.windowInfo.app_name) {
+                  windowToUse = currentWindow;
+                  logger.debug('[Injection] ✅ Fallback currentWindow:', currentWindow.app_name);
+                }
+              }
             }
             
-            // 📊 LOGS MULTI-ÉCRANS DÉTAILLÉS
-            logger.debug('[Injection] État multi-écrans:', {
-              isLocked: true,
-              lockedApp: lockedPosition.windowInfo.app_name,
-              currentApp: currentWindow?.app_name,
-              lastExternalApp: lastExternalWindow?.app_name,
-              targetCoords: `(${targetX}, ${targetY})`,
-              hasNegativeCoords: targetX < 0 || targetY < 0,
-              externalPositionAge: externalPositions[0] ? Date.now() - externalPositions[0].timestamp : 'N/A'
-            });
+            if (windowToUse) {
+              // ✅ CONVERSION PHYSIQUE (DPI-safe après activation Per-Monitor V2)
+              const usedWidth = windowToUse.width > 0 ? windowToUse.width : lockedPosition.windowInfo.width;
+              const usedHeight = windowToUse.height > 0 ? windowToUse.height : lockedPosition.windowInfo.height;
+              
+              targetX = windowToUse.x + Math.round(lockedPosition.relativePosition.ratio_x * usedWidth);
+              targetY = windowToUse.y + Math.round(lockedPosition.relativePosition.ratio_y * usedHeight);
+              
+              logger.debug(`[Injection] ✅ Ratio DPI-safe: (${targetX}, ${targetY}) depuis ${windowToUse.app_name}`);
+              logger.debug(`[Injection] Fenêtre: (${windowToUse.x}, ${windowToUse.y}) ${windowToUse.width}x${windowToUse.height}`);
+            } else {
+              // Fallback position absolue
+              logger.warn(`[Injection] ❌ Fallback position absolue: (${targetX}, ${targetY})`);
+              logger.debug(`[Injection] locked.app=${lockedPosition.windowInfo.app_name}, lastExt.app=${lastExternalWindow?.app_name}`);
+            }
           }
           
           // 🆕 Clamper les coordonnées dans les bornes du bureau virtuel

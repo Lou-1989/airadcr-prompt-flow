@@ -15,6 +15,21 @@ use active_win_pos_rs::get_active_window;
 #[cfg(target_os = "windows")]
 use winapi::um::winuser::{GetSystemMetrics, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN};
 
+// 🆕 Fonction pour activer DPI Per-Monitor V2 (multi-écrans + multi-DPI)
+#[cfg(target_os = "windows")]
+fn enable_dpi_awareness() {
+    use winapi::um::winuser::SetProcessDpiAwarenessContext;
+    use winapi::shared::windef::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2;
+    
+    unsafe {
+        if SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) == 0 {
+            eprintln!("⚠️  Échec activation DPI Per-Monitor V2, fallback mode par défaut");
+        } else {
+            println!("✅ DPI Per-Monitor V2 activé (coordonnées physiques multi-écrans)");
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CursorPosition {
     pub x: i32,
@@ -293,6 +308,10 @@ async fn get_active_window_info() -> Result<WindowInfo, String> {
 use winapi::um::winuser::{SetCursorPos, SendInput, INPUT, INPUT_MOUSE, INPUT_KEYBOARD, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, KEYEVENTF_KEYUP};
 #[cfg(target_os = "windows")]
 use winapi::um::winuser::{VK_CONTROL, KEYEVENTF_SCANCODE};
+#[cfg(target_os = "windows")]
+use winapi::um::winuser::{WindowFromPoint, GetAncestor, SetForegroundWindow, GA_ROOT, GetForegroundWindow, GetWindowRect};
+#[cfg(target_os = "windows")]
+use winapi::shared::windef::{POINT, RECT};
 
 // 🆕 INJECTION WINDOWS ROBUSTE avec Win32 API pour multi-écrans
 #[tauri::command]
@@ -350,6 +369,25 @@ async fn perform_injection_at_position_direct(text: String, x: i32, y: i32, stat
             }
         }
         println!("✅ [Win32] SetCursorPos({}, {}) réussi", clamped_x, clamped_y);
+        
+        // 🆕 FORCER LE FOCUS sur la fenêtre sous le curseur (multi-écrans)
+        unsafe {
+            let point = POINT { x: clamped_x, y: clamped_y };
+            let hwnd = WindowFromPoint(point);
+            
+            if !hwnd.is_null() {
+                let root_hwnd = GetAncestor(hwnd, GA_ROOT);
+                if !root_hwnd.is_null() {
+                    if SetForegroundWindow(root_hwnd) != 0 {
+                        println!("✅ [Multi-écrans] Focus forcé sur fenêtre à ({}, {})", clamped_x, clamped_y);
+                    } else {
+                        println!("⚠️  [Multi-écrans] SetForegroundWindow a échoué");
+                    }
+                }
+            }
+        }
+        
+        thread::sleep(Duration::from_millis(120)); // Stabiliser focus
     }
     
     // FALLBACK: Autres OS utilisent Enigo
@@ -369,10 +407,10 @@ async fn perform_injection_at_position_direct(text: String, x: i32, y: i32, stat
     // 🆕 AUGMENTER le délai post-clic: 30ms → 150ms pour stabiliser le focus multi-écrans
     thread::sleep(Duration::from_millis(150));
     
-    // 🆕 WINDOWS: Vérifier que le focus a changé (attente max 300ms)
+    // 🆕 WINDOWS: Vérifier que le focus a changé (attente max 800ms pour multi-écrans)
     #[cfg(target_os = "windows")]
     {
-        let max_wait_ms = 300;
+        let max_wait_ms = 800;
         let check_interval_ms = 50;
         let mut waited_ms = 0;
         
@@ -460,7 +498,7 @@ async fn get_virtual_desktop_info() -> Result<VirtualDesktopInfo, String> {
             let width = GetSystemMetrics(SM_CXVIRTUALSCREEN);
             let height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
             
-            println!("🖥️  [Multi-écrans] Bureau virtuel: ({}, {}) {}x{}", x, y, width, height);
+            println!("🖥️  [Multi-écrans] Bureau virtuel: ({}, {}) {}x{} | DPI Per-Monitor V2: ACTIVÉ", x, y, width, height);
             
             Ok(VirtualDesktopInfo { x, y, width, height })
         }
@@ -469,6 +507,55 @@ async fn get_virtual_desktop_info() -> Result<VirtualDesktopInfo, String> {
     #[cfg(not(target_os = "windows"))]
     {
         Err("get_virtual_desktop_info: Supporté uniquement sur Windows".to_string())
+    }
+}
+
+// 🆕 Commande: Obtenir les dimensions physiques de la fenêtre au premier plan (DPI-safe)
+#[derive(Serialize)]
+pub struct PhysicalRect {
+    pub left: i32,
+    pub top: i32,
+    pub right: i32,
+    pub bottom: i32,
+    pub width: i32,
+    pub height: i32,
+}
+
+#[tauri::command]
+async fn get_physical_window_rect() -> Result<PhysicalRect, String> {
+    #[cfg(target_os = "windows")]
+    {
+        unsafe {
+            let hwnd = GetForegroundWindow();
+            if hwnd.is_null() {
+                return Err("Aucune fenêtre au premier plan".to_string());
+            }
+            
+            let mut rect: RECT = std::mem::zeroed();
+            if GetWindowRect(hwnd, &mut rect) == 0 {
+                return Err("GetWindowRect a échoué".to_string());
+            }
+            
+            let width = rect.right - rect.left;
+            let height = rect.bottom - rect.top;
+            
+            println!("📐 [DPI] GetWindowRect physique: ({}, {}) {}x{}", 
+                rect.left, rect.top, width, height);
+            
+            Ok(PhysicalRect {
+                left: rect.left,
+                top: rect.top,
+                right: rect.right,
+                bottom: rect.bottom,
+                width,
+                height,
+            })
+        }
+    }
+    
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("get_physical_window_rect supporté uniquement sur Windows".to_string())
     }
 }
 
@@ -515,6 +602,9 @@ async fn simulate_key_in_iframe(window: tauri::Window, key: String) -> Result<()
 }
 
 fn main() {
+    #[cfg(target_os = "windows")]
+    enable_dpi_awareness();
+    
     let quit = CustomMenuItem::new("quit".to_string(), "Quitter");
     let show = CustomMenuItem::new("show".to_string(), "Afficher");
     let hide = CustomMenuItem::new("hide".to_string(), "Masquer");
@@ -608,7 +698,8 @@ fn main() {
             perform_injection_at_position_direct,
             get_active_window_info,
             simulate_key_in_iframe,
-            get_virtual_desktop_info
+            get_virtual_desktop_info,
+            get_physical_window_rect
         ])
         .setup(|app| {
             // 🎤 Enregistrement des raccourcis globaux SpeechMike

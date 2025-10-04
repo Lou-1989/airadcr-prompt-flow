@@ -279,6 +279,42 @@ fn get_always_on_top_status(state: State<'_, AppState>) -> Result<bool, String> 
     Ok(*always_on_top)
 }
 
+// 🆕 DÉTECTION DE SÉLECTION DE TEXTE
+#[tauri::command]
+async fn has_text_selection(state: State<'_, AppState>) -> Result<bool, String> {
+    let _clipboard_guard = match state.clipboard_lock.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            eprintln!("Clipboard mutex poisoned, recovering...");
+            poisoned.into_inner()
+        }
+    };
+    
+    // Sauvegarder le clipboard actuel
+    let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
+    let original = clipboard.get_text().unwrap_or_default();
+    
+    // Simuler Ctrl+C pour copier la sélection (si elle existe)
+    let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
+    enigo.key(Key::Control, Direction::Press).map_err(|e| e.to_string())?;
+    enigo.key(Key::Unicode('c'), Direction::Click).map_err(|e| e.to_string())?;
+    enigo.key(Key::Control, Direction::Release).map_err(|e| e.to_string())?;
+    
+    thread::sleep(Duration::from_millis(50));
+    
+    // Vérifier si le clipboard a changé
+    let after_copy = clipboard.get_text().unwrap_or_default();
+    let has_selection = !after_copy.is_empty() && after_copy != original;
+    
+    // Restaurer le clipboard original
+    if original != after_copy {
+        clipboard.set_text(&original).map_err(|e| e.to_string())?;
+    }
+    
+    println!("🔍 Détection sélection: {}", if has_selection { "OUI" } else { "NON" });
+    Ok(has_selection)
+}
+
 #[tauri::command]
 async fn set_ignore_cursor_events(window: tauri::Window, ignore: bool) -> Result<(), String> {
     window.set_ignore_cursor_events(ignore)
@@ -315,7 +351,7 @@ use winapi::shared::windef::{POINT, RECT};
 
 // 🆕 INJECTION WINDOWS ROBUSTE avec Win32 API pour multi-écrans
 #[tauri::command]
-async fn perform_injection_at_position_direct(text: String, x: i32, y: i32, state: State<'_, AppState>) -> Result<(), String> {
+async fn perform_injection_at_position_direct(text: String, x: i32, y: i32, replace_selection: bool, state: State<'_, AppState>) -> Result<(), String> {
     let _clipboard_guard = match state.clipboard_lock.lock() {
         Ok(guard) => guard,
         Err(poisoned) => {
@@ -448,7 +484,16 @@ async fn perform_injection_at_position_direct(text: String, x: i32, y: i32, stat
     let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
     let original_clipboard = clipboard.get_text().unwrap_or_default();
     
-    // Injection via Ctrl+V
+    // 🆕 MODE REMPLACEMENT: Sélectionner tout avant paste si demandé
+    if replace_selection {
+        println!("🔄 Mode remplacement : Sélection du texte cible (Ctrl+A)...");
+        enigo.key(Key::Control, Direction::Press).map_err(|e| e.to_string())?;
+        enigo.key(Key::Unicode('a'), Direction::Click).map_err(|e| e.to_string())?;
+        enigo.key(Key::Control, Direction::Release).map_err(|e| e.to_string())?;
+        thread::sleep(Duration::from_millis(30));
+    }
+    
+    // Injection via Ctrl+V (remplace la sélection si Ctrl+A a été fait)
     clipboard.set_text(&text).map_err(|e| e.to_string())?;
     thread::sleep(Duration::from_millis(10));
     
@@ -786,6 +831,7 @@ fn main() {
             get_cursor_position,
             check_app_focus,
             get_always_on_top_status,
+            has_text_selection,
             perform_injection_at_position,
             perform_injection,
             set_ignore_cursor_events,

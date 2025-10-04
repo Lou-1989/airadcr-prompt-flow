@@ -345,9 +345,11 @@ use winapi::um::winuser::{SetCursorPos, SendInput, INPUT, INPUT_MOUSE, INPUT_KEY
 #[cfg(target_os = "windows")]
 use winapi::um::winuser::{VK_CONTROL, KEYEVENTF_SCANCODE};
 #[cfg(target_os = "windows")]
-use winapi::um::winuser::{WindowFromPoint, GetAncestor, SetForegroundWindow, GA_ROOT, GetForegroundWindow, GetWindowRect};
+use winapi::um::winuser::{WindowFromPoint, GetAncestor, SetForegroundWindow, GA_ROOT, GetForegroundWindow, GetWindowRect, IsIconic, ShowWindow, GetWindowPlacement, SetWindowPlacement, SW_RESTORE, SW_SHOWNORMAL};
 #[cfg(target_os = "windows")]
 use winapi::shared::windef::{POINT, RECT};
+#[cfg(target_os = "windows")]
+use winapi::um::winuser::WINDOWPLACEMENT;
 
 // 🆕 INJECTION WINDOWS ROBUSTE avec Win32 API pour multi-écrans
 #[tauri::command]
@@ -414,6 +416,60 @@ async fn perform_injection_at_position_direct(text: String, x: i32, y: i32, repl
             if !hwnd.is_null() {
                 let root_hwnd = GetAncestor(hwnd, GA_ROOT);
                 if !root_hwnd.is_null() {
+                    // ✨ DÉTECTION 1/3: Vérifier si la fenêtre est minimisée
+                    if IsIconic(root_hwnd) != 0 {
+                        println!("🔄 [Restauration] Fenêtre minimisée détectée, restauration...");
+                        ShowWindow(root_hwnd, SW_RESTORE);
+                        thread::sleep(Duration::from_millis(200)); // Attendre animation
+                        println!("✅ [Restauration] Fenêtre restaurée depuis l'état minimisé");
+                    }
+                    
+                    // ✨ DÉTECTION 2/3: Vérifier si la fenêtre est hors écran
+                    let mut placement: WINDOWPLACEMENT = std::mem::zeroed();
+                    placement.length = std::mem::size_of::<WINDOWPLACEMENT>() as u32;
+                    
+                    if GetWindowPlacement(root_hwnd, &mut placement) != 0 {
+                        let rect = placement.rcNormalPosition;
+                        
+                        // Obtenir les bornes du bureau virtuel
+                        let vd_x = GetSystemMetrics(SM_XVIRTUALSCREEN);
+                        let vd_y = GetSystemMetrics(SM_YVIRTUALSCREEN);
+                        let vd_width = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+                        let vd_height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+                        let vd_right = vd_x + vd_width;
+                        let vd_bottom = vd_y + vd_height;
+                        
+                        // Vérifier si la fenêtre est complètement hors des bornes
+                        let is_offscreen = rect.right < vd_x || rect.left > vd_right ||
+                                         rect.bottom < vd_y || rect.top > vd_bottom;
+                        
+                        if is_offscreen {
+                            println!("🔄 [Restauration] Fenêtre hors écran détectée: ({}, {}) - ({}, {})", 
+                                rect.left, rect.top, rect.right, rect.bottom);
+                            println!("   Bureau virtuel: ({}, {}) - ({}, {})", vd_x, vd_y, vd_right, vd_bottom);
+                            
+                            // Repositionner la fenêtre au centre du bureau principal
+                            let new_x = vd_x + (vd_width / 4);
+                            let new_y = vd_y + (vd_height / 4);
+                            let win_width = rect.right - rect.left;
+                            let win_height = rect.bottom - rect.top;
+                            
+                            placement.rcNormalPosition.left = new_x;
+                            placement.rcNormalPosition.top = new_y;
+                            placement.rcNormalPosition.right = new_x + win_width;
+                            placement.rcNormalPosition.bottom = new_y + win_height;
+                            placement.showCmd = SW_SHOWNORMAL as u32;
+                            
+                            if SetWindowPlacement(root_hwnd, &placement) != 0 {
+                                println!("✅ [Restauration] Fenêtre repositionnée à ({}, {})", new_x, new_y);
+                                thread::sleep(Duration::from_millis(150));
+                            } else {
+                                println!("⚠️  [Restauration] SetWindowPlacement a échoué");
+                            }
+                        }
+                    }
+                    
+                    // ✨ DÉTECTION 3/3: Focus final avec vérification
                     if SetForegroundWindow(root_hwnd) != 0 {
                         println!("✅ [Multi-écrans] Focus forcé sur fenêtre à ({}, {})", clamped_x, clamped_y);
                     } else {

@@ -575,6 +575,7 @@ pub struct ClientRectInfo {
     pub client_top: i32,
     pub client_width: i32,
     pub client_height: i32,
+    pub hwnd: usize, // 🆕 Handle de fenêtre Windows pour identification unique
 }
 
 #[tauri::command]
@@ -625,8 +626,8 @@ async fn get_window_client_rect_at_point(x: i32, y: i32) -> Result<ClientRectInf
             let client_width = client_rect.right - client_rect.left;
             let client_height = client_rect.bottom - client_rect.top;
             
-            println!("📐 [ClientRect] Fenêtre: {} ({}, {}) {}x{}", 
-                app_name, window_rect.left, window_rect.top, window_width, window_height);
+            println!("📐 [ClientRect] Fenêtre: {} ({}, {}) {}x{} [HWND: {:?}]", 
+                app_name, window_rect.left, window_rect.top, window_width, window_height, root_hwnd);
             println!("📐 [ClientRect] Zone client: ({}, {}) {}x{}", 
                 client_origin.x, client_origin.y, client_width, client_height);
             
@@ -641,6 +642,7 @@ async fn get_window_client_rect_at_point(x: i32, y: i32) -> Result<ClientRectInf
                 client_top: client_origin.y,
                 client_width,
                 client_height,
+                hwnd: root_hwnd as usize,
             })
         }
     }

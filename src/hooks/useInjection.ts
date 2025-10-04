@@ -29,6 +29,7 @@ interface LockedPosition extends CursorPosition {
   application: string;
   windowInfo?: WindowInfo;
   relativePosition?: RelativePosition;
+  hwnd?: number; // 🆕 Handle Windows pour identification exacte de la fenêtre
 }
 
 // Hook spécialisé pour la gestion de l'injection sécurisée avec capture préventive
@@ -221,62 +222,85 @@ export const useInjection = () => {
           let targetY = lockedPosition.y;
           
           if (lockedPosition.relativePosition && lockedPosition.windowInfo) {
+            // 🆕 AMÉLIORATION 2: TOUJOURS recapturer la fenêtre cible (pas de timeout)
+            logger.debug('[Injection] 🔄 Capture fraîche de la fenêtre cible...');
+            await captureExternalPosition();
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
             let windowToUse: WindowInfo | null = null;
             
-            // 🆕 FORCER capture fraîche si lastExternalWindow obsolète (>5 secondes)
-            if (!lastExternalWindow || (Date.now() - (lastExternalWindow as any).timestamp > 5000)) {
-              logger.debug('[Injection] lastExternalWindow obsolète, capture fraîche...');
-              await captureExternalPosition();
-              await new Promise(resolve => setTimeout(resolve, 100)); // Laisser temps à la capture
-            }
-            
-            // PRIORITÉ 1: Utiliser lastExternalWindow si correspond
+            // PRIORITÉ: Utiliser lastExternalWindow si correspond
             if (lastExternalWindow?.app_name === lockedPosition.windowInfo.app_name) {
               windowToUse = lastExternalWindow;
               logger.debug(`[Injection] 🎯 Utilisation lastExternalWindow: ${windowToUse.app_name}`);
-            }
-            
-            // PRIORITÉ 2: Utiliser windowInfo de la position verrouillée
-            if (!windowToUse) {
+            } else {
               windowToUse = lockedPosition.windowInfo;
               logger.debug(`[Injection] ⚠️ Fallback windowInfo verrouillé: ${windowToUse.app_name}`);
             }
             
-            // 🆕 MODE CLIENT RECT: Recalculer depuis le client rect actuel
+            // 🆕 MODE CLIENT RECT avec MULTI-POINT SCAN + HWND validation
             let injectionSuccess = false;
             const lockedAny = lockedPosition as any;
             
             if (lockedAny.relativeTo === 'client' && lockedAny.clientRectInfo) {
               try {
-                // 1️⃣ Obtenir le CLIENT RECT actuel de la fenêtre cible
-                const probeX = windowToUse.x + Math.floor(windowToUse.width / 2);
-                const probeY = windowToUse.y + Math.floor(windowToUse.height / 2);
+                // 🆕 AMÉLIORATION 1: MULTI-POINT SCAN (centre + 4 coins)
+                const probePoints = [
+                  { x: windowToUse.x + Math.floor(windowToUse.width / 2), y: windowToUse.y + Math.floor(windowToUse.height / 2), name: 'centre' },
+                  { x: windowToUse.x + 50, y: windowToUse.y + 50, name: 'coin haut-gauche' },
+                  { x: windowToUse.x + windowToUse.width - 50, y: windowToUse.y + 50, name: 'coin haut-droit' },
+                  { x: windowToUse.x + 50, y: windowToUse.y + windowToUse.height - 50, name: 'coin bas-gauche' },
+                  { x: windowToUse.x + windowToUse.width - 50, y: windowToUse.y + windowToUse.height - 50, name: 'coin bas-droit' },
+                ];
                 
-                logger.debug(`[Injection] 🔍 Probe ClientRect au centre: (${probeX}, ${probeY})`);
+                let currentClientRect: any = null;
                 
-                const currentClientRect: any = await invoke('get_window_client_rect_at_point', {
-                  x: probeX,
-                  y: probeY
-                });
+                for (const probe of probePoints) {
+                  try {
+                    logger.debug(`[Injection] 📍 Test probe ${probe.name} à (${probe.x}, ${probe.y})`);
+                    const rect = await invoke('get_window_client_rect_at_point', { x: probe.x, y: probe.y });
+                    
+                    // 🆕 AMÉLIORATION 3: Vérifier le HWND si disponible
+                    const rectAny = rect as any;
+                    const hwndMatch = !lockedAny.hwnd || !rectAny.hwnd || rectAny.hwnd === lockedAny.hwnd;
+                    const appMatch = rectAny.app_name === lockedPosition.windowInfo.app_name;
+                    
+                    if (hwndMatch && appMatch) {
+                      currentClientRect = rect;
+                      logger.debug(`[Injection] ✅ Probe ${probe.name} réussie: app="${rectAny.app_name}" hwnd=${rectAny.hwnd} (attendu: ${lockedAny.hwnd})`);
+                      break;
+                    } else {
+                      logger.debug(`[Injection] ⚠️ Probe ${probe.name} mismatch: app="${rectAny.app_name}" (attendu: "${lockedPosition.windowInfo.app_name}") hwnd=${rectAny.hwnd} (attendu: ${lockedAny.hwnd})`);
+                    }
+                  } catch (error) {
+                    logger.debug(`[Injection] ⚠️ Probe ${probe.name} échouée:`, error);
+                  }
+                }
+                
+                if (!currentClientRect) {
+                  throw new Error('Aucun probe multi-point valide trouvé');
+                }
                 
                 // 2️⃣ Recalculer la position absolue depuis les ratios CLIENT
+                const currentAny = currentClientRect as any;
                 targetX = Math.round(
-                  currentClientRect.client_left + 
-                  (lockedPosition.relativePosition.ratio_x * currentClientRect.client_width)
+                  currentAny.client_left + 
+                  (lockedPosition.relativePosition.ratio_x * currentAny.client_width)
                 );
                 targetY = Math.round(
-                  currentClientRect.client_top + 
-                  (lockedPosition.relativePosition.ratio_y * currentClientRect.client_height)
+                  currentAny.client_top + 
+                  (lockedPosition.relativePosition.ratio_y * currentAny.client_height)
                 );
                 
-                logger.debug(`[Injection] 🎯 CLIENT RECT MODE:`);
-                logger.debug(`[Injection]    Client zone: (${currentClientRect.client_left}, ${currentClientRect.client_top}) ${currentClientRect.client_width}x${currentClientRect.client_height}`);
+                logger.debug(`[Injection] 🎯 CLIENT RECT MODE (multi-point + HWND):`);
+                logger.debug(`[Injection]    Client zone: (${currentAny.client_left}, ${currentAny.client_top}) ${currentAny.client_width}x${currentAny.client_height}`);
                 logger.debug(`[Injection]    Ratios: (${lockedPosition.relativePosition.ratio_x.toFixed(3)}, ${lockedPosition.relativePosition.ratio_y.toFixed(3)})`);
+                logger.debug(`[Injection]    HWND: ${currentAny.hwnd}`);
                 logger.debug(`[Injection]    → Position calculée: (${targetX}, ${targetY})`);
                 
                 injectionSuccess = true;
               } catch (error) {
-                logger.warn('[Injection] ⚠️ Échec ClientRect, fallback sur window ratios:', error);
+                logger.warn('[Injection] ⚠️ Échec multi-point scan, fallback window rect:', error);
               }
             }
             
@@ -477,14 +501,14 @@ export const useInjection = () => {
         return false;
       }
       
-      // 🆕 OBTENIR LE CLIENT RECT (zone cliquable sans bordures/titre)
+      // 🆕 OBTENIR LE CLIENT RECT (zone cliquable sans bordures/titre) + HWND
       let clientRectInfo: any = null;
       try {
         clientRectInfo = await invoke('get_window_client_rect_at_point', { 
           x: position.x, 
           y: position.y 
         });
-        logger.debug(`[Lock] ClientRect obtenu: client (${clientRectInfo.client_left}, ${clientRectInfo.client_top}) ${clientRectInfo.client_width}x${clientRectInfo.client_height}`);
+        logger.debug(`[Lock] ClientRect obtenu: client (${clientRectInfo.client_left}, ${clientRectInfo.client_top}) ${clientRectInfo.client_width}x${clientRectInfo.client_height} HWND=${clientRectInfo.hwnd}`);
       } catch (error) {
         logger.warn('[Lock] ⚠️ Impossible d\'obtenir ClientRect, fallback sur WindowRect:', error);
       }
@@ -528,7 +552,8 @@ export const useInjection = () => {
         windowInfo,
         relativePosition,
         clientRectInfo, // 🆕 Stocker les infos client rect
-        relativeTo // 🆕 'client' ou 'window'
+        relativeTo, // 🆕 'client' ou 'window'
+        hwnd: clientRectInfo?.hwnd // 🆕 Stocker le HWND pour identification exacte
       } as any;
       
       setLockedPosition(newLockedPosition);

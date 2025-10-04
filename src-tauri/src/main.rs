@@ -4,7 +4,7 @@
 )]
 
 use std::sync::{Mutex, Arc};
-use tauri::{CustomMenuItem, Manager, State, SystemTray, SystemTrayEvent, SystemTrayMenu, WindowEvent};
+use tauri::{CustomMenuItem, Manager, State, SystemTray, SystemTrayEvent, SystemTrayMenu, WindowEvent, GlobalShortcutManager};
 use serde::{Deserialize, Serialize};
 use enigo::{Enigo, Button, Key, Settings, Direction, Coordinate, Mouse, Keyboard};
 use arboard::Clipboard;
@@ -332,6 +332,58 @@ async fn perform_injection_at_position_direct(text: String, x: i32, y: i32, stat
     Ok(())
 }
 
+// 🎤 Helper: Convertir nom de touche → keyCode JavaScript
+fn get_key_code(key_name: &str) -> u32 {
+    match key_name {
+        "F10" => 121,
+        "F11" => 122,
+        "F12" => 123,
+        _ => 0,
+    }
+}
+
+// 🎤 Commande: Simuler une touche dans l'iframe airadcr.com
+#[tauri::command]
+async fn simulate_key_in_iframe(window: tauri::Window, key: String) -> Result<(), String> {
+    let key_code = get_key_code(&key);
+    
+    if key_code == 0 {
+        return Err(format!("Touche non supportée: {}", key));
+    }
+    
+    println!("🎤 [SpeechMike] Injection touche {} (code: {}) dans iframe", key, key_code);
+    
+    // Injection JavaScript: Dispatcher un KeyboardEvent dans l'iframe
+    let js_code = format!(
+        r#"
+        try {{
+            const iframe = document.querySelector('iframe');
+            if (iframe && iframe.contentWindow) {{
+                const event = new KeyboardEvent('keydown', {{
+                    key: '{}',
+                    code: '{}',
+                    keyCode: {},
+                    which: {},
+                    bubbles: true,
+                    cancelable: true
+                }});
+                iframe.contentWindow.document.dispatchEvent(event);
+                console.log('✅ [SpeechMike] Événement {} injecté dans iframe');
+            }} else {{
+                console.error('❌ [SpeechMike] Iframe non trouvée');
+            }}
+        }} catch (error) {{
+            console.error('❌ [SpeechMike] Erreur injection:', error);
+        }}
+        "#,
+        key, key, key_code, key_code, key
+    );
+    
+    window.eval(&js_code).map_err(|e| e.to_string())?;
+    
+    Ok(())
+}
+
 fn main() {
     let quit = CustomMenuItem::new("quit".to_string(), "Quitter");
     let show = CustomMenuItem::new("show".to_string(), "Afficher");
@@ -424,8 +476,57 @@ fn main() {
             perform_injection,
             set_ignore_cursor_events,
             perform_injection_at_position_direct,
-            get_active_window_info
+            get_active_window_info,
+            simulate_key_in_iframe
         ])
+        .setup(|app| {
+            // 🎤 Enregistrement des raccourcis globaux SpeechMike
+            let app_handle = app.handle();
+            let mut shortcut_manager = app.global_shortcut_manager();
+            
+            // F10: Démarrer/Reprendre dictée
+            let handle_f10 = app_handle.clone();
+            shortcut_manager
+                .register("F10", move || {
+                    if let Some(window) = handle_f10.get_window("main") {
+                        let window_clone = window.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let _ = simulate_key_in_iframe(window_clone, "F10".to_string()).await;
+                        });
+                    }
+                })
+                .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement F10: {}", e));
+            
+            // F11: Pause dictée
+            let handle_f11 = app_handle.clone();
+            shortcut_manager
+                .register("F11", move || {
+                    if let Some(window) = handle_f11.get_window("main") {
+                        let window_clone = window.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let _ = simulate_key_in_iframe(window_clone, "F11".to_string()).await;
+                        });
+                    }
+                })
+                .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement F11: {}", e));
+            
+            // F12: Terminer dictée
+            let handle_f12 = app_handle.clone();
+            shortcut_manager
+                .register("F12", move || {
+                    if let Some(window) = handle_f12.get_window("main") {
+                        let window_clone = window.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let _ = simulate_key_in_iframe(window_clone, "F12".to_string()).await;
+                        });
+                    }
+                })
+                .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement F12: {}", e));
+            
+            println!("✅ [SpeechMike] Raccourcis globaux enregistrés: F10 (Démarrer/Reprendre), F11 (Pause), F12 (Terminer)");
+            
+            Ok(())
+        })
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 

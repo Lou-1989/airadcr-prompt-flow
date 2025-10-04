@@ -20,6 +20,8 @@ interface WindowInfo {
 interface RelativePosition {
   relative_x: number;
   relative_y: number;
+  ratio_x: number; // 🆕 Position en % de largeur fenêtre (0-1)
+  ratio_y: number; // 🆕 Position en % de hauteur fenêtre (0-1)
   timestamp: number;
 }
 
@@ -207,16 +209,44 @@ export const useInjection = () => {
             // Obtenir la fenêtre active actuelle
             const currentWindow = await getActiveWindowInfo();
             
+            // 🆕 FALLBACK INTELLIGENT MULTI-ÉCRANS
             if (currentWindow && currentWindow.app_name === lockedPosition.windowInfo.app_name) {
-              // Convertir position relative → absolue avec la nouvelle position de fenêtre
-              targetX = currentWindow.x + lockedPosition.relativePosition.relative_x;
-              targetY = currentWindow.y + lockedPosition.relativePosition.relative_y;
+              // ✅ CAS 1: Même application, utiliser ratio pour gérer redimensionnement
+              const usedWidth = currentWindow.width > 0 ? currentWindow.width : lockedPosition.windowInfo.width;
+              const usedHeight = currentWindow.height > 0 ? currentWindow.height : lockedPosition.windowInfo.height;
               
-              logger.debug(`[Injection] Position relative convertie: (${lockedPosition.relativePosition.relative_x}, ${lockedPosition.relativePosition.relative_y}) → (${targetX}, ${targetY})`);
-              logger.debug(`[Injection] Fenêtre déplacée de (${lockedPosition.windowInfo.x}, ${lockedPosition.windowInfo.y}) → (${currentWindow.x}, ${currentWindow.y})`);
+              targetX = currentWindow.x + Math.round(lockedPosition.relativePosition.ratio_x * usedWidth);
+              targetY = currentWindow.y + Math.round(lockedPosition.relativePosition.ratio_y * usedHeight);
+              
+              logger.debug(`[Injection] ✅ Position ratio convertie: ratio(${lockedPosition.relativePosition.ratio_x.toFixed(2)}, ${lockedPosition.relativePosition.ratio_y.toFixed(2)}) → (${targetX}, ${targetY})`);
+              logger.debug(`[Injection] Fenêtre: (${lockedPosition.windowInfo.x}, ${lockedPosition.windowInfo.y}) ${lockedPosition.windowInfo.width}x${lockedPosition.windowInfo.height} → (${currentWindow.x}, ${currentWindow.y}) ${currentWindow.width}x${currentWindow.height}`);
+            } else if (lastExternalWindow && lastExternalWindow.app_name === lockedPosition.windowInfo.app_name) {
+              // ⚠️ CAS 2: Application changée mais lastExternalWindow correspond → utiliser ratio
+              const usedWidth = lastExternalWindow.width > 0 ? lastExternalWindow.width : lockedPosition.windowInfo.width;
+              const usedHeight = lastExternalWindow.height > 0 ? lastExternalWindow.height : lockedPosition.windowInfo.height;
+              
+              targetX = lastExternalWindow.x + Math.round(lockedPosition.relativePosition.ratio_x * usedWidth);
+              targetY = lastExternalWindow.y + Math.round(lockedPosition.relativePosition.ratio_y * usedHeight);
+              
+              logger.warn(`[Injection] ⚠️ Application changée (${currentWindow?.app_name} vs ${lockedPosition.windowInfo.app_name})`);
+              logger.debug(`[Injection] 🔄 Utilisation lastExternalWindow: ratio(${lockedPosition.relativePosition.ratio_x.toFixed(2)}, ${lockedPosition.relativePosition.ratio_y.toFixed(2)}) → (${targetX}, ${targetY})`);
+              logger.debug(`[Injection] Fenêtre externe: "${lastExternalWindow.title}" à (${lastExternalWindow.x}, ${lastExternalWindow.y}) ${lastExternalWindow.width}x${lastExternalWindow.height}`);
             } else {
-              logger.warn(`[Injection] Application différente: ${currentWindow?.app_name} vs ${lockedPosition.windowInfo.app_name}`);
+              // ❌ CAS 3: Fallback position absolue
+              logger.warn(`[Injection] ❌ Aucune fenêtre correspondante, utilisation position absolue: (${targetX}, ${targetY})`);
+              logger.debug(`[Injection] locked.app=${lockedPosition.windowInfo.app_name}, current.app=${currentWindow?.app_name}, lastExt.app=${lastExternalWindow?.app_name}`);
             }
+            
+            // 📊 LOGS MULTI-ÉCRANS DÉTAILLÉS
+            logger.debug('[Injection] État multi-écrans:', {
+              isLocked: true,
+              lockedApp: lockedPosition.windowInfo.app_name,
+              currentApp: currentWindow?.app_name,
+              lastExternalApp: lastExternalWindow?.app_name,
+              targetCoords: `(${targetX}, ${targetY})`,
+              hasNegativeCoords: targetX < 0 || targetY < 0,
+              externalPositionAge: externalPositions[0] ? Date.now() - externalPositions[0].timestamp : 'N/A'
+            });
           }
           
           logger.debug(`[Injection] Position verrouillée: (${targetX}, ${targetY}) - Âge: ${age}ms`);
@@ -355,9 +385,18 @@ export const useInjection = () => {
       }
       
       // Calculer la position RELATIVE par rapport à la fenêtre
+      const relativeX = position.x - windowInfo.x;
+      const relativeY = position.y - windowInfo.y;
+      
+      // 🆕 Calculer les RATIOS (robuste pour redimensionnement et multi-écrans)
+      const ratioX = windowInfo.width > 0 ? relativeX / windowInfo.width : 0;
+      const ratioY = windowInfo.height > 0 ? relativeY / windowInfo.height : 0;
+      
       const relativePosition: RelativePosition = {
-        relative_x: position.x - windowInfo.x,
-        relative_y: position.y - windowInfo.y,
+        relative_x: relativeX,
+        relative_y: relativeY,
+        ratio_x: ratioX,
+        ratio_y: ratioY,
         timestamp: Date.now()
       };
       
@@ -375,9 +414,9 @@ export const useInjection = () => {
       // Sauvegarder dans localStorage
       saveLockedPositions(windowInfo.app_name, newLockedPosition);
       
-      logger.debug(`[Lock] ✅ Position verrouillée RELATIVE: (${relativePosition.relative_x}, ${relativePosition.relative_y}) dans ${windowInfo.app_name}`);
+      logger.debug(`[Lock] ✅ Position verrouillée RELATIVE: (${relativePosition.relative_x}, ${relativePosition.relative_y}) ratio(${relativePosition.ratio_x.toFixed(2)}, ${relativePosition.ratio_y.toFixed(2)}) dans ${windowInfo.app_name}`);
       logger.debug(`[Lock] Position absolue: (${position.x}, ${position.y})`);
-      logger.debug(`[Lock] Fenêtre: "${windowInfo.title}" à (${windowInfo.x}, ${windowInfo.y})`);
+      logger.debug(`[Lock] Fenêtre: "${windowInfo.title}" à (${windowInfo.x}, ${windowInfo.y}) ${windowInfo.width}x${windowInfo.height}`);
       return true;
     } catch (error) {
       logger.error('[Lock] Erreur verrouillage position:', error);

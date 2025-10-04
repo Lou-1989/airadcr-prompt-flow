@@ -12,6 +12,9 @@ use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use active_win_pos_rs::get_active_window;
 
+#[cfg(target_os = "windows")]
+use winapi::um::winuser::{GetSystemMetrics, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN};
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CursorPosition {
     pub x: i32,
@@ -286,6 +289,12 @@ async fn get_active_window_info() -> Result<WindowInfo, String> {
     }
 }
 
+#[cfg(target_os = "windows")]
+use winapi::um::winuser::{SetCursorPos, SendInput, INPUT, INPUT_MOUSE, INPUT_KEYBOARD, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, KEYEVENTF_KEYUP};
+#[cfg(target_os = "windows")]
+use winapi::um::winuser::{VK_CONTROL, KEYEVENTF_SCANCODE};
+
+// 🆕 INJECTION WINDOWS ROBUSTE avec Win32 API pour multi-écrans
 #[tauri::command]
 async fn perform_injection_at_position_direct(text: String, x: i32, y: i32, state: State<'_, AppState>) -> Result<(), String> {
     let _clipboard_guard = match state.clipboard_lock.lock() {
@@ -296,13 +305,35 @@ async fn perform_injection_at_position_direct(text: String, x: i32, y: i32, stat
         }
     };
     
-    println!("🎯 Injection Ctrl+V à position ({}, {}) - {} caractères", x, y, text.len());
+    println!("🎯 [Multi-écrans] Injection à ({}, {}) - {} caractères", x, y, text.len());
+    if x < 0 || y < 0 {
+        println!("⚠️  [Multi-écrans] Coordonnées négatives détectées (écran secondaire gauche/haut)");
+    }
     
     thread::sleep(Duration::from_millis(10));
     
+    // 🆕 WINDOWS: Utiliser SetCursorPos (Win32) pour multi-écrans robuste
+    #[cfg(target_os = "windows")]
+    {
+        unsafe {
+            if SetCursorPos(x, y) == 0 {
+                return Err("Échec SetCursorPos (Win32)".to_string());
+            }
+        }
+        println!("✅ [Win32] SetCursorPos({}, {}) réussi", x, y);
+    }
+    
+    // FALLBACK: Autres OS utilisent Enigo
+    #[cfg(not(target_os = "windows"))]
+    {
+        let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
+        enigo.move_mouse(x, y, Coordinate::Abs).map_err(|e| e.to_string())?;
+    }
+    
+    thread::sleep(Duration::from_millis(10));
+    
+    // Clic gauche (Enigo pour compatibilité)
     let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
-    enigo.move_mouse(x, y, Coordinate::Abs).map_err(|e| e.to_string())?;
-    thread::sleep(Duration::from_millis(10));
     enigo.button(Button::Left, Direction::Press).map_err(|e| e.to_string())?;
     enigo.button(Button::Left, Direction::Release).map_err(|e| e.to_string())?;
     thread::sleep(Duration::from_millis(30));
@@ -339,6 +370,37 @@ fn get_key_code(key_name: &str) -> u32 {
         "F11" => 122,
         "F12" => 123,
         _ => 0,
+    }
+}
+
+// 🆕 Commande: Obtenir les infos du bureau virtuel Windows (multi-écrans)
+#[derive(Serialize)]
+pub struct VirtualDesktopInfo {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+}
+
+#[tauri::command]
+async fn get_virtual_desktop_info() -> Result<VirtualDesktopInfo, String> {
+    #[cfg(target_os = "windows")]
+    {
+        unsafe {
+            let x = GetSystemMetrics(SM_XVIRTUALSCREEN);
+            let y = GetSystemMetrics(SM_YVIRTUALSCREEN);
+            let width = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+            let height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+            
+            println!("🖥️  [Multi-écrans] Bureau virtuel: ({}, {}) {}x{}", x, y, width, height);
+            
+            Ok(VirtualDesktopInfo { x, y, width, height })
+        }
+    }
+    
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("get_virtual_desktop_info: Supporté uniquement sur Windows".to_string())
     }
 }
 
@@ -477,7 +539,8 @@ fn main() {
             set_ignore_cursor_events,
             perform_injection_at_position_direct,
             get_active_window_info,
-            simulate_key_in_iframe
+            simulate_key_in_iframe,
+            get_virtual_desktop_info
         ])
         .setup(|app| {
             // 🎤 Enregistrement des raccourcis globaux SpeechMike

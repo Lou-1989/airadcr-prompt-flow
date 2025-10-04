@@ -306,8 +306,37 @@ async fn perform_injection_at_position_direct(text: String, x: i32, y: i32, stat
     };
     
     println!("🎯 [Multi-écrans] Injection à ({}, {}) - {} caractères", x, y, text.len());
-    if x < 0 || y < 0 {
+    
+    // 🆕 CLAMPER les coordonnées dans les bornes du bureau virtuel
+    #[cfg(target_os = "windows")]
+    let (clamped_x, clamped_y) = unsafe {
+        let vd_x = GetSystemMetrics(SM_XVIRTUALSCREEN);
+        let vd_y = GetSystemMetrics(SM_YVIRTUALSCREEN);
+        let vd_width = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+        let vd_height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+        
+        let cx = x.max(vd_x).min(vd_x + vd_width - 1);
+        let cy = y.max(vd_y).min(vd_y + vd_height - 1);
+        
+        if cx != x || cy != y {
+            println!("⚠️  [Multi-écrans] Coordonnées clampées: ({}, {}) → ({}, {}) [Bureau: ({}, {}) {}x{}]", 
+                x, y, cx, cy, vd_x, vd_y, vd_width, vd_height);
+        }
+        
+        (cx, cy)
+    };
+    
+    #[cfg(not(target_os = "windows"))]
+    let (clamped_x, clamped_y) = (x, y);
+    
+    if clamped_x < 0 || clamped_y < 0 {
         println!("⚠️  [Multi-écrans] Coordonnées négatives détectées (écran secondaire gauche/haut)");
+    }
+    
+    // 🆕 LOG: Fenêtre active AVANT clic
+    match get_active_window() {
+        Ok(win) => println!("📊 [Avant clic] Fenêtre active: {} ({})", win.app_name, win.title),
+        Err(_) => println!("⚠️  [Avant clic] Impossible de récupérer la fenêtre active")
     }
     
     thread::sleep(Duration::from_millis(10));
@@ -316,18 +345,18 @@ async fn perform_injection_at_position_direct(text: String, x: i32, y: i32, stat
     #[cfg(target_os = "windows")]
     {
         unsafe {
-            if SetCursorPos(x, y) == 0 {
+            if SetCursorPos(clamped_x, clamped_y) == 0 {
                 return Err("Échec SetCursorPos (Win32)".to_string());
             }
         }
-        println!("✅ [Win32] SetCursorPos({}, {}) réussi", x, y);
+        println!("✅ [Win32] SetCursorPos({}, {}) réussi", clamped_x, clamped_y);
     }
     
     // FALLBACK: Autres OS utilisent Enigo
     #[cfg(not(target_os = "windows"))]
     {
         let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
-        enigo.move_mouse(x, y, Coordinate::Abs).map_err(|e| e.to_string())?;
+        enigo.move_mouse(clamped_x, clamped_y, Coordinate::Abs).map_err(|e| e.to_string())?;
     }
     
     thread::sleep(Duration::from_millis(10));
@@ -336,7 +365,46 @@ async fn perform_injection_at_position_direct(text: String, x: i32, y: i32, stat
     let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
     enigo.button(Button::Left, Direction::Press).map_err(|e| e.to_string())?;
     enigo.button(Button::Left, Direction::Release).map_err(|e| e.to_string())?;
-    thread::sleep(Duration::from_millis(30));
+    
+    // 🆕 AUGMENTER le délai post-clic: 30ms → 150ms pour stabiliser le focus multi-écrans
+    thread::sleep(Duration::from_millis(150));
+    
+    // 🆕 WINDOWS: Vérifier que le focus a changé (attente max 300ms)
+    #[cfg(target_os = "windows")]
+    {
+        let max_wait_ms = 300;
+        let check_interval_ms = 50;
+        let mut waited_ms = 0;
+        
+        loop {
+            match get_active_window() {
+                Ok(win) => {
+                    let app_name_lower = win.app_name.to_lowercase();
+                    if !app_name_lower.contains("airadcr") && !app_name_lower.contains("tauri") {
+                        println!("✅ [Après clic] Focus changé vers: {} ({}) après {}ms", win.app_name, win.title, waited_ms);
+                        break;
+                    } else if waited_ms >= max_wait_ms {
+                        println!("⚠️  [Après clic] Timeout: AIRADCR toujours actif après {}ms", max_wait_ms);
+                        break;
+                    } else {
+                        println!("⏳ [Après clic] AIRADCR toujours actif, attente... ({}ms)", waited_ms);
+                        thread::sleep(Duration::from_millis(check_interval_ms));
+                        waited_ms += check_interval_ms;
+                    }
+                },
+                Err(_) => {
+                    println!("⚠️  [Après clic] Impossible de vérifier la fenêtre active");
+                    break;
+                }
+            }
+        }
+    }
+    
+    // 🆕 LOG: Fenêtre active AVANT Ctrl+V
+    match get_active_window() {
+        Ok(win) => println!("📊 [Avant Ctrl+V] Fenêtre active: {} ({})", win.app_name, win.title),
+        Err(_) => println!("⚠️  [Avant Ctrl+V] Impossible de récupérer la fenêtre active")
+    }
     
     // ✅ SAUVEGARDE du clipboard original
     let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;

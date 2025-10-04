@@ -197,6 +197,15 @@ export const useInjection = () => {
         await invoke('set_ignore_cursor_events', { ignore: true });
         logger.debug('[Injection] Click-through MAINTENU (injection externe)');
         
+        // 🆕 Récupérer les infos du bureau virtuel pour clamper les coordonnées (pour tous les cas)
+        let virtualDesktop: { x: number; y: number; width: number; height: number } | null = null;
+        try {
+          virtualDesktop = await invoke('get_virtual_desktop_info');
+          logger.debug('[Injection] Bureau virtuel:', virtualDesktop);
+        } catch (error) {
+          logger.warn('[Injection] get_virtual_desktop_info non supporté (non-Windows):', error);
+        }
+        
         // PRIORITÉ 1: Position verrouillée avec conversion relative → absolue
         if (isLocked && lockedPosition) {
           const age = Date.now() - lockedPosition.timestamp;
@@ -249,7 +258,24 @@ export const useInjection = () => {
             });
           }
           
-          logger.debug(`[Injection] Position verrouillée: (${targetX}, ${targetY}) - Âge: ${age}ms`);
+          // 🆕 Clamper les coordonnées dans les bornes du bureau virtuel
+          if (virtualDesktop) {
+            const vdMaxX = virtualDesktop.x + virtualDesktop.width - 1;
+            const vdMaxY = virtualDesktop.y + virtualDesktop.height - 1;
+            const originalX = targetX;
+            const originalY = targetY;
+            
+            targetX = Math.max(virtualDesktop.x, Math.min(targetX, vdMaxX));
+            targetY = Math.max(virtualDesktop.y, Math.min(targetY, vdMaxY));
+            
+            if (targetX !== originalX || targetY !== originalY) {
+              logger.warn(`[Injection] Coordonnées clampées: (${originalX}, ${originalY}) → (${targetX}, ${targetY})`);
+            }
+            
+            logger.debug(`[Injection] Coordonnées finales (verrouillée): (${targetX}, ${targetY}) dans bureau [${virtualDesktop.x}, ${virtualDesktop.y}, ${vdMaxX}, ${vdMaxY}]`);
+          } else {
+            logger.debug(`[Injection] Position verrouillée: (${targetX}, ${targetY}) - Âge: ${age}ms`);
+          }
           
           await invoke('perform_injection_at_position_direct', {
             text,
@@ -271,10 +297,30 @@ export const useInjection = () => {
           logger.debug(`[Injection] Position externe: (${lastExternalPosition.x}, ${lastExternalPosition.y}) - Âge: ${age}ms`);
           
           if (isPositionRecent) {
+            // 🆕 Clamper les coordonnées pour position externe aussi
+            let extX = lastExternalPosition.x;
+            let extY = lastExternalPosition.y;
+            
+            if (virtualDesktop) {
+              const vdMaxX = virtualDesktop.x + virtualDesktop.width - 1;
+              const vdMaxY = virtualDesktop.y + virtualDesktop.height - 1;
+              const originalExtX = extX;
+              const originalExtY = extY;
+              
+              extX = Math.max(virtualDesktop.x, Math.min(extX, vdMaxX));
+              extY = Math.max(virtualDesktop.y, Math.min(extY, vdMaxY));
+              
+              if (extX !== originalExtX || extY !== originalExtY) {
+                logger.warn(`[Injection] Coordonnées externes clampées: (${originalExtX}, ${originalExtY}) → (${extX}, ${extY})`);
+              }
+              
+              logger.debug(`[Injection] Coordonnées finales (externe): (${extX}, ${extY}) dans bureau [${virtualDesktop.x}, ${virtualDesktop.y}, ${vdMaxX}, ${vdMaxY}]`);
+            }
+            
             await invoke('perform_injection_at_position_direct', {
               text,
-              x: lastExternalPosition.x,
-              y: lastExternalPosition.y
+              x: extX,
+              y: extY
             });
             
             logger.debug(`✅ INJECTION RÉUSSIE (${injectionType || 'default'}) externe à (${lastExternalPosition.x}, ${lastExternalPosition.y})`);

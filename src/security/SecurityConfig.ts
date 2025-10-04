@@ -22,9 +22,9 @@ export const SECURITY_CONFIG = {
   // Configuration iframe sécurisée
   IFRAME_SECURITY: {
     // Permissions strictement nécessaires
-    allow: 'clipboard-read; clipboard-write; fullscreen',
+    allow: 'clipboard-read; clipboard-write; fullscreen; microphone; camera; autoplay',
     // Sandbox avec permissions minimales incluant clipboard
-    sandbox: 'allow-same-origin allow-scripts allow-forms allow-navigation allow-popups allow-clipboard-read allow-clipboard-write',
+    sandbox: 'allow-same-origin allow-scripts allow-forms allow-navigation allow-popups allow-clipboard-read allow-clipboard-write allow-modals',
     // Politique de référent pour protéger les données
     referrerPolicy: 'strict-origin-when-cross-origin' as const,
   },

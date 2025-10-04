@@ -233,41 +233,74 @@ export const useInjection = () => {
             // PRIORITÉ 1: Utiliser lastExternalWindow si correspond
             if (lastExternalWindow?.app_name === lockedPosition.windowInfo.app_name) {
               windowToUse = lastExternalWindow;
-              logger.debug('[Injection] 🎯 Utilisation lastExternalWindow:', lastExternalWindow.app_name);
-            } 
-            // PRIORITÉ 2: Forcer capture fraîche si pas de match
-            else {
-              logger.warn('[Injection] lastExternalWindow ne correspond pas, capture fraîche...');
-              await captureExternalPosition();
-              
-              // Re-vérifier après capture
-              if (lastExternalWindow?.app_name === lockedPosition.windowInfo.app_name) {
-                windowToUse = lastExternalWindow;
-                logger.debug('[Injection] ✅ Capture fraîche: windowToUse =', lastExternalWindow.app_name);
-              } else {
-                const currentWindow = await getActiveWindowInfo();
-                if (currentWindow?.app_name === lockedPosition.windowInfo.app_name) {
-                  windowToUse = currentWindow;
-                  logger.debug('[Injection] ✅ Fallback currentWindow:', currentWindow.app_name);
-                }
+              logger.debug(`[Injection] 🎯 Utilisation lastExternalWindow: ${windowToUse.app_name}`);
+            }
+            
+            // PRIORITÉ 2: Utiliser windowInfo de la position verrouillée
+            if (!windowToUse) {
+              windowToUse = lockedPosition.windowInfo;
+              logger.debug(`[Injection] ⚠️ Fallback windowInfo verrouillé: ${windowToUse.app_name}`);
+            }
+            
+            // 🆕 MODE CLIENT RECT: Recalculer depuis le client rect actuel
+            let injectionSuccess = false;
+            const lockedAny = lockedPosition as any;
+            
+            if (lockedAny.relativeTo === 'client' && lockedAny.clientRectInfo) {
+              try {
+                // 1️⃣ Obtenir le CLIENT RECT actuel de la fenêtre cible
+                const probeX = windowToUse.x + Math.floor(windowToUse.width / 2);
+                const probeY = windowToUse.y + Math.floor(windowToUse.height / 2);
+                
+                logger.debug(`[Injection] 🔍 Probe ClientRect au centre: (${probeX}, ${probeY})`);
+                
+                const currentClientRect: any = await invoke('get_window_client_rect_at_point', {
+                  x: probeX,
+                  y: probeY
+                });
+                
+                // 2️⃣ Recalculer la position absolue depuis les ratios CLIENT
+                targetX = Math.round(
+                  currentClientRect.client_left + 
+                  (lockedPosition.relativePosition.ratio_x * currentClientRect.client_width)
+                );
+                targetY = Math.round(
+                  currentClientRect.client_top + 
+                  (lockedPosition.relativePosition.ratio_y * currentClientRect.client_height)
+                );
+                
+                logger.debug(`[Injection] 🎯 CLIENT RECT MODE:`);
+                logger.debug(`[Injection]    Client zone: (${currentClientRect.client_left}, ${currentClientRect.client_top}) ${currentClientRect.client_width}x${currentClientRect.client_height}`);
+                logger.debug(`[Injection]    Ratios: (${lockedPosition.relativePosition.ratio_x.toFixed(3)}, ${lockedPosition.relativePosition.ratio_y.toFixed(3)})`);
+                logger.debug(`[Injection]    → Position calculée: (${targetX}, ${targetY})`);
+                
+                injectionSuccess = true;
+              } catch (error) {
+                logger.warn('[Injection] ⚠️ Échec ClientRect, fallback sur window ratios:', error);
               }
             }
             
-            if (windowToUse) {
-              // ✅ CONVERSION PHYSIQUE (DPI-safe après activation Per-Monitor V2)
+            // FALLBACK: Mode WINDOW RECT (ancien comportement)
+            if (!injectionSuccess) {
               const usedWidth = windowToUse.width > 0 ? windowToUse.width : lockedPosition.windowInfo.width;
               const usedHeight = windowToUse.height > 0 ? windowToUse.height : lockedPosition.windowInfo.height;
               
               targetX = windowToUse.x + Math.round(lockedPosition.relativePosition.ratio_x * usedWidth);
               targetY = windowToUse.y + Math.round(lockedPosition.relativePosition.ratio_y * usedHeight);
               
-              logger.debug(`[Injection] ✅ Ratio DPI-safe: (${targetX}, ${targetY}) depuis ${windowToUse.app_name}`);
-              logger.debug(`[Injection] Fenêtre: (${windowToUse.x}, ${windowToUse.y}) ${windowToUse.width}x${windowToUse.height}`);
-            } else {
-              // Fallback position absolue
-              logger.warn(`[Injection] ❌ Fallback position absolue: (${targetX}, ${targetY})`);
-              logger.debug(`[Injection] locked.app=${lockedPosition.windowInfo.app_name}, lastExt.app=${lastExternalWindow?.app_name}`);
+              logger.debug(`[Injection] 📍 WINDOW RECT MODE (fallback):`);
+              logger.debug(`[Injection]    Fenêtre: (${windowToUse.x}, ${windowToUse.y}) ${usedWidth}x${usedHeight}`);
+              logger.debug(`[Injection]    → Position calculée: (${targetX}, ${targetY})`);
             }
+          } else {
+            // Fallback position absolue
+            logger.warn(`[Injection] Position verrouillée incomplète, utilisation position actuelle`);
+            const pos = await getCursorPosition();
+            if (!pos) {
+              throw new Error('Impossible d\'obtenir la position du curseur');
+            }
+            targetX = pos.x;
+            targetY = pos.y;
           }
           
           // 🆕 Clamper les coordonnées dans les bornes du bureau virtuel
@@ -444,17 +477,45 @@ export const useInjection = () => {
         return false;
       }
       
-      // Calculer la position RELATIVE par rapport à la fenêtre
-      const relativeX = position.x - windowInfo.x;
-      const relativeY = position.y - windowInfo.y;
+      // 🆕 OBTENIR LE CLIENT RECT (zone cliquable sans bordures/titre)
+      let clientRectInfo: any = null;
+      try {
+        clientRectInfo = await invoke('get_window_client_rect_at_point', { 
+          x: position.x, 
+          y: position.y 
+        });
+        logger.debug(`[Lock] ClientRect obtenu: client (${clientRectInfo.client_left}, ${clientRectInfo.client_top}) ${clientRectInfo.client_width}x${clientRectInfo.client_height}`);
+      } catch (error) {
+        logger.warn('[Lock] ⚠️ Impossible d\'obtenir ClientRect, fallback sur WindowRect:', error);
+      }
       
-      // 🆕 Calculer les RATIOS (robuste pour redimensionnement et multi-écrans)
-      const ratioX = windowInfo.width > 0 ? relativeX / windowInfo.width : 0;
-      const ratioY = windowInfo.height > 0 ? relativeY / windowInfo.height : 0;
+      // 🆕 Calculer les RATIOS par rapport au CLIENT RECT (zone cliquable)
+      let ratioX: number;
+      let ratioY: number;
+      let relativeTo = 'window'; // 'client' ou 'window'
+      
+      if (clientRectInfo) {
+        // PRIORITÉ 1: Ratios par rapport au CLIENT RECT (précis multi-écrans + DPI)
+        const relativeX = position.x - clientRectInfo.client_left;
+        const relativeY = position.y - clientRectInfo.client_top;
+        ratioX = clientRectInfo.client_width > 0 ? relativeX / clientRectInfo.client_width : 0;
+        ratioY = clientRectInfo.client_height > 0 ? relativeY / clientRectInfo.client_height : 0;
+        relativeTo = 'client';
+        
+        logger.debug(`[Lock] 🎯 Ratios CLIENT: (${ratioX.toFixed(3)}, ${ratioY.toFixed(3)}) depuis position (${relativeX}, ${relativeY})`);
+      } else {
+        // FALLBACK: Ratios par rapport au WINDOW RECT (moins précis mais fonctionne)
+        const relativeX = position.x - windowInfo.x;
+        const relativeY = position.y - windowInfo.y;
+        ratioX = windowInfo.width > 0 ? relativeX / windowInfo.width : 0;
+        ratioY = windowInfo.height > 0 ? relativeY / windowInfo.height : 0;
+        
+        logger.debug(`[Lock] ⚠️ Ratios WINDOW (fallback): (${ratioX.toFixed(3)}, ${ratioY.toFixed(3)})`);
+      }
       
       const relativePosition: RelativePosition = {
-        relative_x: relativeX,
-        relative_y: relativeY,
+        relative_x: position.x - windowInfo.x, // Garder pour rétrocompatibilité
+        relative_y: position.y - windowInfo.y,
         ratio_x: ratioX,
         ratio_y: ratioY,
         timestamp: Date.now()
@@ -465,8 +526,10 @@ export const useInjection = () => {
         timestamp: Date.now(),
         application: windowInfo.app_name,
         windowInfo,
-        relativePosition
-      };
+        relativePosition,
+        clientRectInfo, // 🆕 Stocker les infos client rect
+        relativeTo // 🆕 'client' ou 'window'
+      } as any;
       
       setLockedPosition(newLockedPosition);
       setIsLocked(true);
@@ -474,9 +537,9 @@ export const useInjection = () => {
       // Sauvegarder dans localStorage
       saveLockedPositions(windowInfo.app_name, newLockedPosition);
       
-      logger.debug(`[Lock] ✅ Position verrouillée RELATIVE: (${relativePosition.relative_x}, ${relativePosition.relative_y}) ratio(${relativePosition.ratio_x.toFixed(2)}, ${relativePosition.ratio_y.toFixed(2)}) dans ${windowInfo.app_name}`);
+      logger.debug(`[Lock] ✅ Position verrouillée (relativeTo: ${relativeTo})`);
+      logger.debug(`[Lock] Ratios: (${ratioX.toFixed(3)}, ${ratioY.toFixed(3)}) dans ${windowInfo.app_name}`);
       logger.debug(`[Lock] Position absolue: (${position.x}, ${position.y})`);
-      logger.debug(`[Lock] Fenêtre: "${windowInfo.title}" à (${windowInfo.x}, ${windowInfo.y}) ${windowInfo.width}x${windowInfo.height}`);
       return true;
     } catch (error) {
       logger.error('[Lock] Erreur verrouillage position:', error);

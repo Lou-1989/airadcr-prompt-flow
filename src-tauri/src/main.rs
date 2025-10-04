@@ -559,6 +559,98 @@ async fn get_physical_window_rect() -> Result<PhysicalRect, String> {
     }
 }
 
+// 🆕 Commande: Obtenir les dimensions CLIENT RECT d'une fenêtre à une position (multi-écrans + DPI-safe)
+#[cfg(target_os = "windows")]
+use winapi::um::winuser::{GetClientRect, ClientToScreen};
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ClientRectInfo {
+    pub app_name: String,
+    pub title: String,
+    pub window_left: i32,
+    pub window_top: i32,
+    pub window_width: i32,
+    pub window_height: i32,
+    pub client_left: i32,
+    pub client_top: i32,
+    pub client_width: i32,
+    pub client_height: i32,
+}
+
+#[tauri::command]
+async fn get_window_client_rect_at_point(x: i32, y: i32) -> Result<ClientRectInfo, String> {
+    #[cfg(target_os = "windows")]
+    {
+        unsafe {
+            // 1️⃣ Trouver la fenêtre sous le point
+            let point = POINT { x, y };
+            let hwnd = WindowFromPoint(point);
+            
+            if hwnd.is_null() {
+                return Err("Aucune fenêtre trouvée à cette position".to_string());
+            }
+            
+            // 2️⃣ Obtenir la fenêtre racine
+            let root_hwnd = GetAncestor(hwnd, GA_ROOT);
+            if root_hwnd.is_null() {
+                return Err("Impossible d'obtenir la fenêtre racine".to_string());
+            }
+            
+            // 3️⃣ GetWindowRect (dimensions externes avec bordures/titre)
+            let mut window_rect: RECT = std::mem::zeroed();
+            if GetWindowRect(root_hwnd, &mut window_rect) == 0 {
+                return Err("GetWindowRect a échoué".to_string());
+            }
+            
+            // 4️⃣ GetClientRect (dimensions internes SANS bordures/titre)
+            let mut client_rect: RECT = std::mem::zeroed();
+            if GetClientRect(root_hwnd, &mut client_rect) == 0 {
+                return Err("GetClientRect a échoué".to_string());
+            }
+            
+            // 5️⃣ Convertir le coin client (0,0) en coordonnées écran
+            let mut client_origin = POINT { x: 0, y: 0 };
+            if ClientToScreen(root_hwnd, &mut client_origin) == 0 {
+                return Err("ClientToScreen a échoué".to_string());
+            }
+            
+            // 6️⃣ Récupérer les infos de la fenêtre via active-win-pos-rs
+            let (app_name, title) = match get_active_window() {
+                Ok(win) => (win.app_name, win.title),
+                Err(_) => ("Unknown".to_string(), "Unknown".to_string())
+            };
+            
+            let window_width = window_rect.right - window_rect.left;
+            let window_height = window_rect.bottom - window_rect.top;
+            let client_width = client_rect.right - client_rect.left;
+            let client_height = client_rect.bottom - client_rect.top;
+            
+            println!("📐 [ClientRect] Fenêtre: {} ({}, {}) {}x{}", 
+                app_name, window_rect.left, window_rect.top, window_width, window_height);
+            println!("📐 [ClientRect] Zone client: ({}, {}) {}x{}", 
+                client_origin.x, client_origin.y, client_width, client_height);
+            
+            Ok(ClientRectInfo {
+                app_name,
+                title,
+                window_left: window_rect.left,
+                window_top: window_rect.top,
+                window_width,
+                window_height,
+                client_left: client_origin.x,
+                client_top: client_origin.y,
+                client_width,
+                client_height,
+            })
+        }
+    }
+    
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("get_window_client_rect_at_point supporté uniquement sur Windows".to_string())
+    }
+}
+
 // 🎤 Commande: Simuler une touche dans l'iframe airadcr.com
 #[tauri::command]
 async fn simulate_key_in_iframe(window: tauri::Window, key: String) -> Result<(), String> {
@@ -699,7 +791,8 @@ fn main() {
             get_active_window_info,
             simulate_key_in_iframe,
             get_virtual_desktop_info,
-            get_physical_window_rect
+            get_physical_window_rect,
+            get_window_client_rect_at_point
         ])
         .setup(|app| {
             // 🎤 Enregistrement des raccourcis globaux SpeechMike

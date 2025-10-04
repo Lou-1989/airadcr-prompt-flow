@@ -99,16 +99,21 @@ export const useTauriWindow = () => {
     
     const handleInjectionEnd = async () => {
       setIsInjectionInProgress(false);
-      lastInjectionEndRef.current = Date.now(); // 🔒 Timestamp pour grace period
+      lastInjectionEndRef.current = Date.now();
       
       try {
-        // ⏳ Attendre stabilisation de l'injection (300ms)
-        await new Promise(resolve => setTimeout(resolve, 300));
+        // ⏳ Attendre stabilisation LONGUE pour multi-écrans (1 seconde)
+        await new Promise(resolve => setTimeout(resolve, 1000));
         
-        // 🎯 RÉACTIVER always-on-top après injection
-        await invoke('set_always_on_top', { always_on_top: true });
-        setIsAlwaysOnTop(true);
-        logger.debug('▶️ Always-on-top RÉACTIVÉ (injection terminée)');
+        // 🆕 VÉRIFIER que AIRADCR a le focus AVANT de réactiver always-on-top
+        const hasFocus = await invoke('check_app_focus');
+        if (hasFocus) {
+          await invoke('set_always_on_top', { always_on_top: true });
+          setIsAlwaysOnTop(true);
+          logger.debug('▶️ Always-on-top RÉACTIVÉ (AIRADCR a le focus)');
+        } else {
+          logger.debug('⏸️ Always-on-top NON réactivé (application cible active)');
+        }
       } catch (error) {
         logger.error('Erreur réactivation always-on-top:', error);
       }
@@ -135,10 +140,10 @@ export const useTauriWindow = () => {
         return;
       }
       
-      // 🔒 Grace period de 2 secondes après injection pour éviter race condition
+      // 🔒 Grace period de 3 secondes après injection pour éviter race condition multi-écrans
       const timeSinceLastInjection = Date.now() - lastInjectionEndRef.current;
-      if (timeSinceLastInjection < 2000) {
-        logger.debug('⏸️ Surveillance always-on-top suspendue (grace period post-injection)');
+      if (timeSinceLastInjection < 3000) { // 3 secondes pour multi-écrans
+        logger.debug(`⏳ Grace period active (${timeSinceLastInjection}ms depuis injection)`);
         return;
       }
       

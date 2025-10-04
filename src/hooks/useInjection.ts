@@ -162,6 +162,12 @@ export const useInjection = () => {
       return false;
     }
     
+    // 🆕 VIDER LA QUEUE si c'est une nouvelle injection (pas depuis la queue)
+    if (!injectionType?.includes('from-queue')) {
+      setInjectionQueue([]); // Reset complet
+      logger.debug('[Injection] Queue vidée (nouvelle injection)');
+    }
+    
     if (!text || text.trim().length === 0) {
       logger.warn('[Injection] Texte vide, injection annulée');
       return false;
@@ -216,6 +222,13 @@ export const useInjection = () => {
           
           if (lockedPosition.relativePosition && lockedPosition.windowInfo) {
             let windowToUse: WindowInfo | null = null;
+            
+            // 🆕 FORCER capture fraîche si lastExternalWindow obsolète (>5 secondes)
+            if (!lastExternalWindow || (Date.now() - (lastExternalWindow as any).timestamp > 5000)) {
+              logger.debug('[Injection] lastExternalWindow obsolète, capture fraîche...');
+              await captureExternalPosition();
+              await new Promise(resolve => setTimeout(resolve, 100)); // Laisser temps à la capture
+            }
             
             // PRIORITÉ 1: Utiliser lastExternalWindow si correspond
             if (lastExternalWindow?.app_name === lockedPosition.windowInfo.app_name) {
@@ -370,12 +383,14 @@ export const useInjection = () => {
         
         // ⚠️ NE PLUS RÉACTIVER LE CLICK-THROUGH - L'UI reste cliquable définitivement
         
-        // Traiter la queue si des injections sont en attente
+        // Traiter la queue UNIQUEMENT si vide après succès
         if (injectionQueue.length > 0) {
           const nextText = injectionQueue[0];
           setInjectionQueue(prev => prev.slice(1));
-          logger.debug('[Injection] Traitement queue, reste:', injectionQueue.length - 1);
-          performInjection(nextText);
+          logger.debug('[Injection] Traitement queue (1 injection), reste:', injectionQueue.length - 1);
+          
+          // 🆕 Marquer comme "from-queue" pour éviter de vider la queue récursivement
+          setTimeout(() => performInjection(nextText, 'from-queue'), 100);
         }
       }, 500);
     }

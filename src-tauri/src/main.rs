@@ -418,7 +418,7 @@ async fn perform_injection_at_position_direct(text: String, x: i32, y: i32, stat
             match get_active_window() {
                 Ok(win) => {
                     let app_name_lower = win.app_name.to_lowercase();
-                    if !app_name_lower.contains("airadcr") && !app_name_lower.contains("tauri") {
+                    if !app_name_lower.contains("airadcr") {
                         println!("✅ [Après clic] Focus changé vers: {} ({}) après {}ms", win.app_name, win.title, waited_ms);
                         break;
                     } else if waited_ms >= max_wait_ms {

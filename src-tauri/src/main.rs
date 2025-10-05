@@ -493,46 +493,11 @@ async fn perform_injection_at_position_direct(x: i32, y: i32, text: String, stat
         enigo.move_mouse(clamped_x, clamped_y, Coordinate::Abs).map_err(|e| e.to_string())?;
     }
     
+    println!("🎯 [Injection] Position finale: ({}, {}) - SANS CLIC (préserve sélection)", clamped_x, clamped_y);
     thread::sleep(Duration::from_millis(10));
     
-    // Clic gauche (Enigo pour compatibilité)
+    // Créer enigo pour Ctrl+V
     let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
-    enigo.button(Button::Left, Direction::Press).map_err(|e| e.to_string())?;
-    enigo.button(Button::Left, Direction::Release).map_err(|e| e.to_string())?;
-    
-    // 🆕 AUGMENTER le délai post-clic: 30ms → 150ms pour stabiliser le focus multi-écrans
-    thread::sleep(Duration::from_millis(150));
-    
-    // 🆕 WINDOWS: Vérifier que le focus a changé (attente max 800ms pour multi-écrans)
-    #[cfg(target_os = "windows")]
-    {
-        let max_wait_ms = 800;
-        let check_interval_ms = 50;
-        let mut waited_ms = 0;
-        
-        loop {
-            match get_active_window() {
-                Ok(win) => {
-                    let app_name_lower = win.app_name.to_lowercase();
-                    if !app_name_lower.contains("airadcr") {
-                        println!("✅ [Après clic] Focus changé vers: {} ({}) après {}ms", win.app_name, win.title, waited_ms);
-                        break;
-                    } else if waited_ms >= max_wait_ms {
-                        println!("⚠️  [Après clic] Timeout: AIRADCR toujours actif après {}ms", max_wait_ms);
-                        break;
-                    } else {
-                        println!("⏳ [Après clic] AIRADCR toujours actif, attente... ({}ms)", waited_ms);
-                        thread::sleep(Duration::from_millis(check_interval_ms));
-                        waited_ms += check_interval_ms;
-                    }
-                },
-                Err(_) => {
-                    println!("⚠️  [Après clic] Impossible de vérifier la fenêtre active");
-                    break;
-                }
-            }
-        }
-    }
     
     // 🆕 LOG: Fenêtre active AVANT Ctrl+V
     match get_active_window() {
@@ -550,7 +515,7 @@ async fn perform_injection_at_position_direct(x: i32, y: i32, text: String, stat
     println!("📋 Texte copié dans clipboard : {} caractères", text.len());
     thread::sleep(Duration::from_millis(10));
     
-    println!("⌨️  Envoi Ctrl+V pour injection...");
+    println!("⌨️  Envoi Ctrl+V (va remplacer la sélection si présente, sinon coller)");
     enigo.key(Key::Control, Direction::Press).map_err(|e| e.to_string())?;
     enigo.key(Key::Unicode('v'), Direction::Click).map_err(|e| e.to_string())?;
     enigo.key(Key::Control, Direction::Release).map_err(|e| e.to_string())?;

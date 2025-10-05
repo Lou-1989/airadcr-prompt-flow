@@ -22,6 +22,10 @@ export const useSecureMessaging = () => {
   // 🔒 DEDUPLICATION: Éviter les doublons de requêtes
   const recentRequestsRef = useRef<Map<string, number>>(new Map());
   const REQUEST_DEDUP_WINDOW = 2000; // 2 secondes
+  
+  // 🆕 QUEUE FIFO: Sérialisation des injections
+  const injectionQueueRef = useRef<Array<{ id: string; text: string; type: string }>>([]);
+  const isProcessingRef = useRef<boolean>(false);
 
   // Envoi de message sécurisé vers l'iframe (déclaré AVANT handleSecureMessage)
   const sendSecureMessage = useCallback((type: string, payload?: any) => {
@@ -49,6 +53,43 @@ export const useSecureMessaging = () => {
       return false;
     }
   }, []); // Pas de dépendances car utilise seulement des APIs natives
+  
+  // 🆕 FONCTION: Traitement séquentiel de la queue FIFO
+  const processNextInjection = useCallback(() => {
+    if (isProcessingRef.current || injectionQueueRef.current.length === 0) {
+      return;
+    }
+    
+    isProcessingRef.current = true;
+    const item = injectionQueueRef.current.shift()!; // FIFO
+    
+    logger.debug(`[Queue] Traitement injection ${item.id} (reste: ${injectionQueueRef.current.length})`);
+    
+    performInjection(item.text, item.type)
+      .then(success => {
+        sendSecureMessage('airadcr:injection_status', {
+          id: item.id,
+          success,
+          reason: success ? 'SUCCESS' : 'UNKNOWN_ERROR',
+          timestamp: Date.now()
+        });
+      })
+      .catch(error => {
+        sendSecureMessage('airadcr:injection_status', {
+          id: item.id,
+          success: false,
+          reason: 'INJECTION_ERROR',
+          error: error.message,
+          timestamp: Date.now()
+        });
+      })
+      .finally(() => {
+        isProcessingRef.current = false;
+        logger.debug(`[Queue] Injection ${item.id} terminée, état: processing=${isProcessingRef.current}, queue=${injectionQueueRef.current.length}`);
+        // Traiter le suivant après 200ms
+        setTimeout(() => processNextInjection(), 200);
+      });
+  }, [performInjection, sendSecureMessage]);
   
   // Gestionnaire de messages sécurisé
   const handleSecureMessage = useCallback((event: MessageEvent) => {
@@ -139,34 +180,17 @@ export const useSecureMessaging = () => {
             length: payload.text.length
           });
           
-          performInjection(payload.text, injectionType).then(success => {
-            // 📊 STATUT FINAL: Envoyer le résultat de l'injection
-            const status = {
-              id: requestId,
-              success,
-              reason: success ? 'SUCCESS' : 'UNKNOWN_ERROR',
-              timestamp: Date.now()
-            };
-            
-            logger.debug(`[Sécurisé] Envoi statut final pour ${requestId}:`, status);
-            sendSecureMessage('airadcr:injection_status', status);
-            
-            if (success) {
-              logger.debug('[Sécurisé] Injection réalisée avec succès');
-            } else {
-              logger.error('[Sécurisé] Échec de l\'injection');
-            }
-          }).catch(error => {
-            // Envoyer statut d'erreur
-            logger.error('[Sécurisé] Erreur lors de l\'injection:', error);
-            sendSecureMessage('airadcr:injection_status', {
-              id: requestId,
-              success: false,
-              reason: 'INJECTION_ERROR',
-              error: error.message,
-              timestamp: Date.now()
-            });
+          // 🆕 EMPILER dans la queue FIFO au lieu d'appeler directement performInjection
+          injectionQueueRef.current.push({
+            id: requestId,
+            text: payload.text,
+            type: injectionType
           });
+          
+          logger.debug(`[Queue] Injection ${requestId} empilée (total: ${injectionQueueRef.current.length})`);
+          
+          // Démarrer le traitement si idle
+          processNextInjection();
         } else {
           logger.warn('[Sécurisé] Payload d\'injection invalide');
           sendSecureMessage('airadcr:injection_status', {
@@ -215,7 +239,7 @@ export const useSecureMessaging = () => {
       default:
         logger.warn('[Sécurisé] Type de message non géré:', type);
     }
-  }, [performInjection, lockCurrentPosition, unlockPosition, updateLockedPosition, sendSecureMessage]);
+  }, [performInjection, lockCurrentPosition, unlockPosition, updateLockedPosition, sendSecureMessage, processNextInjection]);
   
   // Configuration des écouteurs d'événements
   useEffect(() => {

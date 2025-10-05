@@ -156,17 +156,10 @@ export const useInjection = () => {
   
   // 🔒 FONCTION PRINCIPALE: Injection sécurisée avec click-through professionnel
   const performInjection = useCallback(async (text: string, injectionType?: string): Promise<boolean> => {
-    // 🔒 PROTECTION: Bloquer si injection en cours
+    // 🔒 PROTECTION: Bloquer si injection en cours (la queue est gérée par useSecureMessaging)
     if (isInjecting) {
-      logger.warn('[Injection] Injection en cours, ajout à la queue');
-      setInjectionQueue(prev => [...prev, text]);
-      return false;
-    }
-    
-    // 🆕 VIDER LA QUEUE si c'est une nouvelle injection (pas depuis la queue)
-    if (!injectionType?.includes('from-queue')) {
-      setInjectionQueue([]); // Reset complet
-      logger.debug('[Injection] Queue vidée (nouvelle injection)');
+      logger.warn('[Injection] Injection déjà en cours, retour immédiat');
+      return false; // La sérialisation est gérée dans useSecureMessaging
     }
     
     if (!text || text.trim().length === 0) {
@@ -448,16 +441,6 @@ export const useInjection = () => {
         window.dispatchEvent(new CustomEvent('airadcr-injection-end'));
         
         // ⚠️ NE PLUS RÉACTIVER LE CLICK-THROUGH - L'UI reste cliquable définitivement
-        
-        // Traiter la queue UNIQUEMENT si vide après succès
-        if (injectionQueue.length > 0) {
-          const nextText = injectionQueue[0];
-          setInjectionQueue(prev => prev.slice(1));
-          logger.debug('[Injection] Traitement queue (1 injection), reste:', injectionQueue.length - 1);
-          
-          // 🆕 Marquer comme "from-queue" pour éviter de vider la queue récursivement
-          setTimeout(() => performInjection(nextText, 'from-queue'), 100);
-        }
       }, 500);
     }
   }, [isInjecting, injectionQueue, externalPositions, isLocked, lockedPosition, stopMonitoring, startMonitoring]);

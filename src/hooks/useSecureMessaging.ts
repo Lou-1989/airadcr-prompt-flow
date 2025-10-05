@@ -2,6 +2,7 @@ import { useEffect, useCallback, useRef } from 'react';
 import { isValidMessage, SECURITY_CONFIG } from '@/security/SecurityConfig';
 import { useInjectionContext } from '@/contexts/InjectionContext';
 import { logger } from '@/utils/logger';
+import { invoke } from '@tauri-apps/api/tauri';
 
 type MessageHandler = (data: any) => void;
 
@@ -26,6 +27,26 @@ export const useSecureMessaging = () => {
   // 🆕 QUEUE FIFO: Sérialisation des injections
   const injectionQueueRef = useRef<Array<{ id: string; text: string; type: string }>>([]);
   const isProcessingRef = useRef<boolean>(false);
+
+  // 🎤 FONCTION: Notifier Tauri de l'état d'enregistrement
+  const notifyRecordingState = useCallback((state: 'started' | 'paused' | 'finished') => {
+    const messageType = `airadcr:recording_${state}`;
+    logger.debug(`[useSecureMessaging] 🎤 Notification Tauri: ${messageType}`);
+    
+    // Envoyer au parent window (Tauri)
+    window.parent.postMessage({
+      type: messageType,
+      payload: null
+    }, '*');
+    
+    // Appeler la commande Tauri pour synchroniser l'état
+    if (window.__TAURI__) {
+      invoke('handle_recording_notification', { messageType })
+        .catch(error => {
+          logger.error('[useSecureMessaging] Erreur notification Tauri:', error);
+        });
+    }
+  }, []);
 
   // Envoi de message sécurisé vers l'iframe (déclaré AVANT handleSecureMessage)
   const sendSecureMessage = useCallback((type: string, payload?: any) => {
@@ -106,6 +127,27 @@ export const useSecureMessaging = () => {
         logger.debug('[Sécurisé] AirADCR iframe prête');
         // Synchronisation initiale: demander le statut
         sendSecureMessage('airadcr:request_status');
+        break;
+      
+      // 🎤 COMMANDES SPEECHMIKE: Record/Pause/Finish  
+      case 'airadcr:speechmike_record':
+        logger.debug('🎤 [SpeechMike] Commande Record reçue depuis Tauri');
+        // Simuler le clic sur le bouton d'enregistrement AIRADCR
+        // TODO: Implémenter la logique de démarrage/reprise dictée
+        // Pour l'instant, juste logger
+        notifyRecordingState('started');
+        break;
+        
+      case 'airadcr:speechmike_pause':
+        logger.debug('⏸️ [SpeechMike] Commande Pause reçue depuis Tauri');
+        // TODO: Implémenter la logique de pause dictée
+        notifyRecordingState('paused');
+        break;
+        
+      case 'airadcr:speechmike_finish':
+        logger.debug('✅ [SpeechMike] Commande Finish reçue depuis Tauri');
+        // TODO: Implémenter la logique de finalisation dictée
+        notifyRecordingState('finished');
         break;
         
       case 'airadcr:inject':
@@ -239,7 +281,7 @@ export const useSecureMessaging = () => {
       default:
         logger.warn('[Sécurisé] Type de message non géré:', type);
     }
-  }, [performInjection, lockCurrentPosition, unlockPosition, updateLockedPosition, sendSecureMessage, processNextInjection]);
+  }, [performInjection, lockCurrentPosition, unlockPosition, updateLockedPosition, sendSecureMessage, processNextInjection, notifyRecordingState]);
   
   // Configuration des écouteurs d'événements
   useEffect(() => {
@@ -252,6 +294,7 @@ export const useSecureMessaging = () => {
   
   return {
     sendSecureMessage,
+    notifyRecordingState, // Exposer pour utilisation externe
     isLocked, // Exposer l'état de verrouillage pour l'interface
   };
 };

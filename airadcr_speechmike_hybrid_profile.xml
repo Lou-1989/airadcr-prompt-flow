@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ApplicationControlConfiguration Version="9.0" DragonMuteMode="MuteWindowsMic">
+  <ApplicationProfileList>
+    
+    <!-- ========================================
+         PROFIL PAR DÉFAUT: Dragon NaturallySpeaking
+         (VOS COMMANDES ACTUELLES - NON MODIFIÉES)
+         ======================================== -->
+    <ApplicationProfile TargetApplication="" Active="True" Comment="Dragon NaturallySpeaking - Profil par défaut">
+      <OperationList>
+        <Operation Event="spmPlayPressed" ModifierKey="None" Name="">
+          <Steps>
+            <OperationElement Type="DragonCommand" DragonCommand="PlayFromCursor" />
+          </Steps>
+        </Operation>
+        <Operation Event="spmRecordPressed" ModifierKey="None" Name="">
+          <Steps>
+            <OperationElement Type="DragonCommand" DragonCommand="MicrophoneToggle" />
+          </Steps>
+        </Operation>
+        <Operation Event="spmStopPressed" ModifierKey="None" Name="">
+          <Steps>
+            <OperationElement Type="DragonCommand" DragonCommand="MicrophoneOffStop" />
+          </Steps>
+        </Operation>
+        <Operation Event="spmFastRewindPressed" ModifierKey="None" Name="">
+          <Steps>
+            <OperationElement Type="DragonCommand" DragonCommand="MoveCursorBackward" />
+          </Steps>
+        </Operation>
+        <Operation Event="spmFastRewindReleased" ModifierKey="None" Name="">
+          <Steps>
+            <OperationElement Type="DragonCommand" DragonCommand="MicrophoneOffStop" />
+          </Steps>
+        </Operation>
+        <Operation Event="spmFastForwardPressed" ModifierKey="None" Name="">
+          <Steps>
+            <OperationElement Type="DragonCommand" DragonCommand="MoveCursorForward" />
+          </Steps>
+        </Operation>
+        <Operation Event="spmFastForwardReleased" ModifierKey="None" Name="">
+          <Steps>
+            <OperationElement Type="DragonCommand" DragonCommand="MicrophoneOffStop" />
+          </Steps>
+        </Operation>
+        <Operation Event="spmEOLPressed" ModifierKey="None" Name="">
+          <Steps>
+            <OperationElement Type="DragonCommand" DragonCommand="SelectWordBackward" />
+          </Steps>
+        </Operation>
+        <Operation Event="spmEOLReleased" ModifierKey="None" Name="">
+          <Steps>
+            <OperationElement Type="DragonCommand" DragonCommand="MicrophoneOffStop" />
+          </Steps>
+        </Operation>
+        <Operation Event="spmInsertPressed" ModifierKey="None" Name="">
+          <Steps>
+            <OperationElement Type="DragonCommand" DragonCommand="Correction" />
+          </Steps>
+        </Operation>
+        <Operation Event="spmInstructionPressed" ModifierKey="None" Name="">
+          <Steps>
+            <OperationElement Type="Hotkey">
+              <Hotkey Key="D2" Modifiers="Alt" />
+            </OperationElement>
+          </Steps>
+        </Operation>
+        <Operation Event="spmPlayStopTogglePressed" ModifierKey="None" Name="">
+          <Steps>
+            <OperationElement Type="DragonCommand" DragonCommand="PlayFromCursor" />
+          </Steps>
+        </Operation>
+        <Operation Event="spmPlayStopToggleReleased" ModifierKey="None" Name="">
+          <Steps>
+            <OperationElement Type="DragonCommand" DragonCommand="MicrophoneOffStop" />
+          </Steps>
+        </Operation>
+        <Operation Event="spmPlayReleased" ModifierKey="None" Name="">
+          <Steps />
+        </Operation>
+        <Operation Event="spmSmart1Released" ModifierKey="None" Name="">
+          <Steps>
+            <OperationElement Type="DragonCommand" DragonCommand="MicrophoneOffStop" />
+          </Steps>
+        </Operation>
+        <Operation Event="spmSmart2Released" ModifierKey="None" Name="">
+          <Steps>
+            <OperationElement Type="DragonCommand" DragonCommand="MicrophoneOffStop" />
+          </Steps>
+        </Operation>
+        <Operation Event="spmSmart1Pressed" ModifierKey="None" Name="">
+          <Steps>
+            <OperationElement Type="DragonCommand" DragonCommand="SelectWordBackward" />
+          </Steps>
+        </Operation>
+        <Operation Event="spmSmart2Pressed" ModifierKey="None" Name="">
+          <Steps>
+            <OperationElement Type="DragonCommand" DragonCommand="SelectWordForward" />
+          </Steps>
+        </Operation>
+        <Operation Event="spmProgrammable1Pressed" ModifierKey="None" Name="">
+          <Steps>
+            <OperationElement Type="Hotkey">
+              <Hotkey Key="D2" Modifiers="Alt" />
+            </OperationElement>
+          </Steps>
+        </Operation>
+      </OperationList>
+    </ApplicationProfile>
+    
+    <!-- ========================================
+         PROFIL SPÉCIFIQUE: AIRADCR Desktop
+         Bascule automatiquement quand AIRADCR est actif
+         ======================================== -->
+    <ApplicationProfile TargetApplication="airadcr-desktop.exe" Active="True" Comment="AIRADCR Desktop - Dictée radiologique">
+      <OperationList>
+        <!-- 🔴 BOUTON ROUGE: Record/Pause/Finish contextuel via F10 -->
+        <Operation Event="spmRecordPressed" ModifierKey="None" Name="AIRADCR Record Toggle">
+          <Steps>
+            <OperationElement Type="Hotkey">
+              <Hotkey Key="F10" Modifiers="None" />
+            </OperationElement>
+          </Steps>
+          <Comment>
+            Bouton rouge contextuel:
+            - État Idle: Démarre l'enregistrement
+            - État Recording (1er appui): Met en pause
+            - État Recording (2ème appui): Termine et transcrit
+            - État Paused: Reprend l'enregistrement
+          </Comment>
+        </Operation>
+        
+        <!-- ▶️ BOUTON PLAY: Reprendre après pause (même action que Record en pause) -->
+        <Operation Event="spmPlayPressed" ModifierKey="None" Name="AIRADCR Continue">
+          <Steps>
+            <OperationElement Type="Hotkey">
+              <Hotkey Key="F10" Modifiers="None" />
+            </OperationElement>
+          </Steps>
+          <Comment>
+            Bouton Play: Reprend l'enregistrement après une pause (= F10)
+          </Comment>
+        </Operation>
+        
+        <!-- ⏹️ BOUTON STOP: Pause explicite (rarement utilisé) -->
+        <Operation Event="spmStopPressed" ModifierKey="None" Name="AIRADCR Pause">
+          <Steps>
+            <OperationElement Type="Hotkey">
+              <Hotkey Key="F11" Modifiers="None" />
+            </OperationElement>
+          </Steps>
+          <Comment>
+            Bouton Stop: Met explicitement en pause (rarement utilisé car le bouton rouge gère tout)
+          </Comment>
+        </Operation>
+        
+        <!-- Autres boutons: Désactivés pour AIRADCR -->
+        <Operation Event="spmFastRewindPressed" ModifierKey="None" Name="Disabled">
+          <Steps>
+            <OperationElement Type="NoAction" />
+          </Steps>
+        </Operation>
+        <Operation Event="spmFastForwardPressed" ModifierKey="None" Name="Disabled">
+          <Steps>
+            <OperationElement Type="NoAction" />
+          </Steps>
+        </Operation>
+        <Operation Event="spmEOLPressed" ModifierKey="None" Name="Disabled">
+          <Steps>
+            <OperationElement Type="NoAction" />
+          </Steps>
+        </Operation>
+        <Operation Event="spmInsertPressed" ModifierKey="None" Name="Disabled">
+          <Steps>
+            <OperationElement Type="NoAction" />
+          </Steps>
+        </Operation>
+        <Operation Event="spmInstructionPressed" ModifierKey="None" Name="Disabled">
+          <Steps>
+            <OperationElement Type="NoAction" />
+          </Steps>
+        </Operation>
+        <Operation Event="spmPlayStopTogglePressed" ModifierKey="None" Name="Disabled">
+          <Steps>
+            <OperationElement Type="NoAction" />
+          </Steps>
+        </Operation>
+        <Operation Event="spmSmart1Pressed" ModifierKey="None" Name="Disabled">
+          <Steps>
+            <OperationElement Type="NoAction" />
+          </Steps>
+        </Operation>
+        <Operation Event="spmSmart2Pressed" ModifierKey="None" Name="Disabled">
+          <Steps>
+            <OperationElement Type="NoAction" />
+          </Steps>
+        </Operation>
+        <Operation Event="spmProgrammable1Pressed" ModifierKey="None" Name="Disabled">
+          <Steps>
+            <OperationElement Type="NoAction" />
+          </Steps>
+        </Operation>
+        
+        <!-- Released events: NoAction -->
+        <Operation Event="spmFastRewindReleased" ModifierKey="None" Name=""><Steps /></Operation>
+        <Operation Event="spmFastForwardReleased" ModifierKey="None" Name=""><Steps /></Operation>
+        <Operation Event="spmEOLReleased" ModifierKey="None" Name=""><Steps /></Operation>
+        <Operation Event="spmPlayStopToggleReleased" ModifierKey="None" Name=""><Steps /></Operation>
+        <Operation Event="spmPlayReleased" ModifierKey="None" Name=""><Steps /></Operation>
+        <Operation Event="spmSmart1Released" ModifierKey="None" Name=""><Steps /></Operation>
+        <Operation Event="spmSmart2Released" ModifierKey="None" Name=""><Steps /></Operation>
+      </OperationList>
+    </ApplicationProfile>
+    
+  </ApplicationProfileList>
+</ApplicationControlConfiguration>

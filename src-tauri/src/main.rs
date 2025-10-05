@@ -41,10 +41,86 @@ pub struct CursorPosition {
     pub timestamp: u64,
 }
 
+// 🎤 Structure pour gérer l'état de la dictée SpeechMike
+pub struct DictationState {
+    status: String, // "idle", "recording", "paused"
+    record_press_count: i32,
+}
+
+impl DictationState {
+    pub fn new() -> Self {
+        Self {
+            status: String::from("idle"),
+            record_press_count: 0,
+        }
+    }
+
+    pub fn handle_record_button(&mut self, window: &tauri::Window) {
+        match self.status.as_str() {
+            "idle" => {
+                // Démarrer la dictée
+                println!("🎤 [DictationState] Idle → Recording");
+                self.send_command(window, "airadcr:speechmike_record");
+                self.record_press_count = 0;
+            }
+            "recording" => {
+                self.record_press_count += 1;
+                println!("🔴 [DictationState] Recording - Appui #{}", self.record_press_count);
+                
+                if self.record_press_count == 1 {
+                    // Premier appui : terminer directement (pas de pause)
+                    println!("✅ [DictationState] Recording → Finished (1er appui)");
+                    self.send_command(window, "airadcr:speechmike_finish");
+                    self.record_press_count = 0;
+                } else if self.record_press_count >= 2 {
+                    // Deuxième appui : terminer aussi (sécurité)
+                    println!("✅ [DictationState] Recording → Finished (2ème appui)");
+                    self.send_command(window, "airadcr:speechmike_finish");
+                    self.record_press_count = 0;
+                }
+            }
+            "paused" => {
+                // Reprendre l'enregistrement (reset du compteur)
+                println!("▶️ [DictationState] Paused → Recording (resume)");
+                self.send_command(window, "airadcr:speechmike_record");
+                self.record_press_count = 0;
+            }
+            _ => {
+                eprintln!("⚠️ [DictationState] État inconnu: {}", self.status);
+            }
+        }
+    }
+
+    fn send_command(&self, window: &tauri::Window, command: &str) {
+        let script = format!(
+            r#"
+            console.log('[Tauri→Web] Envoi commande SpeechMike: {}');
+            window.postMessage({{ type: '{}', payload: null }}, '*');
+            "#,
+            command, command
+        );
+        
+        if let Err(e) = window.eval(&script) {
+            eprintln!("❌ [DictationState] Erreur envoi {}: {:?}", command, e);
+        }
+    }
+
+    pub fn update_status(&mut self, new_status: String) {
+        println!("🔄 [DictationState] Changement d'état: {} → {}", self.status, new_status);
+        self.status = new_status;
+        
+        // Reset du compteur quand on quitte l'état "recording"
+        if self.status != "recording" {
+            self.record_press_count = 0;
+        }
+    }
+}
+
 pub struct AppState {
     is_focused: Arc<Mutex<bool>>,
     always_on_top: Arc<Mutex<bool>>,
     clipboard_lock: Arc<Mutex<()>>,
+    dictation_state: Arc<Mutex<DictationState>>,
 }
 
 impl Default for AppState {
@@ -53,6 +129,7 @@ impl Default for AppState {
             is_focused: Arc::new(Mutex::new(false)),
             always_on_top: Arc::new(Mutex::new(true)),
             clipboard_lock: Arc::new(Mutex::new(())),
+            dictation_state: Arc::new(Mutex::new(DictationState::new())),
         }
     }
 }
@@ -795,7 +872,40 @@ async fn get_window_client_rect_at_point(x: i32, y: i32) -> Result<ClientRectInf
     }
 }
 
-// 🎤 Commande: Simuler une touche dans l'iframe airadcr.com
+// 🎤 Commande: Recevoir les notifications d'état depuis le web
+#[tauri::command]
+async fn handle_recording_notification(
+    state: State<'_, AppState>,
+    message_type: String
+) -> Result<(), String> {
+    let mut dictation_state = match state.dictation_state.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            eprintln!("Dictation state mutex poisoned, recovering...");
+            poisoned.into_inner()
+        }
+    };
+    
+    match message_type.as_str() {
+        "airadcr:recording_started" => {
+            dictation_state.update_status(String::from("recording"));
+            println!("🟢 [SpeechMike] Enregistrement démarré (notifié par le web)");
+        },
+        "airadcr:recording_paused" => {
+            dictation_state.update_status(String::from("paused"));
+            println!("🟠 [SpeechMike] Enregistrement en pause (notifié par le web)");
+        },
+        "airadcr:recording_finished" => {
+            dictation_state.update_status(String::from("idle"));
+            println!("⚪ [SpeechMike] Enregistrement terminé (notifié par le web)");
+        },
+        _ => eprintln!("⚠️ [SpeechMike] Type de notification inconnu: {}", message_type),
+    }
+    
+    Ok(())
+}
+
+// 🎤 Commande: Simuler une touche dans l'iframe airadcr.com (legacy pour compatibilité)
 #[tauri::command]
 async fn simulate_key_in_iframe(window: tauri::Window, key: String) -> Result<(), String> {
     let key_code = get_key_code(&key);
@@ -1017,35 +1127,45 @@ fn main() {
             get_window_client_rect_at_point,
             write_log,
             get_log_path,
-            open_log_folder
+            open_log_folder,
+            handle_recording_notification
         ])
         .setup(|app| {
-            // 🎤 Enregistrement des raccourcis globaux SpeechMike
+            // 🎤 Enregistrement des raccourcis globaux SpeechMike avec gestion d'état
             let app_handle = app.handle();
+            let app_state = app.state::<AppState>();
             let mut shortcut_manager = app.global_shortcut_manager();
             
-            // F10: Démarrer/Reprendre dictée
+            // F10: Bouton rouge contextuel (Record/Finish selon l'état)
             let handle_f10 = app_handle.clone();
+            let state_f10 = app_state.inner().clone();
             shortcut_manager
                 .register("F10", move || {
+                    println!("🔴 [SpeechMike] F10 pressé (bouton rouge)");
                     if let Some(window) = handle_f10.get_window("main") {
-                        let window_clone = window.clone();
-                        tauri::async_runtime::spawn(async move {
-                            let _ = simulate_key_in_iframe(window_clone, "F10".to_string()).await;
-                        });
+                        let mut dictation_state = match state_f10.dictation_state.lock() {
+                            Ok(guard) => guard,
+                            Err(poisoned) => {
+                                eprintln!("Dictation state mutex poisoned, recovering...");
+                                poisoned.into_inner()
+                            }
+                        };
+                        dictation_state.handle_record_button(&window);
                     }
                 })
                 .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement F10: {}", e));
             
-            // F11: Pause dictée
+            // F11: Pause explicite (rarement utilisé)
             let handle_f11 = app_handle.clone();
             shortcut_manager
                 .register("F11", move || {
+                    println!("⏸️ [SpeechMike] F11 pressé (pause explicite)");
                     if let Some(window) = handle_f11.get_window("main") {
-                        let window_clone = window.clone();
-                        tauri::async_runtime::spawn(async move {
-                            let _ = simulate_key_in_iframe(window_clone, "F11".to_string()).await;
-                        });
+                        let script = r#"
+                            console.log('[Tauri→Web] Envoi commande: airadcr:speechmike_pause');
+                            window.postMessage({ type: 'airadcr:speechmike_pause', payload: null }, '*');
+                        "#;
+                        let _ = window.eval(script);
                     }
                 })
                 .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement F11: {}", e));

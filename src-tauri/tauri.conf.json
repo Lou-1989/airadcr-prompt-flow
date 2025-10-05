@@ -60,8 +60,6 @@
       "active": true,
       "targets": ["nsis", "deb", "appimage", "dmg"],
       "identifier": "com.airadcr.desktop",
-      "publisher": "AIRADCR",
-      "homepage": "https://airadcr.com",
       "icon": [
         "icons/32x32.png",
         "icons/128x128.png",

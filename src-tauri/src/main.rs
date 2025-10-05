@@ -1182,7 +1182,7 @@ fn main() {
     app.run(|app_handle, event| {
         if let tauri::RunEvent::Ready = event {
             // 🎤 Enregistrer les raccourcis globaux avec lifetime 'static
-            register_global_shortcuts(app_handle);
+            register_global_shortcuts(app_handle.clone());
             
             if let Some(window) = app_handle.get_window("main") {
                 let window_clone = window.clone();
@@ -1199,7 +1199,7 @@ fn main() {
 }
 
 // 🎤 Fonction helper pour enregistrer les raccourcis globaux SpeechMike
-fn register_global_shortcuts(app_handle: &tauri::AppHandle) {
+fn register_global_shortcuts(app_handle: tauri::AppHandle) {
     let app_state = app_handle.state::<AppState>();
     let mut shortcut_manager = app_handle.global_shortcut_manager();
     

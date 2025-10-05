@@ -357,7 +357,7 @@ use winapi::um::winuser::WINDOWPLACEMENT;
 
 // 🆕 INJECTION WINDOWS ROBUSTE avec Win32 API pour multi-écrans
 #[tauri::command]
-async fn perform_injection_at_position_direct(text: String, x: i32, y: i32, replace_selection: bool, state: State<'_, AppState>) -> Result<(), String> {
+async fn perform_injection_at_position_direct(x: i32, y: i32, text: String, replace_selection: bool, state: State<'_, AppState>) -> Result<(), String> {
     let _clipboard_guard = match state.clipboard_lock.lock() {
         Ok(guard) => guard,
         Err(poisoned) => {

@@ -1073,6 +1073,15 @@ fn main() {
             
             Ok(())
         })
+        .on_single_instance(|app, _argv, _cwd| {
+            println!("🔄 [Single Instance] Tentative ouverture d'une 2e instance détectée");
+            if let Some(window) = app.get_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+                let _ = window.unminimize();
+                println!("✅ [Single Instance] Fenêtre existante ramenée au premier plan");
+            }
+        })
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 

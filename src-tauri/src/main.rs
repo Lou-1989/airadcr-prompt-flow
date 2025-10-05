@@ -1258,4 +1258,3 @@ fn register_global_shortcuts(app_handle: &tauri::AppHandle) {
     #[cfg(debug_assertions)]
     println!("⚠️ [DEV] F12 non enregistré (disponible pour DevTools)");
 }
-}

@@ -1200,27 +1200,27 @@ fn main() {
             open_log_folder,
             handle_recording_notification
         ])
-        .setup(|_app| Ok(()))
-        .build(tauri::generate_context!())
-        .expect("error while building tauri application");
-
-    app.run(|app_handle, event| {
-        if let tauri::RunEvent::Ready = event {
-            // 🎤 Enregistrer les raccourcis globaux avec lifetime 'static
-            register_global_shortcuts(app_handle.clone());
+        .setup(|app| {
+            println!("🔧 [DEBUG] .setup() appelé - enregistrement raccourcis SpeechMike");
+            register_global_shortcuts(app.handle());
             
-            if let Some(window) = app_handle.get_window("main") {
+            // 🎯 Assertion Always-on-top après stabilisation WebView2
+            if let Some(window) = app.get_window("main") {
                 let window_clone = window.clone();
-                
-                // 🎯 Assertion UNIQUE après stabilisation WebView2 (architecture événementielle)
                 thread::spawn(move || {
                     thread::sleep(Duration::from_millis(800));
                     let _ = window_clone.set_always_on_top(true);
                     println!("✅ Always-on-top: Assertion initiale (800ms)");
                 });
             }
-        }
-    });
+            
+            Ok(())
+        })
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    // ✅ app.run() supprimé - raccourcis désormais dans .setup()
+    app.run(|_app_handle, _event| {});
 }
 
 // 🎤 Fonction helper pour enregistrer les raccourcis globaux SpeechMike

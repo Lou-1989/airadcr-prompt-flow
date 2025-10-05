@@ -1179,37 +1179,37 @@ fn register_global_shortcuts(app_handle: tauri::AppHandle) {
         })
         .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement F9: {}", e));
     
-    // 🎤 SPEECHMIKE F10: Toggle Record/Finish
+    // 🎤 SPEECHMIKE F10: Record (Démarrer/Reprendre dictée)
     let handle_f10 = app_handle.clone();
     shortcut_manager
         .register("F10", move || {
-            println!("🔴 [SpeechMike] F10 pressé (toggle record)");
+            println!("🔴 [SpeechMike] F10 pressé (record)");
             if let Some(window) = handle_f10.get_window("main") {
-                window.emit("airadcr:speechmike_toggle", ()).ok();
+                window.emit("airadcr:speechmike_record", ()).ok();
             }
         })
         .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement F10: {}", e));
     
-    // 🎤 SPEECHMIKE F11: Play/Pause
+    // 🎤 SPEECHMIKE F11: Pause (Mettre en pause dictée)
     let handle_f11 = app_handle.clone();
     shortcut_manager
         .register("F11", move || {
-            println!("⏯️ [SpeechMike] F11 pressé (play/pause)");
+            println!("⏯️ [SpeechMike] F11 pressé (pause)");
             if let Some(window) = handle_f11.get_window("main") {
-                window.emit("airadcr:speechmike_play_pause", ()).ok();
+                window.emit("airadcr:speechmike_pause", ()).ok();
             }
         })
         .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement F11: {}", e));
     
-    // 🎤 SPEECHMIKE F12: Stop/Finish (uniquement en production)
+    // 🎤 SPEECHMIKE F12: Finish (Finaliser et injecter - uniquement en production)
     #[cfg(not(debug_assertions))]
     {
         let handle_f12 = app_handle.clone();
         shortcut_manager
             .register("F12", move || {
-                println!("⏹️ [SpeechMike] F12 pressé (stop)");
+                println!("⏹️ [SpeechMike] F12 pressé (finish)");
                 if let Some(window) = handle_f12.get_window("main") {
-                    window.emit("airadcr:speechmike_stop", ()).ok();
+                    window.emit("airadcr:speechmike_finish", ()).ok();
                 }
             })
             .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement F12: {}", e));
@@ -1217,7 +1217,7 @@ fn register_global_shortcuts(app_handle: tauri::AppHandle) {
         println!("✅ [Shortcuts] Raccourcis globaux enregistrés:");
         println!("   🎨 Ctrl+Shift+D (Debug), Ctrl+Shift+L (Logs), Ctrl+Shift+T (Test)");
         println!("   🔓 F9 (Anti-fantôme)");
-        println!("   🎤 F10 (Record), F11 (Pause), F12 (Stop)");
+        println!("   🎤 F10 (Record), F11 (Pause), F12 (Finish)");
     }
     
     #[cfg(debug_assertions)]

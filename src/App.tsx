@@ -89,22 +89,22 @@ const AppContent = () => {
           });
       }),
       
-      // 🎤 SpeechMike F10: Toggle Record/Finish
-      listen('airadcr:speechmike_toggle', () => {
-        logger.debug('[SpeechMike] F10 → Toggle record/finish');
-        sendToIframe('airadcr:speechmike_toggle');
+      // 🎤 SpeechMike F10: Record (Démarrer/Reprendre dictée)
+      listen('airadcr:speechmike_record', () => {
+        logger.debug('[SpeechMike] F10 → Record');
+        sendToIframe('airadcr:speechmike_record');
       }),
       
-      // 🎤 SpeechMike F11: Play/Pause
-      listen('airadcr:speechmike_play_pause', () => {
-        logger.debug('[SpeechMike] F11 → Play/Pause');
-        sendToIframe('airadcr:speechmike_play_pause');
+      // 🎤 SpeechMike F11: Pause (Mettre en pause)
+      listen('airadcr:speechmike_pause', () => {
+        logger.debug('[SpeechMike] F11 → Pause');
+        sendToIframe('airadcr:speechmike_pause');
       }),
       
-      // 🎤 SpeechMike F12: Stop/Finish
-      listen('airadcr:speechmike_stop', () => {
-        logger.debug('[SpeechMike] F12 → Stop');
-        sendToIframe('airadcr:speechmike_stop');
+      // 🎤 SpeechMike F12: Finish (Finaliser et injecter)
+      listen('airadcr:speechmike_finish', () => {
+        logger.debug('[SpeechMike] F12 → Finish');
+        sendToIframe('airadcr:speechmike_finish');
       }),
     ];
 

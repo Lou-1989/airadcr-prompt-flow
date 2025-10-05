@@ -366,6 +366,9 @@ async fn perform_injection_at_position_direct(x: i32, y: i32, text: String, stat
         }
     };
     
+    println!("🎯 [Injection Rust] Début - Position: ({}, {}) - Texte: {} chars", x, y, text.len());
+    let start_time = std::time::Instant::now();
+    
     println!("🎯 [Multi-écrans] Injection à ({}, {}) - {} caractères", x, y, text.len());
     
     // 🆕 CLAMPER les coordonnées dans les bornes du bureau virtuel
@@ -530,6 +533,7 @@ async fn perform_injection_at_position_direct(x: i32, y: i32, text: String, stat
     }
     
     println!("✅ Injection Ctrl+V réussie ({} caractères)", text.len());
+    println!("✅ [Injection Rust] Terminée avec succès en {}ms", start_time.elapsed().as_millis());
     
     Ok(())
 }

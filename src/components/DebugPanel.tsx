@@ -2,8 +2,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { logger } from '@/utils/logger';
+import { logger, LogLevel } from '@/utils/logger';
 import { useInjectionContext } from '@/contexts/InjectionContext';
+import { Label } from '@/components/ui/label';
 
 interface DebugPanelProps {
   isTauriApp: boolean;
@@ -123,6 +124,47 @@ export const DebugPanel = ({
             <div><kbd className="px-1 py-0.5 text-xs bg-background border rounded">F12</kbd> : SpeechMike (prod) / DevTools (dev)</div>
             <div><kbd className="px-1 py-0.5 text-xs bg-background border rounded">F9</kbd> : Désactiver click-through (anti-fantôme)</div>
             <div><kbd className="px-1 py-0.5 text-xs bg-background border rounded">Ctrl+Shift+T</kbd> : Test injection rapide</div>
+          </div>
+        </div>
+
+        <Separator />
+
+        {/* Configuration Logs */}
+        <div className="space-y-2">
+          <Label className="text-sm font-semibold">Niveau de Logs</Label>
+          <div className="grid grid-cols-4 gap-1">
+            <Button 
+              size="sm" 
+              variant="outline"
+              onClick={() => logger.setLevel(LogLevel.ERROR)}
+              className="text-xs h-7"
+            >
+              ERROR
+            </Button>
+            <Button 
+              size="sm" 
+              variant="outline"
+              onClick={() => logger.setLevel(LogLevel.WARN)}
+              className="text-xs h-7"
+            >
+              WARN
+            </Button>
+            <Button 
+              size="sm" 
+              variant="outline"
+              onClick={() => logger.setLevel(LogLevel.INFO)}
+              className="text-xs h-7"
+            >
+              INFO
+            </Button>
+            <Button 
+              size="sm" 
+              variant="outline"
+              onClick={() => logger.setLevel(LogLevel.DEBUG)}
+              className="text-xs h-7"
+            >
+              DEBUG
+            </Button>
           </div>
         </div>
 

@@ -174,7 +174,8 @@ export const useInjection = () => {
     
     stopMonitoring(); // ✅ Arrêter la capture pendant l'injection
     
-    logger.debug('=== DÉBUT INJECTION PROFESSIONNELLE ===');
+    const startTime = Date.now();
+    logger.info(`🎯 INJECTION ${injectionType || 'default'} - ${text.length} caractères - Verrouillée: ${!!lockedPosition}`);
     logger.debug('[Injection] TYPE:', injectionType || 'default');
     logger.debug('[Injection] Texte à injecter:', text.substring(0, 50) + '...');
     logger.debug('[Injection] Longueur:', text.length, 'caractères');
@@ -354,7 +355,8 @@ export const useInjection = () => {
             y: targetY
           });
           
-          logger.debug(`✅ INJECTION RÉUSSIE (${injectionType || 'default'}) verrouillée à (${targetX}, ${targetY})`);
+          const duration = Date.now() - startTime;
+          logger.info(`✅ INJECTION RÉUSSIE (verrouillée) à (${targetX}, ${targetY}) - ${lockedPosition.application} - Durée: ${duration}ms`);
           return true;
         }
         
@@ -413,7 +415,9 @@ export const useInjection = () => {
       return success;
       
     } catch (error) {
+      const duration = Date.now() - startTime;
       logger.error('=== ERREUR INJECTION ===', error);
+      logger.error(`❌ INJECTION ÉCHOUÉE - Type: ${injectionType} - Verrouillée: ${!!lockedPosition} - Durée: ${duration}ms`);
       if (failureReason === 'TIMEOUT') {
         logger.error('[Injection] Timeout après 5 secondes');
       }

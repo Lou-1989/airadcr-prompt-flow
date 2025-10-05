@@ -45,8 +45,20 @@ class Logger {
 
   constructor() {
     this.isDevelopment = import.meta.env.DEV;
-    this.level = this.isDevelopment ? LogLevel.DEBUG : LogLevel.ERROR;
+    // Permettre DEBUG en production via localStorage
+    const forceDebug = typeof localStorage !== 'undefined' && 
+                       localStorage.getItem('airadcr_debug') === 'true';
+    this.level = this.isDevelopment || forceDebug ? LogLevel.DEBUG : LogLevel.INFO;
     this.isTauri = '__TAURI__' in window;
+  }
+
+  setLevel(level: LogLevel) {
+    this.level = level;
+    console.info(`[AirADCR Logger] Niveau changé: ${LogLevel[level]}`);
+  }
+
+  getLevel(): LogLevel {
+    return this.level;
   }
 
   private async writeToFile(level: string, message: string, ...args: any[]) {

@@ -68,7 +68,7 @@ export const useTauriWindow = () => {
     
     const initWindow = async () => {
       try {
-        await invoke('set_always_on_top', { always_on_top: true });
+        await invoke('set_always_on_top', { alwaysOnTop: true });
         await new Promise(resolve => setTimeout(resolve, 200));
         const confirmedStatus = await invoke('get_always_on_top_status');
         setIsAlwaysOnTop(confirmedStatus as boolean);
@@ -90,7 +90,7 @@ export const useTauriWindow = () => {
       
       try {
         // 🎯 DÉSACTIVER always-on-top pour que l'application cible reste au premier plan
-        await invoke('set_always_on_top', { always_on_top: false });
+        await invoke('set_always_on_top', { alwaysOnTop: false });
         logger.debug('⏸️ Always-on-top DÉSACTIVÉ (injection démarrée)');
       } catch (error) {
         logger.error('Erreur désactivation always-on-top:', error);
@@ -108,7 +108,7 @@ export const useTauriWindow = () => {
         // 🆕 VÉRIFIER que AIRADCR a le focus AVANT de réactiver always-on-top
         const hasFocus = await invoke('check_app_focus');
         if (hasFocus) {
-          await invoke('set_always_on_top', { always_on_top: true });
+          await invoke('set_always_on_top', { alwaysOnTop: true });
           setIsAlwaysOnTop(true);
           logger.debug('▶️ Always-on-top RÉACTIVÉ (AIRADCR a le focus)');
         } else {
@@ -153,7 +153,7 @@ export const useTauriWindow = () => {
         // Restaurer UNIQUEMENT si désactivé (manuel ou bug Windows)
         if (!currentState) {
           logger.warn('⚠️ Always-on-top perdu, restauration silencieuse...');
-          await invoke('set_always_on_top', { always_on_top: true });
+          await invoke('set_always_on_top', { alwaysOnTop: true });
           
           // ❌ PAS de set_focus() pour éviter conflit injection
           setIsAlwaysOnTop(true);

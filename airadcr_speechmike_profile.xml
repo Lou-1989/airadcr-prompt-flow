@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ApplicationControlConfiguration Version="9.0">
+  <ApplicationProfileList>
+    
+    <!-- Profil par défaut : Dragon NaturallySpeaking -->
+    <ApplicationProfile TargetApplication="" Active="True" Comment="Dragon NaturallySpeaking par défaut">
+      <OperationList>
+        <Operation Event="spmRecordPressed" ModifierKey="None">
+          <Steps>
+            <OperationElement Type="DragonCommand" DragonCommand="MicrophoneToggle" />
+          </Steps>
+        </Operation>
+        <Operation Event="spmStopPressed" ModifierKey="None">
+          <Steps>
+            <OperationElement Type="DragonCommand" DragonCommand="MicrophoneOffStop" />
+          </Steps>
+        </Operation>
+        <Operation Event="spmPlayPressed" ModifierKey="None">
+          <Steps>
+            <OperationElement Type="DragonCommand" DragonCommand="PlayFromCursor" />
+          </Steps>
+        </Operation>
+        <Operation Event="spmRewindPressed" ModifierKey="None">
+          <Steps>
+            <OperationElement Type="DragonCommand" DragonCommand="RewindFromCursor" />
+          </Steps>
+        </Operation>
+        <Operation Event="spmFastForwardPressed" ModifierKey="None">
+          <Steps>
+            <OperationElement Type="DragonCommand" DragonCommand="FastForwardFromCursor" />
+          </Steps>
+        </Operation>
+      </OperationList>
+    </ApplicationProfile>
+    
+    <!-- Profil spécifique : AIRADCR Desktop Application -->
+    <ApplicationProfile TargetApplication="airadcr-desktop.exe" Active="True" Comment="AIRADCR Desktop - Dictée radiologique">
+      <OperationList>
+        <!-- Bouton rouge : Record/Pause/Finish contextuel via F10 -->
+        <Operation Event="spmRecordPressed" ModifierKey="None" Name="AIRADCR Record/Resume">
+          <Steps>
+            <OperationElement Type="Hotkey">
+              <Hotkey Key="F10" Modifiers="None" />
+            </OperationElement>
+          </Steps>
+          <Comment>
+            Bouton rouge du SpeechMike:
+            - En état Idle: Démarre l'enregistrement
+            - En état Recording (1er appui): Met en pause
+            - En état Recording (2ème appui): Termine et transcrit
+            - En état Paused: Reprend l'enregistrement
+          </Comment>
+        </Operation>
+        
+        <!-- Bouton Stop : Actuellement non utilisé, mappé sur F11 pour compatibilité future -->
+        <Operation Event="spmStopPressed" ModifierKey="None" Name="AIRADCR Pause (legacy)">
+          <Steps>
+            <OperationElement Type="Hotkey">
+              <Hotkey Key="F11" Modifiers="None" />
+            </OperationElement>
+          </Steps>
+          <Comment>
+            Bouton Stop du SpeechMike (rarement utilisé):
+            Met explicitement en pause l'enregistrement en cours
+          </Comment>
+        </Operation>
+        
+        <!-- Bouton Play : Continue - Reprend après pause via F10 -->
+        <Operation Event="spmPlayPressed" ModifierKey="None" Name="AIRADCR Play/Continue">
+          <Steps>
+            <OperationElement Type="Hotkey">
+              <Hotkey Key="F10" Modifiers="None" />
+            </OperationElement>
+          </Steps>
+          <Comment>
+            Bouton Play du SpeechMike:
+            Reprend l'enregistrement après une pause (= même action que Record en état Paused)
+          </Comment>
+        </Operation>
+        
+        <!-- Bouton Rewind : Désactivé pour AIRADCR -->
+        <Operation Event="spmRewindPressed" ModifierKey="None" Name="AIRADCR Rewind (disabled)">
+          <Steps>
+            <OperationElement Type="NoAction" />
+          </Steps>
+          <Comment>
+            Bouton Rewind du SpeechMike: Non utilisé dans AIRADCR
+          </Comment>
+        </Operation>
+        
+        <!-- Bouton Fast Forward : Désactivé pour AIRADCR -->
+        <Operation Event="spmFastForwardPressed" ModifierKey="None" Name="AIRADCR FastForward (disabled)">
+          <Steps>
+            <OperationElement Type="NoAction" />
+          </Steps>
+          <Comment>
+            Bouton Fast Forward du SpeechMike: Non utilisé dans AIRADCR
+          </Comment>
+        </Operation>
+        
+        <!-- Boutons F1-F4 : Conservent leur fonction par défaut -->
+        <Operation Event="spmF1Pressed" ModifierKey="None" Name="F1 Key">
+          <Steps>
+            <OperationElement Type="Hotkey">
+              <Hotkey Key="F1" Modifiers="None" />
+            </OperationElement>
+          </Steps>
+        </Operation>
+        <Operation Event="spmF2Pressed" ModifierKey="None" Name="F2 Key">
+          <Steps>
+            <OperationElement Type="Hotkey">
+              <Hotkey Key="F2" Modifiers="None" />
+            </OperationElement>
+          </Steps>
+        </Operation>
+        <Operation Event="spmF3Pressed" ModifierKey="None" Name="F3 Key">
+          <Steps>
+            <OperationElement Type="Hotkey">
+              <Hotkey Key="F3" Modifiers="None" />
+            </OperationElement>
+          </Steps>
+        </Operation>
+        <Operation Event="spmF4Pressed" ModifierKey="None" Name="F4 Key">
+          <Steps>
+            <OperationElement Type="Hotkey">
+              <Hotkey Key="F4" Modifiers="None" />
+            </OperationElement>
+          </Steps>
+        </Operation>
+      </OperationList>
+    </ApplicationProfile>
+    
+  </ApplicationProfileList>
+</ApplicationControlConfiguration>

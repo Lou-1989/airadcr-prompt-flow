@@ -41,6 +41,16 @@ export const SECURITY_CONFIG = {
     'airadcr:request_status', // Demande du statut initial
     'airadcr:injection_ack', // Acknowledgment immédiat de la requête d'injection
     'airadcr:injection_status', // Statut final de l'injection (success/fail + reason)
+    
+    // SpeechMike commands (Desktop → Web)
+    'airadcr:speechmike_record', // Démarre ou reprend l'enregistrement
+    'airadcr:speechmike_pause', // Met en pause l'enregistrement
+    'airadcr:speechmike_finish', // Termine l'enregistrement et déclenche transcription
+    
+    // Recording notifications (Web → Desktop)
+    'airadcr:recording_started', // Notification: enregistrement démarré
+    'airadcr:recording_paused', // Notification: enregistrement en pause
+    'airadcr:recording_finished', // Notification: enregistrement terminé
   ] as const,
 } as const;
 

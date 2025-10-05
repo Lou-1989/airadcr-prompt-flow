@@ -20,6 +20,165 @@ Cette spécification définit le protocole de communication complet entre l'appl
 
 ---
 
+## 🔴 Comportement du bouton rouge Speech Mike
+
+### Vue d'ensemble de la logique contextuelle
+
+Le bouton rouge du Speech Mike a un **comportement contextuel** qui dépend de l'état actuel de la dictée. L'application Tauri doit maintenir un état synchronisé avec le web pour envoyer la commande appropriée.
+
+### Tableau des transitions d'état
+
+| État actuel | Action utilisateur | Compteur d'appuis | Commande envoyée | Nouvel état | Description UI AIRADCR |
+|------------|-------------------|-------------------|------------------|-------------|----------------------|
+| **Idle** | 1er appui bouton rouge | 0 → Reset | `airadcr:speechmike_record` | Recording | Bouton bleu "🎤 Enregistrer" → "⏹️ Arrêter" |
+| **Recording** | 1er appui bouton rouge | +1 | `airadcr:speechmike_pause` | Paused | Bouton "⏹️ Arrêter" → "⏸️ En pause" |
+| **Recording** | 2ème appui bouton rouge | +2 | `airadcr:speechmike_finish` | Idle | Bouton "⏹️ Arrêter" → Finalisation + transcription |
+| **Paused** | 1er appui bouton rouge | Reset → 0 | `airadcr:speechmike_record` | Recording | Bouton "▶️ Continuer" → "⏹️ Arrêter" |
+
+### Diagramme de transition d'état
+
+```mermaid
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> Recording : Record (bouton rouge)
+    Recording --> Paused : Record (1er appui)
+    Recording --> Idle : Record (2ème appui) → Finish
+    Paused --> Recording : Record (reset compteur)
+    Recording --> Idle : Finish (transcription complète)
+```
+
+### Points clés d'implémentation
+
+1. **Comptage des appuis** : L'application Tauri doit compter les appuis sur le bouton rouge uniquement en état "Recording"
+2. **Reset du compteur** : Le compteur est remis à zéro quand on passe en état "Paused" ou "Idle"
+3. **Synchronisation bidirectionnelle** : Le web notifie Tauri des changements d'état via `airadcr:recording_*` messages
+4. **Robustesse** : Si une désynchronisation se produit, l'état du web fait autorité
+
+### Exemple de code Rust pour gestion d'état
+
+```rust
+use std::sync::Mutex;
+use tauri::{Manager, Window};
+
+// Structure pour gérer l'état de la dictée
+pub struct DictationState {
+    status: String, // "idle", "recording", "paused"
+    record_press_count: i32,
+}
+
+impl DictationState {
+    pub fn new() -> Self {
+        Self {
+            status: String::from("idle"),
+            record_press_count: 0,
+        }
+    }
+
+    pub fn handle_record_button(&mut self, window: &Window) {
+        match self.status.as_str() {
+            "idle" => {
+                // Démarrer la dictée
+                println!("🎤 [DictationState] Idle → Recording");
+                self.send_command(window, "airadcr:speechmike_record");
+                self.record_press_count = 0;
+            }
+            "recording" => {
+                self.record_press_count += 1;
+                println!("🔴 [DictationState] Recording - Appui #{}", self.record_press_count);
+                
+                if self.record_press_count == 1 {
+                    // Premier appui : mettre en pause
+                    println!("⏸️ [DictationState] Recording → Paused");
+                    self.send_command(window, "airadcr:speechmike_pause");
+                } else if self.record_press_count >= 2 {
+                    // Deuxième appui : terminer
+                    println!("✅ [DictationState] Recording → Finished");
+                    self.send_command(window, "airadcr:speechmike_finish");
+                    self.record_press_count = 0;
+                }
+            }
+            "paused" => {
+                // Reprendre l'enregistrement (reset du compteur)
+                println!("▶️ [DictationState] Paused → Recording (resume)");
+                self.send_command(window, "airadcr:speechmike_record");
+                self.record_press_count = 0;
+            }
+            _ => {
+                eprintln!("⚠️ [DictationState] État inconnu: {}", self.status);
+            }
+        }
+    }
+
+    fn send_command(&self, window: &Window, command: &str) {
+        let script = format!(
+            r#"
+            console.log('[Tauri→Web] Envoi commande: {}');
+            window.postMessage({{ type: '{}', payload: null }}, '*');
+            "#,
+            command, command
+        );
+        
+        if let Err(e) = window.eval(&script) {
+            eprintln!("❌ [DictationState] Erreur envoi {}: {:?}", command, e);
+        }
+    }
+
+    pub fn update_status(&mut self, new_status: String) {
+        println!("🔄 [DictationState] Changement d'état: {} → {}", self.status, new_status);
+        self.status = new_status;
+        
+        // Reset du compteur quand on quitte l'état "recording"
+        if self.status != "recording" {
+            self.record_press_count = 0;
+        }
+    }
+}
+
+// Commande Tauri pour recevoir les notifications du web
+#[tauri::command]
+fn handle_web_message(state: tauri::State<Mutex<DictationState>>, message_type: String) {
+    let mut state = state.lock().unwrap();
+    
+    match message_type.as_str() {
+        "airadcr:recording_started" => state.update_status(String::from("recording")),
+        "airadcr:recording_paused" => state.update_status(String::from("paused")),
+        "airadcr:recording_finished" => state.update_status(String::from("idle")),
+        _ => eprintln!("⚠️ [handle_web_message] Type inconnu: {}", message_type),
+    }
+}
+```
+
+### Scénarios d'utilisation concrets
+
+#### Scénario 1 : Dictée simple (Record → Finish direct)
+
+```
+1. Utilisateur appuie sur bouton rouge → Tauri envoie "record"
+2. Web démarre enregistrement → Web notifie "recording_started"
+3. Tauri passe en état "Recording" (compteur = 0)
+4. Utilisateur appuie sur bouton rouge (1er fois) → Tauri envoie "pause"
+5. Web met en pause → Web notifie "recording_paused"
+6. Tauri passe en état "Paused" (compteur reset à 0)
+7. Utilisateur appuie sur bouton rouge → Tauri envoie "record"
+8. Web reprend → Web notifie "recording_started"
+9. Tauri passe en état "Recording" (compteur = 0)
+10. Utilisateur appuie sur bouton rouge (1er fois) → Tauri envoie "pause"
+11. Utilisateur appuie sur bouton rouge (2ème fois) → Tauri envoie "finish"
+12. Web termine et transcrit → Web notifie "recording_finished"
+13. Tauri retourne en état "Idle"
+```
+
+#### Scénario 2 : Gestion de désynchronisation
+
+```
+❌ Problème : Le web est en "Recording" mais Tauri pense être en "Idle"
+
+✅ Solution : À chaque démarrage, le web envoie son état actuel via "airadcr:recording_started"
+→ Tauri met à jour son état interne pour correspondre au web
+```
+
+---
+
 ## 🏗️ Architecture de communication
 
 ```

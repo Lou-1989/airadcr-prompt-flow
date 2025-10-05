@@ -7,8 +7,10 @@ import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import { useTauriWindow } from "@/hooks/useTauriWindow";
 import { InjectionProvider, useInjectionContext } from "@/contexts/InjectionContext";
+import { useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/tauri";
 
-import { useGlobalShortcuts } from "@/hooks/useGlobalShortcuts";
 import { DebugPanel } from "@/components/DebugPanel";
 import { DevLogWindow } from "@/components/DevLogWindow";
 import { logger } from "@/utils/logger";
@@ -32,8 +34,9 @@ const AppContent = () => {
     isMonitoring
   } = useInjectionContext();
 
-// Communication sécurisée gérée dans WebViewContainer uniquement (pour éviter les doublons)
-
+  // État pour les panneaux
+  const [isDebugVisible, setIsDebugVisible] = useState(false);
+  const [isLogWindowVisible, setIsLogWindowVisible] = useState(false);
 
   // Fonction de test pour le debug panel
   const handleTestInjection = async () => {
@@ -42,11 +45,76 @@ const AppContent = () => {
     logger.debug('Test d\'injection lancé');
   };
 
-  // Raccourcis clavier globaux
-  const { isDebugVisible, setIsDebugVisible, isLogWindowVisible, setIsLogWindowVisible } = useGlobalShortcuts({
-    onTestInjection: handleTestInjection,
-    isTauriApp,
-  });
+  // ✅ Écoute des événements Tauri (raccourcis globaux)
+  useEffect(() => {
+    if (!isTauriApp) return;
+
+    const sendToIframe = (type: string) => {
+      const iframe = document.querySelector('iframe[title="AirADCR"]') as HTMLIFrameElement;
+      if (iframe?.contentWindow) {
+        iframe.contentWindow.postMessage({ type, payload: null }, 'https://airadcr.com');
+        logger.debug(`[Shortcuts] Message envoyé à iframe: ${type}`);
+      } else {
+        logger.error('[Shortcuts] Iframe AirADCR non trouvée');
+      }
+    };
+
+    const unlistenPromises = [
+      // Debug Panel: Ctrl+Shift+D
+      listen('airadcr:toggle_debug', () => {
+        setIsDebugVisible(prev => !prev);
+        logger.debug('[Shortcuts] Debug Panel toggled');
+      }),
+      
+      // Log Window: Ctrl+Shift+L
+      listen('airadcr:toggle_logs', () => {
+        setIsLogWindowVisible(prev => !prev);
+        logger.debug('[Shortcuts] Log Window toggled');
+      }),
+      
+      // Test Injection: Ctrl+Shift+T
+      listen('airadcr:test_injection', () => {
+        handleTestInjection();
+        logger.debug('[Shortcuts] Test injection déclenché');
+      }),
+      
+      // Anti-Ghost: F9
+      listen('airadcr:force_clickable', () => {
+        invoke('set_ignore_cursor_events', { ignore: false })
+          .then(() => {
+            logger.info('[Shortcuts] 🔓 Click-through DÉSACTIVÉ (force)');
+          })
+          .catch(err => {
+            logger.error('[Shortcuts] Erreur désactivation click-through:', err);
+          });
+      }),
+      
+      // 🎤 SpeechMike F10: Toggle Record/Finish
+      listen('airadcr:speechmike_toggle', () => {
+        logger.debug('[SpeechMike] F10 → Toggle record/finish');
+        sendToIframe('airadcr:speechmike_toggle');
+      }),
+      
+      // 🎤 SpeechMike F11: Play/Pause
+      listen('airadcr:speechmike_play_pause', () => {
+        logger.debug('[SpeechMike] F11 → Play/Pause');
+        sendToIframe('airadcr:speechmike_play_pause');
+      }),
+      
+      // 🎤 SpeechMike F12: Stop/Finish
+      listen('airadcr:speechmike_stop', () => {
+        logger.debug('[SpeechMike] F12 → Stop');
+        sendToIframe('airadcr:speechmike_stop');
+      }),
+    ];
+
+    // Cleanup
+    return () => {
+      Promise.all(unlistenPromises).then(unlisteners => {
+        unlisteners.forEach(unlisten => unlisten());
+      });
+    };
+  }, [isTauriApp]);
 
   return (
     <>

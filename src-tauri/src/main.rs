@@ -43,72 +43,11 @@ pub struct CursorPosition {
     pub timestamp: u64,
 }
 
-// 🎤 Structure pour gérer l'état de la dictée SpeechMike
-pub struct DictationState {
-    status: String, // "idle", "recording", "paused"
-}
-
-impl DictationState {
-    pub fn new() -> Self {
-        Self {
-            status: String::from("idle"),
-        }
-    }
-
-    pub fn handle_record_button(&mut self, window: &tauri::Window) {
-        match self.status.as_str() {
-            "idle" => {
-                // Démarrer la dictée
-                println!("🎤 [DictationState] Idle → Recording (F10 - démarrer)");
-                self.send_command(window, "airadcr:speechmike_record");
-            }
-            "recording" => {
-                // Terminer la dictée
-                println!("✅ [DictationState] Recording → Finished (F10 - terminer)");
-                self.send_command(window, "airadcr:speechmike_finish");
-            }
-            "paused" => {
-                // Terminer la dictée depuis pause
-                println!("✅ [DictationState] Paused → Finished (F10 - terminer)");
-                self.send_command(window, "airadcr:speechmike_finish");
-            }
-            _ => {
-                eprintln!("⚠️ [DictationState] État inconnu: {}", self.status);
-            }
-        }
-    }
-
-    fn send_command(&self, window: &tauri::Window, command: &str) {
-        let script = format!(
-            r#"
-            console.log('[Tauri→Web] Envoi commande SpeechMike: {}');
-            const iframe = document.querySelector('iframe[title="AirADCR"]');
-            if (iframe && iframe.contentWindow) {{
-                iframe.contentWindow.postMessage({{ type: '{}', payload: null }}, 'https://airadcr.com');
-                console.log('[Tauri→Web] Message envoyé à l\'iframe AirADCR');
-            }} else {{
-                console.error('[Tauri→Web] Iframe AirADCR non trouvée');
-            }}
-            "#,
-            command, command
-        );
-        
-        if let Err(e) = window.eval(&script) {
-            eprintln!("❌ [DictationState] Erreur envoi {}: {:?}", command, e);
-        }
-    }
-
-    pub fn update_status(&mut self, new_status: String) {
-        println!("🔄 [DictationState] Changement d'état: {} → {}", self.status, new_status);
-        self.status = new_status;
-    }
-}
-
+// ✅ AppState simplifié (dictation_state supprimé)
 pub struct AppState {
     is_focused: Arc<Mutex<bool>>,
     always_on_top: Arc<Mutex<bool>>,
     clipboard_lock: Arc<Mutex<()>>,
-    dictation_state: Arc<Mutex<DictationState>>,
 }
 
 impl Default for AppState {
@@ -117,7 +56,6 @@ impl Default for AppState {
             is_focused: Arc::new(Mutex::new(false)),
             always_on_top: Arc::new(Mutex::new(true)),
             clipboard_lock: Arc::new(Mutex::new(())),
-            dictation_state: Arc::new(Mutex::new(DictationState::new())),
         }
     }
 }
@@ -858,38 +796,8 @@ async fn get_window_client_rect_at_point(x: i32, y: i32) -> Result<ClientRectInf
     }
 }
 
-// 🎤 Commande: Recevoir les notifications d'état depuis le web
-#[tauri::command]
-async fn handle_recording_notification(
-    state: State<'_, AppState>,
-    message_type: String
-) -> Result<(), String> {
-    let mut dictation_state = match state.dictation_state.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => {
-            eprintln!("Dictation state mutex poisoned, recovering...");
-            poisoned.into_inner()
-        }
-    };
-    
-    match message_type.as_str() {
-        "airadcr:recording_started" => {
-            dictation_state.update_status(String::from("recording"));
-            println!("🟢 [SpeechMike] Enregistrement démarré (notifié par le web)");
-        },
-        "airadcr:recording_paused" => {
-            dictation_state.update_status(String::from("paused"));
-            println!("🟠 [SpeechMike] Enregistrement en pause (notifié par le web)");
-        },
-        "airadcr:recording_finished" => {
-            dictation_state.update_status(String::from("idle"));
-            println!("⚪ [SpeechMike] Enregistrement terminé (notifié par le web)");
-        },
-        _ => eprintln!("⚠️ [SpeechMike] Type de notification inconnu: {}", message_type),
-    }
-    
-    Ok(())
-}
+// ✅ handle_recording_notification supprimé (DictationState supprimé)
+
 
 // 🎤 Commande: Simuler une touche dans l'iframe airadcr.com (legacy pour compatibilité)
 #[tauri::command]
@@ -1197,8 +1105,7 @@ fn main() {
             get_window_client_rect_at_point,
             write_log,
             get_log_path,
-            open_log_folder,
-            handle_recording_notification
+            open_log_folder
         ])
         .setup(|app| {
             println!("🔧 [DEBUG] .setup() appelé - enregistrement raccourcis SpeechMike");
@@ -1219,108 +1126,106 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
-    // ✅ app.run() supprimé - raccourcis désormais dans .setup()
-    app.run(|_app_handle, _event| {});
+    // ✅ Utilisation idiomatique de Tauri - pas de custom logic dans .run()
+    app.run(tauri::generate_context!())
+        .expect("error while running tauri application");
 }
 
-// 🎤 Fonction helper pour enregistrer les raccourcis globaux SpeechMike
+// ✅ Raccourcis globaux simplifiés - Backend = relai, Frontend = logique
 fn register_global_shortcuts(app_handle: tauri::AppHandle) {
-    // Cloner uniquement les ressources nécessaires depuis l'état pour éviter les emprunts non 'static
-    let dictation_state_arc = {
-        let state: tauri::State<AppState> = app_handle.state();
-        state.dictation_state.clone()
-    };
     let mut shortcut_manager = app_handle.global_shortcut_manager();
     
-    // F10: Bouton rouge contextuel (Record/Finish selon l'état)
+    // 🎨 DEBUG PANEL: Ctrl+Shift+D
+    let handle_debug = app_handle.clone();
+    shortcut_manager
+        .register("Ctrl+Shift+D", move || {
+            println!("🐛 [Shortcuts] Ctrl+Shift+D pressé (debug panel)");
+            if let Some(window) = handle_debug.get_window("main") {
+                window.emit("airadcr:toggle_debug", ()).ok();
+            }
+        })
+        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+Shift+D: {}", e));
+    
+    // 📋 LOG WINDOW: Ctrl+Shift+L
+    let handle_logs = app_handle.clone();
+    shortcut_manager
+        .register("Ctrl+Shift+L", move || {
+            println!("📋 [Shortcuts] Ctrl+Shift+L pressé (log window)");
+            if let Some(window) = handle_logs.get_window("main") {
+                window.emit("airadcr:toggle_logs", ()).ok();
+            }
+        })
+        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+Shift+L: {}", e));
+    
+    // 🧪 TEST INJECTION: Ctrl+Shift+T
+    let handle_test = app_handle.clone();
+    shortcut_manager
+        .register("Ctrl+Shift+T", move || {
+            println!("🧪 [Shortcuts] Ctrl+Shift+T pressé (test injection)");
+            if let Some(window) = handle_test.get_window("main") {
+                window.emit("airadcr:test_injection", ()).ok();
+            }
+        })
+        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+Shift+T: {}", e));
+    
+    // 🔓 ANTI-GHOST: F9 (désactiver click-through)
+    let handle_f9 = app_handle.clone();
+    shortcut_manager
+        .register("F9", move || {
+            println!("🔓 [Shortcuts] F9 pressé (anti-fantôme)");
+            if let Some(window) = handle_f9.get_window("main") {
+                window.emit("airadcr:force_clickable", ()).ok();
+            }
+        })
+        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement F9: {}", e));
+    
+    // 🎤 SPEECHMIKE F10: Toggle Record/Finish
     let handle_f10 = app_handle.clone();
-    let dictation_state_f10 = dictation_state_arc.clone();
     shortcut_manager
         .register("F10", move || {
-            println!("🔴 [SpeechMike] F10 pressé (bouton rouge)");
+            println!("🔴 [SpeechMike] F10 pressé (toggle record)");
             if let Some(window) = handle_f10.get_window("main") {
-                let mut dictation_state = match dictation_state_f10.lock() {
-                    Ok(guard) => guard,
-                    Err(poisoned) => {
-                        eprintln!("Dictation state mutex poisoned, recovering...");
-                        poisoned.into_inner()
-                    }
-                };
-                dictation_state.handle_record_button(&window);
+                window.emit("airadcr:speechmike_toggle", ()).ok();
             }
         })
         .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement F10: {}", e));
     
-    // F11: Toggle Play/Pause
+    // 🎤 SPEECHMIKE F11: Play/Pause
     let handle_f11 = app_handle.clone();
-    let dictation_state_f11 = dictation_state_arc.clone();
     shortcut_manager
         .register("F11", move || {
-            println!("⏯️ [SpeechMike] F11 pressé (toggle play/pause)");
+            println!("⏯️ [SpeechMike] F11 pressé (play/pause)");
             if let Some(window) = handle_f11.get_window("main") {
-                let dictation_state = match dictation_state_f11.lock() {
-                    Ok(guard) => guard,
-                    Err(poisoned) => {
-                        eprintln!("Dictation state mutex poisoned, recovering...");
-                        poisoned.into_inner()
-                    }
-                };
-                
-                let command = match dictation_state.status.as_str() {
-                    "recording" => {
-                        println!("⏸️ [F11] Recording → envoi pause");
-                        "airadcr:speechmike_pause"
-                    },
-                    "paused" => {
-                        println!("▶️ [F11] Paused → envoi record (reprise)");
-                        "airadcr:speechmike_record"
-                    },
-                    "idle" => {
-                        println!("ℹ️ [F11] Idle → pas d'action");
-                        return; // No-op
-                    },
-                    _ => {
-                        eprintln!("⚠️ [F11] État inconnu: {}", dictation_state.status);
-                        return;
-                    }
-                };
-                
-                let script = format!(
-                    r#"
-                    console.log('[Tauri→Web] Envoi commande: {}');
-                    const iframe = document.querySelector('iframe[title="AirADCR"]');
-                    if (iframe && iframe.contentWindow) {{
-                        iframe.contentWindow.postMessage({{ type: '{}', payload: null }}, 'https://airadcr.com');
-                        console.log('[Tauri→Web] Message envoyé à l\'iframe AirADCR');
-                    }} else {{
-                        console.error('[Tauri→Web] Iframe AirADCR non trouvée');
-                    }}
-                    "#,
-                    command, command
-                );
-                let _ = window.eval(&script);
+                window.emit("airadcr:speechmike_play_pause", ()).ok();
             }
         })
         .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement F11: {}", e));
     
-    // F12: Terminer dictée (uniquement en production)
+    // 🎤 SPEECHMIKE F12: Stop/Finish (uniquement en production)
     #[cfg(not(debug_assertions))]
     {
         let handle_f12 = app_handle.clone();
         shortcut_manager
             .register("F12", move || {
+                println!("⏹️ [SpeechMike] F12 pressé (stop)");
                 if let Some(window) = handle_f12.get_window("main") {
-                    let window_clone = window.clone();
-                    tauri::async_runtime::spawn(async move {
-                        let _ = simulate_key_in_iframe(window_clone, "F12".to_string()).await;
-                    });
+                    window.emit("airadcr:speechmike_stop", ()).ok();
                 }
             })
             .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement F12: {}", e));
         
-        println!("✅ [SpeechMike] Raccourcis globaux enregistrés: F10 (Démarrer/Reprendre), F11 (Pause), F12 (Terminer)");
+        println!("✅ [Shortcuts] Raccourcis globaux enregistrés:");
+        println!("   🎨 Ctrl+Shift+D (Debug), Ctrl+Shift+L (Logs), Ctrl+Shift+T (Test)");
+        println!("   🔓 F9 (Anti-fantôme)");
+        println!("   🎤 F10 (Record), F11 (Pause), F12 (Stop)");
     }
     
     #[cfg(debug_assertions)]
-    println!("⚠️ [DEV] F12 non enregistré (disponible pour DevTools)");
+    {
+        println!("✅ [Shortcuts] Raccourcis globaux enregistrés:");
+        println!("   🎨 Ctrl+Shift+D (Debug), Ctrl+Shift+L (Logs), Ctrl+Shift+T (Test)");
+        println!("   🔓 F9 (Anti-fantôme)");
+        println!("   🎤 F10 (Record), F11 (Pause)");
+        println!("⚠️ [DEV] F12 non enregistré (disponible pour DevTools)");
+    }
 }

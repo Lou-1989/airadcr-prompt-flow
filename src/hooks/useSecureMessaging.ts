@@ -28,24 +28,13 @@ export const useSecureMessaging = () => {
   const injectionQueueRef = useRef<Array<{ id: string; text: string; type: string }>>([]);
   const isProcessingRef = useRef<boolean>(false);
 
-  // 🎤 FONCTION: Notifier Tauri de l'état d'enregistrement
+  // 🎤 FONCTION: Notifier Tauri de l'état d'enregistrement (désormais simplifié - pas de synchro d'état)
   const notifyRecordingState = useCallback((state: 'started' | 'paused' | 'finished') => {
     const messageType = `airadcr:recording_${state}`;
-    logger.debug(`[useSecureMessaging] 🎤 Notification Tauri: ${messageType}`);
+    logger.debug(`[useSecureMessaging] 🎤 État enregistrement: ${messageType}`);
     
-    // Envoyer au parent window (Tauri)
-    window.parent.postMessage({
-      type: messageType,
-      payload: null
-    }, '*');
-    
-    // Appeler la commande Tauri pour synchroniser l'état
-    if (window.__TAURI__) {
-      invoke('handle_recording_notification', { message_type: messageType })
-        .catch(error => {
-          logger.error('[useSecureMessaging] Erreur notification Tauri:', error);
-        });
-    }
+    // Note: Plus besoin d'appeler Tauri puisque DictationState est supprimé
+    // La logique de dictation est 100% gérée par le frontend React
   }, []);
 
   // Envoi de message sécurisé vers l'iframe (déclaré AVANT handleSecureMessage)

@@ -43,7 +43,7 @@ const AppContent = () => {
   };
 
   // Raccourcis clavier globaux
-  const { isDebugVisible, setIsDebugVisible } = useGlobalShortcuts({
+  const { isDebugVisible, setIsDebugVisible, isLogWindowVisible, setIsLogWindowVisible } = useGlobalShortcuts({
     onTestInjection: handleTestInjection,
     isTauriApp,
   });
@@ -72,8 +72,11 @@ const AppContent = () => {
         onClose={() => setIsDebugVisible(false)}
       />
 
-      {/* Fenêtre de logs flottante - Visible uniquement en dev */}
-      {import.meta.env.DEV && <DevLogWindow />}
+      {/* Fenêtre de logs flottante - Accessible par Ctrl+Shift+L */}
+      <DevLogWindow 
+        isVisible={isLogWindowVisible}
+        onClose={() => setIsLogWindowVisible(false)}
+      />
     </>
   );
 };

@@ -114,6 +114,20 @@ export const DebugPanel = ({
 
         <Separator />
 
+        {/* Raccourcis clavier */}
+        <div className="space-y-2">
+          <h4 className="text-sm font-semibold">Raccourcis Clavier</h4>
+          <div className="text-xs space-y-1 p-2 bg-background/50 rounded">
+            <div><kbd className="px-1 py-0.5 text-xs bg-background border rounded">Ctrl+Shift+D</kbd> : Ouvrir/Fermer Debug Panel</div>
+            <div><kbd className="px-1 py-0.5 text-xs bg-background border rounded">Ctrl+Shift+L</kbd> : Ouvrir/Fermer Fenêtre Logs</div>
+            <div><kbd className="px-1 py-0.5 text-xs bg-background border rounded">F12</kbd> : SpeechMike (prod) / DevTools (dev)</div>
+            <div><kbd className="px-1 py-0.5 text-xs bg-background border rounded">F9</kbd> : Désactiver click-through (anti-fantôme)</div>
+            <div><kbd className="px-1 py-0.5 text-xs bg-background border rounded">Ctrl+Shift+T</kbd> : Test injection rapide</div>
+          </div>
+        </div>
+
+        <Separator />
+
         {/* Tests manuels */}
         <div className="space-y-2">
           <h4 className="text-sm font-semibold">Tests Manuels</h4>

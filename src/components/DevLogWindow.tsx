@@ -2,12 +2,16 @@ import { useState, useEffect, useRef } from 'react';
 import { logger, LogEntry } from '@/utils/logger';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { X, Copy, Filter } from 'lucide-react';
+import { X, Copy, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
-export const DevLogWindow = () => {
+interface DevLogWindowProps {
+  isVisible: boolean;
+  onClose: () => void;
+}
+
+export const DevLogWindow = ({ isVisible, onClose }: DevLogWindowProps) => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [isVisible, setIsVisible] = useState(true);
   const [filterLevel, setFilterLevel] = useState<string>('all');
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -31,6 +35,11 @@ export const DevLogWindow = () => {
       .join('\n');
     navigator.clipboard.writeText(text);
     toast.success('Logs copiés dans le presse-papier');
+  };
+
+  const clearLogs = () => {
+    setLogs([]);
+    toast.success('Logs effacés');
   };
 
   const filteredLogs = filterLevel === 'all' 
@@ -93,16 +102,27 @@ export const DevLogWindow = () => {
           <Button
             size="sm"
             variant="ghost"
+            onClick={clearLogs}
+            className="h-6 w-6 p-0"
+            title="Effacer les logs"
+          >
+            <Trash2 className="h-3 w-3" />
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
             onClick={copyAllLogs}
             className="h-6 w-6 p-0"
+            title="Copier tous les logs"
           >
             <Copy className="h-3 w-3" />
           </Button>
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => setIsVisible(false)}
+            onClick={onClose}
             className="h-6 w-6 p-0"
+            title="Fermer (Ctrl+Shift+L)"
           >
             <X className="h-3 w-3" />
           </Button>
@@ -130,7 +150,7 @@ export const DevLogWindow = () => {
       
       <div className="p-2 border-t bg-muted/50">
         <p className="text-xs text-muted-foreground">
-          💡 Cette fenêtre n'apparaît qu'en mode dev • F12 disponible pour DevTools
+          💡 Appuyez sur <kbd className="px-1 py-0.5 text-xs bg-background border rounded">Ctrl+Shift+L</kbd> pour masquer/afficher • <kbd className="px-1 py-0.5 text-xs bg-background border rounded">F12</kbd> pour SpeechMike (prod) / DevTools (dev)
         </p>
       </div>
     </div>

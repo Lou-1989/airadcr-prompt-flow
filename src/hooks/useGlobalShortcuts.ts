@@ -9,6 +9,7 @@ interface UseGlobalShortcutsProps {
 
 export const useGlobalShortcuts = ({ onTestInjection, isTauriApp }: UseGlobalShortcutsProps) => {
   const [isDebugVisible, setIsDebugVisible] = useState(false);
+  const [isLogWindowVisible, setIsLogWindowVisible] = useState(false);
 
   const handleKeyPress = useCallback((event: KeyboardEvent) => {
     // Ctrl+Shift+D: Toggle Debug Panel (F12 réservé au SpeechMike)
@@ -16,6 +17,14 @@ export const useGlobalShortcuts = ({ onTestInjection, isTauriApp }: UseGlobalSho
       event.preventDefault();
       setIsDebugVisible(prev => !prev);
       logger.debug('[Shortcuts] Debug Panel toggled');
+      return;
+    }
+
+    // Ctrl+Shift+L: Toggle Log Window
+    if (event.ctrlKey && event.shiftKey && event.key === 'L') {
+      event.preventDefault();
+      setIsLogWindowVisible(prev => !prev);
+      logger.debug('[Shortcuts] Log Window toggled');
       return;
     }
 
@@ -43,7 +52,7 @@ export const useGlobalShortcuts = ({ onTestInjection, isTauriApp }: UseGlobalSho
 
   useEffect(() => {
     document.addEventListener('keydown', handleKeyPress);
-    logger.debug('[Shortcuts] Raccourcis clavier activés: Ctrl+Shift+D (Debug), F9 (Anti-fantôme), Ctrl+Shift+T (Test)');
+    logger.debug('[Shortcuts] Raccourcis clavier activés: Ctrl+Shift+D (Debug), Ctrl+Shift+L (Logs), F9 (Anti-fantôme), Ctrl+Shift+T (Test)');
     
     return () => {
       document.removeEventListener('keydown', handleKeyPress);
@@ -53,5 +62,7 @@ export const useGlobalShortcuts = ({ onTestInjection, isTauriApp }: UseGlobalSho
   return {
     isDebugVisible,
     setIsDebugVisible,
+    isLogWindowVisible,
+    setIsLogWindowVisible,
   };
 };

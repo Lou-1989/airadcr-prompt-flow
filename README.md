@@ -81,3 +81,28 @@ This project includes a desktop application built with Tauri. The GitHub Actions
 - **Linux**: DEB, RPM, and AppImage formats
 
 Desktop builds are triggered automatically on push to main or when creating release tags.
+
+## ⌨️ Keyboard Shortcuts (v2.0)
+
+The AIRADCR Desktop application uses global keyboard shortcuts powered by Tauri:
+
+### Dictation Control
+- **Ctrl+F9**: Pause/Resume dictation (toggle)
+- **Ctrl+F10**: Start/Stop dictation (intelligent toggle)
+
+### Text Injection
+- **Ctrl+F11**: Inject raw dictation text into external apps (RIS, Word)
+- **Ctrl+F12**: Inject structured report with full formatting
+
+### Debug Shortcuts (Development)
+- **Ctrl+Shift+D**: Toggle debug panel
+- **Ctrl+Shift+L**: Show logs window
+- **Ctrl+Shift+T**: Test injection
+
+### SpeechMike Integration
+The application supports Philips SpeechMike via `airadcr_speechmike_ctrlf_profile.xml`. Install the profile in Philips SpeechControl to control dictation with physical buttons.
+
+**Documentation:**
+- `KEYBOARD_SHORTCUTS_REFERENCE.md` - Complete shortcuts reference
+- `SPEECHMIKE_DEPLOYMENT_GUIDE.md` - SpeechMike setup guide
+- `AIRADCR_COMMUNICATION_REFERENCE.md` - Technical communication protocol

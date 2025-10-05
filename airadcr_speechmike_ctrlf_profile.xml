@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ApplicationControlConfiguration Version="9.0">
+  <ApplicationProfileList>
+    
+    <!-- Profil par défaut : Dragon NaturallySpeaking -->
+    <ApplicationProfile TargetApplication="" Active="True" Comment="Dragon NaturallySpeaking par défaut">
+      <OperationList>
+        <Operation Event="spmRecordPressed" ModifierKey="None">
+          <Steps>
+            <OperationElement Type="DragonCommand" DragonCommand="MicrophoneToggle" />
+          </Steps>
+        </Operation>
+        <Operation Event="spmStopPressed" ModifierKey="None">
+          <Steps>
+            <OperationElement Type="DragonCommand" DragonCommand="MicrophoneOffStop" />
+          </Steps>
+        </Operation>
+        <Operation Event="spmPlayPressed" ModifierKey="None">
+          <Steps>
+            <OperationElement Type="DragonCommand" DragonCommand="PlayFromCursor" />
+          </Steps>
+        </Operation>
+        <Operation Event="spmRewindPressed" ModifierKey="None">
+          <Steps>
+            <OperationElement Type="DragonCommand" DragonCommand="RewindFromCursor" />
+          </Steps>
+        </Operation>
+        <Operation Event="spmFastForwardPressed" ModifierKey="None">
+          <Steps>
+            <OperationElement Type="DragonCommand" DragonCommand="FastForwardFromCursor" />
+          </Steps>
+        </Operation>
+      </OperationList>
+    </ApplicationProfile>
+    
+    <!-- Profil spécifique : AIRADCR Desktop Application (VERSION 2.0 - Ctrl+F*) -->
+    <ApplicationProfile TargetApplication="airadcr-desktop.exe" Active="True" Comment="AIRADCR Desktop v2.0 - Dictée avec Ctrl+F9-F12">
+      <OperationList>
+        
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!-- 🎤 CONTRÔLE DE DICTÉE (Ctrl+F9 et Ctrl+F10)                    -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        
+        <!-- Bouton Record : Ctrl+F10 (Démarrer/Terminer dictée - Toggle intelligent) -->
+        <Operation Event="spmRecordPressed" ModifierKey="None" Name="AIRADCR Start/Stop">
+          <Steps>
+            <OperationElement Type="Hotkey">
+              <Hotkey Key="F10" Modifiers="Control" />
+            </OperationElement>
+          </Steps>
+          <Comment>
+            Bouton Record du SpeechMike → Ctrl+F10:
+            - En état Idle: Démarre l'enregistrement
+            - En état Recording: Termine et transcrit
+            - En état Paused: Termine et transcrit
+            Toggle intelligent Start/Stop
+          </Comment>
+        </Operation>
+        
+        <!-- Bouton Pause : Ctrl+F9 (Pause/Reprise - Toggle) -->
+        <Operation Event="spmStopPressed" ModifierKey="None" Name="AIRADCR Pause/Resume">
+          <Steps>
+            <OperationElement Type="Hotkey">
+              <Hotkey Key="F9" Modifiers="Control" />
+            </OperationElement>
+          </Steps>
+          <Comment>
+            Bouton Pause du SpeechMike → Ctrl+F9:
+            - En état Recording: Met en pause
+            - En état Paused: Reprend l'enregistrement
+            Toggle Pause/Resume
+          </Comment>
+        </Operation>
+        
+        <!-- Bouton Play : Ctrl+F9 (Alternative pour Reprise) -->
+        <Operation Event="spmPlayPressed" ModifierKey="None" Name="AIRADCR Play/Continue">
+          <Steps>
+            <OperationElement Type="Hotkey">
+              <Hotkey Key="F9" Modifiers="Control" />
+            </OperationElement>
+          </Steps>
+          <Comment>
+            Bouton Play du SpeechMike → Ctrl+F9:
+            Reprend l'enregistrement après une pause (= même action que bouton Pause)
+          </Comment>
+        </Operation>
+        
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!-- 📋 INJECTION DE TEXTE (Ctrl+F11 et Ctrl+F12)                   -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        
+        <!-- Bouton Instruction : Ctrl+F11 (Injecter texte brut) -->
+        <Operation Event="spmInstructionPressed" ModifierKey="None" Name="AIRADCR Inject Raw">
+          <Steps>
+            <OperationElement Type="Hotkey">
+              <Hotkey Key="F11" Modifiers="Control" />
+            </OperationElement>
+          </Steps>
+          <Comment>
+            Bouton Instruction du SpeechMike → Ctrl+F11:
+            Injecte le texte de dictée brut (non structuré) dans l'application cible (RIS, Word)
+            Format: Texte formaté avec titre et sections basiques
+          </Comment>
+        </Operation>
+        
+        <!-- Bouton Programmable 1 : Ctrl+F12 (Injecter rapport structuré) -->
+        <Operation Event="spmProgrammable1Pressed" ModifierKey="None" Name="AIRADCR Inject Structured">
+          <Steps>
+            <OperationElement Type="Hotkey">
+              <Hotkey Key="F12" Modifiers="Control" />
+            </OperationElement>
+          </Steps>
+          <Comment>
+            Bouton Programmable 1 du SpeechMike → Ctrl+F12:
+            Injecte le rapport structuré complet selon les préférences utilisateur
+            Format: Contenu personnalisé avec Titre, Indication, Technique, Résultats, Conclusion,
+                    Références documentaires, Traduction, Explication
+          </Comment>
+        </Operation>
+        
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!-- 🔧 BOUTONS NON UTILISÉS (Désactivés)                           -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        
+        <!-- Bouton Rewind : Désactivé pour AIRADCR -->
+        <Operation Event="spmRewindPressed" ModifierKey="None" Name="AIRADCR Rewind (disabled)">
+          <Steps>
+            <OperationElement Type="NoAction" />
+          </Steps>
+          <Comment>
+            Bouton Rewind du SpeechMike: Non utilisé dans AIRADCR v2.0
+          </Comment>
+        </Operation>
+        
+        <!-- Bouton Fast Forward : Désactivé pour AIRADCR -->
+        <Operation Event="spmFastForwardPressed" ModifierKey="None" Name="AIRADCR FastForward (disabled)">
+          <Steps>
+            <OperationElement Type="NoAction" />
+          </Steps>
+          <Comment>
+            Bouton Fast Forward du SpeechMike: Non utilisé dans AIRADCR v2.0
+          </Comment>
+        </Operation>
+        
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!-- 🔘 BOUTONS F1-F4 (Fonction par défaut conservée)               -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        
+        <Operation Event="spmF1Pressed" ModifierKey="None" Name="F1 Key">
+          <Steps>
+            <OperationElement Type="Hotkey">
+              <Hotkey Key="F1" Modifiers="None" />
+            </OperationElement>
+          </Steps>
+        </Operation>
+        <Operation Event="spmF2Pressed" ModifierKey="None" Name="F2 Key">
+          <Steps>
+            <OperationElement Type="Hotkey">
+              <Hotkey Key="F2" Modifiers="None" />
+            </OperationElement>
+          </Steps>
+        </Operation>
+        <Operation Event="spmF3Pressed" ModifierKey="None" Name="F3 Key">
+          <Steps>
+            <OperationElement Type="Hotkey">
+              <Hotkey Key="F3" Modifiers="None" />
+            </OperationElement>
+          </Steps>
+        </Operation>
+        <Operation Event="spmF4Pressed" ModifierKey="None" Name="F4 Key">
+          <Steps>
+            <OperationElement Type="Hotkey">
+              <Hotkey Key="F4" Modifiers="None" />
+            </OperationElement>
+          </Steps>
+        </Operation>
+        
+      </OperationList>
+    </ApplicationProfile>
+    
+  </ApplicationProfileList>
+  
+  <!-- ═════════════════════════════════════════════════════════════════════ -->
+  <!-- RÉSUMÉ DES MAPPINGS AIRADCR v2.0                                      -->
+  <!-- ═════════════════════════════════════════════════════════════════════ -->
+  <!-- 
+    ┌──────────────────────┬──────────────────┬─────────────────────────────┐
+    │ Bouton SpeechMike    │ Raccourci envoyé │ Action AIRADCR              │
+    ├──────────────────────┼──────────────────┼─────────────────────────────┤
+    │ 🔴 Record            │ Ctrl+F10         │ Démarrer/Terminer (toggle)  │
+    │ ⏸️ Pause/Stop        │ Ctrl+F9          │ Pause/Reprise (toggle)      │
+    │ ▶️ Play              │ Ctrl+F9          │ Reprise (alias Pause)       │
+    │ 📋 Instruction       │ Ctrl+F11         │ Injecter texte brut         │
+    │ 🔧 Programmable 1    │ Ctrl+F12         │ Injecter rapport structuré  │
+    │ ⏮️ Rewind            │ (Désactivé)      │ Aucune action               │
+    │ ⏭️ Fast Forward      │ (Désactivé)      │ Aucune action               │
+    │ F1, F2, F3, F4       │ F1, F2, F3, F4   │ Fonction par défaut         │
+    └──────────────────────┴──────────────────┴─────────────────────────────┘
+  -->
+  
+</ApplicationControlConfiguration>

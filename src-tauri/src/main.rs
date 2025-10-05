@@ -1064,6 +1064,8 @@ fn main() {
         .filter_level(log::LevelFilter::Debug)
         .init();
     
+    // 🔒 SINGLE INSTANCE TEMPORAIREMENT DÉSACTIVÉ POUR DEBUG
+    /*
     // 🔒 Vérifier si une instance est déjà en cours d'exécution
     if is_already_running() {
         eprintln!("⚠️ AIRADCR est déjà en cours d'exécution. Une seule instance est autorisée.");
@@ -1076,6 +1078,7 @@ fn main() {
     } else {
         println!("🔒 Fichier de verrouillage créé: {:?}", get_lock_file_path());
     }
+    */
     
     info!("🚀 Démarrage de AIRADCR Desktop v1.0.0");
     
@@ -1115,9 +1118,9 @@ fn main() {
             }
             SystemTrayEvent::MenuItemClick { id, .. } => match id.as_str() {
                 "quit" => {
-                    // 🔒 Supprimer le fichier de verrouillage avant de quitter
-                    remove_lock_file();
-                    println!("🔓 Fichier de verrouillage supprimé (quit)");
+                    // 🔒 DÉSACTIVÉ TEMPORAIREMENT
+                    // remove_lock_file();
+                    // println!("🔓 Fichier de verrouillage supprimé (quit)");
                     // Graceful shutdown instead of brutal exit
                     app.exit(0);
                 }

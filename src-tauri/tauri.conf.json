@@ -131,7 +131,7 @@
       }
     },
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' https://airadcr.com; frame-src https://airadcr.com; child-src https://airadcr.com; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:"
+      "csp": "default-src 'self' tauri://localhost https://tauri.localhost; connect-src 'self' https://airadcr.com tauri://localhost https://tauri.localhost; frame-src https://airadcr.com; child-src https://airadcr.com; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:"
     },
     "updater": {
       "active": false

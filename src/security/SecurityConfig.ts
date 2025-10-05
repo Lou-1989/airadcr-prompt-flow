@@ -1,10 +1,12 @@
 // Configuration de sécurité pour l'application AirADCR
 import { logger } from '@/utils/logger';
 export const SECURITY_CONFIG = {
-  // URLs autorisées pour l'iframe
+  // URLs autorisées pour l'iframe et l'application Desktop
   ALLOWED_ORIGINS: [
     'https://airadcr.com',
     'https://www.airadcr.com',
+    'tauri://localhost',      // Application Tauri (v1)
+    'https://tauri.localhost', // Application Tauri (v2)
   ] as const,
   
   // Content Security Policy
@@ -75,8 +77,14 @@ export const generateCSP = (): string => {
 
 // Validation des messages postMessage
 export const isValidMessage = (event: MessageEvent): boolean => {
-  // Vérifier l'origine
-  if (!(SECURITY_CONFIG.ALLOWED_ORIGINS as readonly string[]).includes(event.origin)) {
+  const allowedOrigins = SECURITY_CONFIG.ALLOWED_ORIGINS as readonly string[];
+  
+  // Accepter les messages depuis l'application Tauri elle-même
+  const isTauriInternal = event.origin.startsWith('tauri://') || 
+                          event.origin === 'https://tauri.localhost';
+  const isAirADCR = allowedOrigins.includes(event.origin);
+  
+  if (!isTauriInternal && !isAirADCR) {
     logger.warn('Message rejeté - origine non autorisée:', event.origin);
     return false;
   }

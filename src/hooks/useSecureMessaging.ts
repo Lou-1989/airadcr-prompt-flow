@@ -285,6 +285,9 @@ export const useSecureMessaging = () => {
   
   // Configuration des écouteurs d'événements
   useEffect(() => {
+    logger.debug('[Sécurité] Origines autorisées:', SECURITY_CONFIG.ALLOWED_ORIGINS);
+    logger.debug('[Sécurité] Origin actuelle:', window.location.origin);
+    
     window.addEventListener('message', handleSecureMessage);
     
     return () => {

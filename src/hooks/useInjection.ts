@@ -113,7 +113,8 @@ export const useInjection = () => {
         }
       }
       
-      if (windowInfo) {
+      // 🔒 FILTRAGE STRICT: Ignorer AirADCR pour capturer uniquement les fenêtres externes
+      if (windowInfo && windowInfo.app_name !== 'AIRADCR') {
         const newPosition: CursorPosition = {
           ...position,
           timestamp: Date.now()
@@ -125,13 +126,13 @@ export const useInjection = () => {
         setExternalPositions(prev => {
           const updated = [newPosition, ...prev.slice(0, 2)]; // Garder les 3 dernières
           
-          // Log pour debug (réduit la verbosité)
-          if (Math.random() < 0.1) { // 10% des captures
-            logger.debug(`📍 Position capturée: (${position.x}, ${position.y}) - ${windowInfo.app_name}`);
-          }
+          // Log TOUTES les captures pour diagnostic complet
+          logger.debug(`📍 Position capturée: (${position.x}, ${position.y}) - ${windowInfo.app_name}`);
           
           return updated;
         });
+      } else if (windowInfo && windowInfo.app_name === 'AIRADCR') {
+        logger.debug('[Monitoring] ⏭️ Position ignorée (AirADCR détecté)');
       }
     } catch (error) {
       logger.warn('[Monitoring] Erreur capture position:', error);
@@ -142,7 +143,7 @@ export const useInjection = () => {
   const startMonitoring = useCallback(() => {
     if (intervalRef.current) return;
     
-    logger.debug('[Monitoring] Démarrage surveillance positions externes (300ms)...');
+    logger.debug('[Monitoring] 🚀 Démarrage surveillance externe (300ms) - Filtre AirADCR actif');
     setIsMonitoring(true);
     
     // Intervalle réduit pour capture plus réactive
@@ -188,6 +189,7 @@ export const useInjection = () => {
     
     const startTime = Date.now();
     logger.info(`🎯 INJECTION ${injectionType || 'default'} - ${text.length} caractères - Verrouillée: ${!!lockedPosition}`);
+    logger.debug('[Injection] Vérification priorités - Verrouillée:', !!lockedPosition, '| Externe disponible:', externalPositions.length > 0);
     logger.debug('[Injection] TYPE:', injectionType || 'default');
     logger.debug('[Injection] Texte à injecter:', text.substring(0, 50) + '...');
     logger.debug('[Injection] Longueur:', text.length, 'caractères');
@@ -382,6 +384,16 @@ export const useInjection = () => {
           logger.debug(`[Injection] Position externe: (${lastExternalPosition.x}, ${lastExternalPosition.y}) - Âge: ${age}ms`);
           
           if (isPositionRecent) {
+            const appName = lastExternalWindow?.app_name || 'Application inconnue';
+            
+            // 🔒 BLOCAGE CRITIQUE: Si la position externe pointe vers AirADCR, annuler
+            if (appName === 'AIRADCR') {
+              failureReason = 'TARGET_IS_AIRADCR';
+              logger.error('[Injection] ❌ INJECTION ANNULÉE: Position externe pointe vers AirADCR (bug filtrage)');
+              logger.error('[Injection] Cause probable: captureExternalPosition() a capturé AirADCR par erreur');
+              return false;
+            }
+            
             // 🆕 Clamper les coordonnées pour position externe aussi
             let extX = lastExternalPosition.x;
             let extY = lastExternalPosition.y;
@@ -409,7 +421,6 @@ export const useInjection = () => {
             });
             
             const duration = Date.now() - startTime;
-            const appName = lastExternalWindow?.app_name || 'Application inconnue';
             
             // 🆕 Avertir si fenêtre non éditable (Explorer, shell, etc.)
             const nonEditableApps = ['explorer.exe', 'Explorer', 'Explorateur Windows', 'Shell', 'Taskbar'];
@@ -444,6 +455,15 @@ export const useInjection = () => {
           logger.warn('[Injection] get_window_at_point échoué, utilisation position brute:', error);
         }
         
+        const appName = targetWindow?.app_name || 'Application inconnue';
+        
+        // 🔒 BLOCAGE CRITIQUE: Si le curseur est dans AirADCR, annuler l'injection
+        if (appName === 'AIRADCR') {
+          failureReason = 'CURSOR_IN_AIRADCR';
+          logger.error('[Injection] ❌ INJECTION ANNULÉE: Curseur dans AirADCR. Placez le curseur dans Word/RIS avant d\'injecter.');
+          return false;
+        }
+        
         let finalX = currentPos.x;
         let finalY = currentPos.y;
         
@@ -462,7 +482,6 @@ export const useInjection = () => {
         });
         
         const duration = Date.now() - startTime;
-        const appName = targetWindow?.app_name || 'Application inconnue';
         
         // 🆕 Avertir si fenêtre non éditable
         const nonEditableApps = ['explorer.exe', 'Explorer', 'Explorateur Windows', 'Shell', 'Taskbar'];
@@ -622,7 +641,8 @@ export const useInjection = () => {
       // Sauvegarder dans localStorage
       saveLockedPositions(windowInfo.app_name, newLockedPosition);
       
-      logger.debug(`[Lock] ✅ Position verrouillée (relativeTo: ${relativeTo})`);
+      logger.info(`[Lock] ✅ Verrouillage accepté: ${windowInfo.app_name} à (${position.x}, ${position.y})`);
+      logger.debug(`[Lock] Position verrouillée (relativeTo: ${relativeTo})`);
       logger.debug(`[Lock] Ratios: (${ratioX.toFixed(3)}, ${ratioY.toFixed(3)}) dans ${windowInfo.app_name}`);
       logger.debug(`[Lock] Position absolue: (${position.x}, ${position.y})`);
       return true;

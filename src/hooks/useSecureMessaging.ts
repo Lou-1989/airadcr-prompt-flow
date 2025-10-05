@@ -41,7 +41,7 @@ export const useSecureMessaging = () => {
     
     // Appeler la commande Tauri pour synchroniser l'état
     if (window.__TAURI__) {
-      invoke('handle_recording_notification', { messageType })
+      invoke('handle_recording_notification', { message_type: messageType })
         .catch(error => {
           logger.error('[useSecureMessaging] Erreur notification Tauri:', error);
         });

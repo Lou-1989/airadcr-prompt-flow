@@ -46,14 +46,12 @@ pub struct CursorPosition {
 // 🎤 Structure pour gérer l'état de la dictée SpeechMike
 pub struct DictationState {
     status: String, // "idle", "recording", "paused"
-    record_press_count: i32,
 }
 
 impl DictationState {
     pub fn new() -> Self {
         Self {
             status: String::from("idle"),
-            record_press_count: 0,
         }
     }
 
@@ -61,31 +59,18 @@ impl DictationState {
         match self.status.as_str() {
             "idle" => {
                 // Démarrer la dictée
-                println!("🎤 [DictationState] Idle → Recording");
+                println!("🎤 [DictationState] Idle → Recording (F10 - démarrer)");
                 self.send_command(window, "airadcr:speechmike_record");
-                self.record_press_count = 0;
             }
             "recording" => {
-                self.record_press_count += 1;
-                println!("🔴 [DictationState] Recording - Appui #{}", self.record_press_count);
-                
-                if self.record_press_count == 1 {
-                    // Premier appui : terminer directement (pas de pause)
-                    println!("✅ [DictationState] Recording → Finished (1er appui)");
-                    self.send_command(window, "airadcr:speechmike_finish");
-                    self.record_press_count = 0;
-                } else if self.record_press_count >= 2 {
-                    // Deuxième appui : terminer aussi (sécurité)
-                    println!("✅ [DictationState] Recording → Finished (2ème appui)");
-                    self.send_command(window, "airadcr:speechmike_finish");
-                    self.record_press_count = 0;
-                }
+                // Terminer la dictée
+                println!("✅ [DictationState] Recording → Finished (F10 - terminer)");
+                self.send_command(window, "airadcr:speechmike_finish");
             }
             "paused" => {
-                // Reprendre l'enregistrement (reset du compteur)
-                println!("▶️ [DictationState] Paused → Recording (resume)");
-                self.send_command(window, "airadcr:speechmike_record");
-                self.record_press_count = 0;
+                // Terminer la dictée depuis pause
+                println!("✅ [DictationState] Paused → Finished (F10 - terminer)");
+                self.send_command(window, "airadcr:speechmike_finish");
             }
             _ => {
                 eprintln!("⚠️ [DictationState] État inconnu: {}", self.status);
@@ -97,7 +82,13 @@ impl DictationState {
         let script = format!(
             r#"
             console.log('[Tauri→Web] Envoi commande SpeechMike: {}');
-            window.postMessage({{ type: '{}', payload: null }}, '*');
+            const iframe = document.querySelector('iframe[title="AirADCR"]');
+            if (iframe && iframe.contentWindow) {{
+                iframe.contentWindow.postMessage({{ type: '{}', payload: null }}, 'https://airadcr.com');
+                console.log('[Tauri→Web] Message envoyé à l\'iframe AirADCR');
+            }} else {{
+                console.error('[Tauri→Web] Iframe AirADCR non trouvée');
+            }}
             "#,
             command, command
         );
@@ -110,11 +101,6 @@ impl DictationState {
     pub fn update_status(&mut self, new_status: String) {
         println!("🔄 [DictationState] Changement d'état: {} → {}", self.status, new_status);
         self.status = new_status;
-        
-        // Reset du compteur quand on quitte l'état "recording"
-        if self.status != "recording" {
-            self.record_press_count = 0;
-        }
     }
 }
 
@@ -1224,17 +1210,54 @@ fn register_global_shortcuts(app_handle: tauri::AppHandle) {
         })
         .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement F10: {}", e));
     
-    // F11: Pause explicite (rarement utilisé)
+    // F11: Toggle Play/Pause
     let handle_f11 = app_handle.clone();
+    let dictation_state_f11 = dictation_state_arc.clone();
     shortcut_manager
         .register("F11", move || {
-            println!("⏸️ [SpeechMike] F11 pressé (pause explicite)");
+            println!("⏯️ [SpeechMike] F11 pressé (toggle play/pause)");
             if let Some(window) = handle_f11.get_window("main") {
-                let script = r#"
-                    console.log('[Tauri→Web] Envoi commande: airadcr:speechmike_pause');
-                    window.postMessage({ type: 'airadcr:speechmike_pause', payload: null }, '*');
-                "#;
-                let _ = window.eval(script);
+                let dictation_state = match dictation_state_f11.lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => {
+                        eprintln!("Dictation state mutex poisoned, recovering...");
+                        poisoned.into_inner()
+                    }
+                };
+                
+                let command = match dictation_state.status.as_str() {
+                    "recording" => {
+                        println!("⏸️ [F11] Recording → envoi pause");
+                        "airadcr:speechmike_pause"
+                    },
+                    "paused" => {
+                        println!("▶️ [F11] Paused → envoi record (reprise)");
+                        "airadcr:speechmike_record"
+                    },
+                    "idle" => {
+                        println!("ℹ️ [F11] Idle → pas d'action");
+                        return; // No-op
+                    },
+                    _ => {
+                        eprintln!("⚠️ [F11] État inconnu: {}", dictation_state.status);
+                        return;
+                    }
+                };
+                
+                let script = format!(
+                    r#"
+                    console.log('[Tauri→Web] Envoi commande: {}');
+                    const iframe = document.querySelector('iframe[title="AirADCR"]');
+                    if (iframe && iframe.contentWindow) {{
+                        iframe.contentWindow.postMessage({{ type: '{}', payload: null }}, 'https://airadcr.com');
+                        console.log('[Tauri→Web] Message envoyé à l\'iframe AirADCR');
+                    }} else {{
+                        console.error('[Tauri→Web] Iframe AirADCR non trouvée');
+                    }}
+                    "#,
+                    command, command
+                );
+                let _ = window.eval(&script);
             }
         })
         .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement F11: {}", e));

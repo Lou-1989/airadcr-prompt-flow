@@ -156,7 +156,8 @@
         "minimizable": true,
         "maximizable": true,
         "fileDropEnabled": false,
-        "url": "index.html"
+        "url": "index.html",
+        "devTools": true
       }
     ],
     "systemTray": {

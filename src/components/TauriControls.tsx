@@ -3,6 +3,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { useTauriWindow } from '@/hooks/useTauriWindow';
+import { invoke } from '@tauri-apps/api';
+import { toast } from 'sonner';
 import { 
   Pin, 
   PinOff, 
@@ -12,7 +14,9 @@ import {
   EyeOff, 
   X,
   Settings,
-  Info
+  Info,
+  FileText,
+  FolderOpen
 } from 'lucide-react';
 
 export const TauriControls: React.FC = () => {
@@ -25,6 +29,27 @@ export const TauriControls: React.FC = () => {
     toggleVisibility,
     quitApp,
   } = useTauriWindow();
+
+  const handleOpenLogFolder = async () => {
+    try {
+      await invoke('open_log_folder');
+      toast.success('Dossier de logs ouvert');
+    } catch (error) {
+      toast.error('Erreur lors de l\'ouverture du dossier de logs');
+      console.error(error);
+    }
+  };
+
+  const handleCopyLogPath = async () => {
+    try {
+      const logPath = await invoke<string>('get_log_path');
+      await navigator.clipboard.writeText(logPath);
+      toast.success('Chemin des logs copié dans le presse-papiers');
+    } catch (error) {
+      toast.error('Erreur lors de la copie du chemin');
+      console.error(error);
+    }
+  };
 
   // N'afficher les contrôles que dans l'environnement Tauri
   if (!isTauriApp) return null;
@@ -98,6 +123,31 @@ export const TauriControls: React.FC = () => {
           <div className="font-medium mb-1">Raccourcis:</div>
           <div>Ctrl+Alt+H: Masquer/Afficher</div>
           <div>Ctrl+Alt+Q: Fermer</div>
+        </div>
+
+        {/* Boutons de logs */}
+        <Separator className="my-2" />
+        <div className="flex gap-1">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleCopyLogPath}
+            className="h-7 flex-1 text-xs"
+            title="Copier le chemin des logs"
+          >
+            <FileText className="h-3 w-3 mr-1" />
+            Copier logs
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleOpenLogFolder}
+            className="h-7 flex-1 text-xs"
+            title="Ouvrir le dossier des logs"
+          >
+            <FolderOpen className="h-3 w-3 mr-1" />
+            Ouvrir
+          </Button>
         </div>
       </div>
     </div>

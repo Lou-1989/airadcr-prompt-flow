@@ -11,6 +11,10 @@ use arboard::Clipboard;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use active_win_pos_rs::get_active_window;
+use log::{info, warn, error, debug};
+use std::fs::{OpenOptions, create_dir_all};
+use std::io::Write;
+extern crate chrono;
 
 #[cfg(target_os = "windows")]
 use winapi::um::winuser::{GetSystemMetrics, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN};
@@ -796,7 +800,83 @@ async fn simulate_key_in_iframe(window: tauri::Window, key: String) -> Result<()
     Ok(())
 }
 
+// 🆕 COMMANDE DE LOGGING PERSISTANT
+#[tauri::command]
+async fn write_log(message: String, level: String) -> Result<(), String> {
+    // Obtenir le chemin du dossier de logs dans AppData
+    let app_data = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
+    let log_dir = format!("{}\\AIRADCR\\logs", app_data);
+    
+    // Créer le dossier si nécessaire
+    if let Err(e) = create_dir_all(&log_dir) {
+        return Err(format!("Impossible de créer le dossier de logs: {}", e));
+    }
+    
+    // Créer/ouvrir le fichier de log avec append
+    let log_path = format!("{}\\app.log", log_dir);
+    let mut file = match OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path) {
+            Ok(f) => f,
+            Err(e) => return Err(format!("Impossible d'ouvrir le fichier de log: {}", e)),
+        };
+    
+    // Formater le timestamp
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let datetime = chrono::DateTime::from_timestamp(timestamp as i64, 0)
+        .unwrap_or_else(|| chrono::DateTime::from_timestamp(0, 0).unwrap());
+    
+    // Écrire le log
+    let log_entry = format!("[{}] [{}] {}\n", 
+        datetime.format("%Y-%m-%d %H:%M:%S"),
+        level.to_uppercase(),
+        message
+    );
+    
+    if let Err(e) = file.write_all(log_entry.as_bytes()) {
+        return Err(format!("Impossible d'écrire dans le fichier de log: {}", e));
+    }
+    
+    Ok(())
+}
+
+// 🆕 COMMANDE POUR OBTENIR LE CHEMIN DES LOGS
+#[tauri::command]
+async fn get_log_path() -> Result<String, String> {
+    let app_data = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
+    let log_path = format!("{}\\AIRADCR\\logs\\app.log", app_data);
+    Ok(log_path)
+}
+
+// 🆕 COMMANDE POUR OUVRIR LE DOSSIER DES LOGS
+#[tauri::command]
+async fn open_log_folder() -> Result<(), String> {
+    let app_data = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
+    let log_dir = format!("{}\\AIRADCR\\logs", app_data);
+    
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(&log_dir)
+            .spawn()
+            .map_err(|e| format!("Impossible d'ouvrir le dossier: {}", e))?;
+    }
+    
+    Ok(())
+}
+
 fn main() {
+    // 🆕 Initialiser le système de logging
+    env_logger::Builder::from_default_env()
+        .filter_level(log::LevelFilter::Debug)
+        .init();
+    
+    info!("🚀 Démarrage de AIRADCR Desktop v1.0.0");
+    
     #[cfg(target_os = "windows")]
     enable_dpi_awareness();
     
@@ -896,7 +976,10 @@ fn main() {
             simulate_key_in_iframe,
             get_virtual_desktop_info,
             get_physical_window_rect,
-            get_window_client_rect_at_point
+            get_window_client_rect_at_point,
+            write_log,
+            get_log_path,
+            open_log_folder
         ])
         .setup(|app| {
             // 🎤 Enregistrement des raccourcis globaux SpeechMike

@@ -136,7 +136,6 @@
     "updater": {
       "active": false
     },
-    "singleInstance": true,
     "windows": [
       {
         "fullscreen": false,
@@ -166,5 +165,6 @@
       "menuOnLeftClick": false,
       "title": "AIRADCR"
     }
-  }
+  },
+  "singleInstance": true
 }

@@ -169,34 +169,71 @@ async fn get_system_info() -> Result<SystemInfo, String> {
 
 #[tauri::command]
 async fn get_cursor_position() -> Result<CursorPosition, String> {
-    // Retry logic pour gérer les erreurs temporaires multi-écrans
-    let mut retry_count = 0;
-    let max_retries = 3;
-    
-    while retry_count < max_retries {
-        let enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
-        match enigo.location() {
-            Ok((x, y)) => {
-                return Ok(CursorPosition {
-                    x,
-                    y,
-                    timestamp: SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis()
-                        .min(u64::MAX as u128) as u64,
-                });
-            },
-            Err(e) if retry_count < max_retries - 1 => {
-                retry_count += 1;
-                thread::sleep(Duration::from_millis(100));
-                continue;
-            },
-            Err(e) => return Err(format!("Failed to get cursor position after {} retries: {}", max_retries, e))
+    #[cfg(target_os = "windows")]
+    {
+        // Utilisation de l'API native Windows pour une fiabilité maximale
+        use winapi::shared::windef::POINT;
+        
+        let max_retries = 5;
+        let mut retry_count = 0;
+        
+        while retry_count < max_retries {
+            unsafe {
+                let mut point = POINT { x: 0, y: 0 };
+                
+                if GetCursorPos(&mut point) != 0 {
+                    return Ok(CursorPosition {
+                        x: point.x,
+                        y: point.y,
+                        timestamp: SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis()
+                            .min(u64::MAX as u128) as u64,
+                    });
+                }
+            }
+            
+            retry_count += 1;
+            if retry_count < max_retries {
+                thread::sleep(Duration::from_millis(30));
+            }
         }
+        
+        return Err(format!("Failed to get cursor position with GetCursorPos after {} retries", max_retries));
     }
     
-    Err("Failed to get cursor position".to_string())
+    #[cfg(not(target_os = "windows"))]
+    {
+        // Utilisation d'Enigo pour macOS et Linux
+        let mut retry_count = 0;
+        let max_retries = 3;
+        
+        while retry_count < max_retries {
+            let enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
+            match enigo.location() {
+                Ok((x, y)) => {
+                    return Ok(CursorPosition {
+                        x,
+                        y,
+                        timestamp: SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis()
+                            .min(u64::MAX as u128) as u64,
+                    });
+                },
+                Err(_) if retry_count < max_retries - 1 => {
+                    retry_count += 1;
+                    thread::sleep(Duration::from_millis(100));
+                    continue;
+                },
+                Err(e) => return Err(format!("Failed to get cursor position after {} retries: {}", max_retries, e))
+            }
+        }
+        
+        Err("Failed to get cursor position".to_string())
+    }
 }
 
 #[tauri::command]
@@ -366,7 +403,7 @@ use winapi::um::winuser::{SetCursorPos, SendInput, INPUT, INPUT_MOUSE, INPUT_KEY
 #[cfg(target_os = "windows")]
 use winapi::um::winuser::{VK_CONTROL, KEYEVENTF_SCANCODE};
 #[cfg(target_os = "windows")]
-use winapi::um::winuser::{WindowFromPoint, GetAncestor, SetForegroundWindow, GA_ROOT, GetForegroundWindow, GetWindowRect, IsIconic, ShowWindow, GetWindowPlacement, SetWindowPlacement, SW_RESTORE, SW_SHOWNORMAL, GetWindowTextW, GetWindowThreadProcessId};
+use winapi::um::winuser::{WindowFromPoint, GetAncestor, SetForegroundWindow, GA_ROOT, GetForegroundWindow, GetWindowRect, IsIconic, ShowWindow, GetWindowPlacement, SetWindowPlacement, SW_RESTORE, SW_SHOWNORMAL, GetWindowTextW, GetWindowThreadProcessId, GetCursorPos};
 #[cfg(target_os = "windows")]
 use winapi::shared::windef::{POINT, RECT};
 #[cfg(target_os = "windows")]

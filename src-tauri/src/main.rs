@@ -441,9 +441,7 @@ async fn get_active_window_info() -> Result<WindowInfo, String> {
 }
 
 #[cfg(target_os = "windows")]
-use winapi::um::winuser::{SetCursorPos, SendInput, INPUT, INPUT_MOUSE, INPUT_KEYBOARD, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, KEYEVENTF_KEYUP};
-#[cfg(target_os = "windows")]
-use winapi::um::winuser::{VK_CONTROL, KEYEVENTF_SCANCODE};
+use winapi::um::winuser::SetCursorPos;
 #[cfg(target_os = "windows")]
 use winapi::um::winuser::{WindowFromPoint, GetAncestor, SetForegroundWindow, GA_ROOT, GetForegroundWindow, GetWindowRect, IsIconic, ShowWindow, GetWindowPlacement, SetWindowPlacement, SW_RESTORE, SW_SHOWNORMAL};
 #[cfg(target_os = "windows")]
@@ -636,7 +634,7 @@ async fn perform_injection_at_position_direct(x: i32, y: i32, text: String, stat
 
 // 🆕 Commande: Récupérer la fenêtre sous le curseur (même si AirADCR a le focus)
 #[tauri::command]
-async fn get_window_at_point(_x: i32, _y: i32) -> Result<WindowInfo, String> {
+async fn get_window_at_point(x: i32, y: i32) -> Result<WindowInfo, String> {
     #[cfg(target_os = "windows")]
     {
         use winapi::shared::windef::POINT;
@@ -800,7 +798,7 @@ pub struct ClientRectInfo {
 }
 
 #[tauri::command]
-async fn get_window_client_rect_at_point(_x: i32, _y: i32) -> Result<ClientRectInfo, String> {
+async fn get_window_client_rect_at_point(x: i32, y: i32) -> Result<ClientRectInfo, String> {
     #[cfg(target_os = "windows")]
     {
         unsafe {
@@ -1005,7 +1003,7 @@ async fn get_log_path() -> Result<String, String> {
 #[tauri::command]
 async fn open_log_folder() -> Result<(), String> {
     let app_data = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
-    let _log_dir = format!("{}\\AIRADCR\\logs", app_data);
+    let log_dir = format!("{}\\AIRADCR\\logs", app_data);
     
     #[cfg(target_os = "windows")]
     {

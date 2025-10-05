@@ -239,10 +239,27 @@ export const useInjection = () => {
           let targetY = lockedPosition.y;
           
           if (lockedPosition.relativePosition && lockedPosition.windowInfo) {
-            // 🆕 AMÉLIORATION 2: TOUJOURS recapturer la fenêtre cible (pas de timeout)
+            // 🆕 AMÉLIORATION 1: Synchronisation active de lastExternalWindow
             logger.debug('[Injection] 🔄 Capture fraîche de la fenêtre cible...');
+            
+            const previousExternalWindow = lastExternalWindow;
             await captureExternalPosition();
-            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            // 🆕 Polling actif: Attendre que lastExternalWindow soit mis à jour (max 1 seconde)
+            const maxWaitMs = 1000;
+            const startWait = Date.now();
+            while (
+              lastExternalWindow === previousExternalWindow && 
+              Date.now() - startWait < maxWaitMs
+            ) {
+              await new Promise(resolve => setTimeout(resolve, 50));
+            }
+            
+            if (lastExternalWindow === previousExternalWindow) {
+              logger.warn('[Injection] ⚠️ lastExternalWindow non mis à jour après 1s, utilisation ancienne valeur');
+            } else {
+              logger.debug(`[Injection] ✅ lastExternalWindow synchronisé après ${Date.now() - startWait}ms`);
+            }
             
             let windowToUse: WindowInfo | null = null;
             
@@ -261,13 +278,15 @@ export const useInjection = () => {
             
             if (lockedAny.relativeTo === 'client' && lockedAny.clientRectInfo) {
               try {
-                // 🆕 AMÉLIORATION 1: MULTI-POINT SCAN (centre + 4 coins)
+                // 🆕 AMÉLIORATION 3: MULTI-POINT SCAN étendu (centre + 4 coins + 2 mi-centres)
                 const probePoints = [
                   { x: windowToUse.x + Math.floor(windowToUse.width / 2), y: windowToUse.y + Math.floor(windowToUse.height / 2), name: 'centre' },
                   { x: windowToUse.x + 50, y: windowToUse.y + 50, name: 'coin haut-gauche' },
                   { x: windowToUse.x + windowToUse.width - 50, y: windowToUse.y + 50, name: 'coin haut-droit' },
                   { x: windowToUse.x + 50, y: windowToUse.y + windowToUse.height - 50, name: 'coin bas-gauche' },
                   { x: windowToUse.x + windowToUse.width - 50, y: windowToUse.y + windowToUse.height - 50, name: 'coin bas-droit' },
+                  { x: windowToUse.x + Math.floor(windowToUse.width / 4), y: windowToUse.y + Math.floor(windowToUse.height / 2), name: 'mi-centre gauche' },
+                  { x: windowToUse.x + Math.floor(3 * windowToUse.width / 4), y: windowToUse.y + Math.floor(windowToUse.height / 2), name: 'mi-centre droit' },
                 ];
                 
                 let currentClientRect: any = null;

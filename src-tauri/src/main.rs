@@ -171,7 +171,7 @@ async fn get_system_info() -> Result<SystemInfo, String> {
 async fn get_cursor_position() -> Result<CursorPosition, String> {
     // Retry logic pour gérer les erreurs temporaires multi-écrans
     let mut retry_count = 0;
-    let max_retries = 3;
+    let max_retries = 5; // 🆕 Augmenté de 3 → 5 pour multi-écrans
     
     while retry_count < max_retries {
         let enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
@@ -189,7 +189,7 @@ async fn get_cursor_position() -> Result<CursorPosition, String> {
             },
             Err(e) if retry_count < max_retries - 1 => {
                 retry_count += 1;
-                thread::sleep(Duration::from_millis(100));
+                thread::sleep(Duration::from_millis(150)); // 🆕 Augmenté de 100ms → 150ms
                 continue;
             },
             Err(e) => return Err(format!("Failed to get cursor position after {} retries: {}", max_retries, e))

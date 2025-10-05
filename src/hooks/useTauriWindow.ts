@@ -108,9 +108,24 @@ export const useTauriWindow = () => {
         // 🆕 VÉRIFIER que AIRADCR a le focus AVANT de réactiver always-on-top
         const hasFocus = await invoke('check_app_focus');
         if (hasFocus) {
-          await invoke('set_always_on_top', { alwaysOnTop: true });
-          setIsAlwaysOnTop(true);
-          logger.debug('▶️ Always-on-top RÉACTIVÉ (AIRADCR a le focus)');
+          // 🔄 Retry avec focus forcé (3 tentatives)
+          let success = false;
+          for (let i = 0; i < 3 && !success; i++) {
+            try {
+              await invoke('set_always_on_top', { alwaysOnTop: true });
+              await appWindow.setFocus();
+              setIsAlwaysOnTop(true);
+              success = true;
+              logger.debug(`▶️ Always-on-top RÉACTIVÉ (tentative ${i + 1}/3)`);
+            } catch (error) {
+              if (i < 2) {
+                logger.debug(`⚠️ Retry réactivation always-on-top (${i + 1}/3)...`);
+                await new Promise(resolve => setTimeout(resolve, 500));
+              } else {
+                logger.error('❌ Échec réactivation always-on-top après 3 tentatives:', error);
+              }
+            }
+          }
         } else {
           logger.debug('⏸️ Always-on-top NON réactivé (application cible active)');
         }
@@ -153,15 +168,28 @@ export const useTauriWindow = () => {
         // Restaurer UNIQUEMENT si désactivé (manuel ou bug Windows)
         if (!currentState) {
           logger.warn('⚠️ Always-on-top perdu, restauration silencieuse...');
-          await invoke('set_always_on_top', { alwaysOnTop: true });
           
-          // ❌ PAS de set_focus() pour éviter conflit injection
-          setIsAlwaysOnTop(true);
+          // 🔄 Retry automatique (3 tentatives)
+          let restored = false;
+          for (let i = 0; i < 3 && !restored; i++) {
+            try {
+              await invoke('set_always_on_top', { alwaysOnTop: true });
+              restored = true;
+              setIsAlwaysOnTop(true);
+              logger.debug(`✅ Always-on-top restauré (tentative ${i + 1}/3)`);
+            } catch (error) {
+              if (i < 2) {
+                await new Promise(resolve => setTimeout(resolve, 500));
+              } else {
+                logger.error('❌ Échec restauration always-on-top après 3 tentatives:', error);
+              }
+            }
+          }
         }
       } catch (error) {
         logger.warn('Erreur surveillance always-on-top:', error);
       }
-    }, 3000); // 3 secondes - non-agressif
+    }, 1500); // 1.5 secondes - surveillance réactive
     
     return () => clearInterval(intervalId);
   }, [isTauriApp, isInjectionInProgress]);

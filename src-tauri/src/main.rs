@@ -169,17 +169,34 @@ async fn get_system_info() -> Result<SystemInfo, String> {
 
 #[tauri::command]
 async fn get_cursor_position() -> Result<CursorPosition, String> {
-    let enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
-    let (x, y) = enigo.location().map_err(|e| e.to_string())?;
-    Ok(CursorPosition {
-        x,
-        y,
-        timestamp: SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis()
-            .min(u64::MAX as u128) as u64,
-    })
+    // Retry logic pour gérer les erreurs temporaires multi-écrans
+    let mut retry_count = 0;
+    let max_retries = 3;
+    
+    while retry_count < max_retries {
+        let enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
+        match enigo.location() {
+            Ok((x, y)) => {
+                return Ok(CursorPosition {
+                    x,
+                    y,
+                    timestamp: SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis()
+                        .min(u64::MAX as u128) as u64,
+                });
+            },
+            Err(e) if retry_count < max_retries - 1 => {
+                retry_count += 1;
+                thread::sleep(Duration::from_millis(100));
+                continue;
+            },
+            Err(e) => return Err(format!("Failed to get cursor position after {} retries: {}", max_retries, e))
+        }
+    }
+    
+    Err("Failed to get cursor position".to_string())
 }
 
 #[tauri::command]

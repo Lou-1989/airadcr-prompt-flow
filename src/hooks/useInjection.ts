@@ -115,10 +115,12 @@ export const useInjection = () => {
         
         setExternalPositions(prev => {
           const updated = [newPosition, ...prev.slice(0, 2)]; // Garder les 3 dernières
-          logger.debug('[Monitoring] Position + Fenêtre EXTERNE capturées:', {
-            position: newPosition,
-            window: windowInfo.app_name
-          });
+          
+          // Log pour debug (réduit la verbosité)
+          if (Math.random() < 0.1) { // 10% des captures
+            logger.debug(`📍 Position capturée: (${position.x}, ${position.y}) - ${windowInfo.app_name}`);
+          }
+          
           return updated;
         });
       }
@@ -131,10 +133,11 @@ export const useInjection = () => {
   const startMonitoring = useCallback(() => {
     if (intervalRef.current) return;
     
-    logger.debug('[Monitoring] Démarrage surveillance positions externes...');
+    logger.debug('[Monitoring] Démarrage surveillance positions externes (300ms)...');
     setIsMonitoring(true);
     
-    intervalRef.current = setInterval(captureExternalPosition, 500);
+    // Intervalle réduit pour capture plus réactive
+    intervalRef.current = setInterval(captureExternalPosition, 300);
   }, [captureExternalPosition]);
   
   const stopMonitoring = useCallback(() => {
@@ -365,7 +368,7 @@ export const useInjection = () => {
         
         if (lastExternalPosition) {
           const age = Date.now() - lastExternalPosition.timestamp;
-          const isPositionRecent = age < 30000; // Max 30 secondes
+          const isPositionRecent = age < 60000; // Max 60 secondes (étendu)
           
           logger.debug(`[Injection] Position externe: (${lastExternalPosition.x}, ${lastExternalPosition.y}) - Âge: ${age}ms`);
           
@@ -398,14 +401,58 @@ export const useInjection = () => {
             
             logger.debug(`✅ INJECTION RÉUSSIE (${injectionType || 'default'}) externe à (${lastExternalPosition.x}, ${lastExternalPosition.y})`);
             return true;
-          } else {
-            failureReason = 'POSITION_TOO_OLD';
-            logger.error(`❌ Position trop ancienne (${age}ms). Cliquez dans RIS/Word puis réessayez.`);
-            return false;
           }
+        }
+        
+        // PRIORITÉ 3: Capture automatique si aucune position récente
+        logger.info('⏱️ Aucune position récente, capture automatique...');
+        
+        // Réactiver le monitoring temporairement
+        startMonitoring();
+        
+        // Afficher un toast pour guider l'utilisateur
+        try {
+          const { toast } = await import('@/hooks/use-toast');
+          toast({
+            title: "Positionnement automatique",
+            description: "Placez votre curseur dans l'application cible...",
+            duration: 2000
+          });
+        } catch (toastError) {
+          logger.warn('[Injection] Toast non disponible:', toastError);
+        }
+        
+        // Attendre 2 secondes pour capturer
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Récupérer la dernière position capturée
+        const capturedPosition = externalPositions[0];
+        
+        if (capturedPosition && (Date.now() - capturedPosition.timestamp < 3000)) {
+          logger.info(`✅ Position capturée automatiquement: (${capturedPosition.x}, ${capturedPosition.y})`);
+          
+          let capturedX = capturedPosition.x;
+          let capturedY = capturedPosition.y;
+          
+          if (virtualDesktop) {
+            const vdMaxX = virtualDesktop.x + virtualDesktop.width - 1;
+            const vdMaxY = virtualDesktop.y + virtualDesktop.height - 1;
+            
+            capturedX = Math.max(virtualDesktop.x, Math.min(capturedX, vdMaxX));
+            capturedY = Math.max(virtualDesktop.y, Math.min(capturedY, vdMaxY));
+          }
+          
+          await invoke('perform_injection_at_position_direct', {
+            text,
+            x: capturedX,
+            y: capturedY
+          });
+          
+          logger.info(`✅ INJECTION RÉUSSIE (auto-capture) à (${capturedX}, ${capturedY})`);
+          return true;
         } else {
           failureReason = 'NO_EXTERNAL_POSITION';
-          logger.error('❌ Aucune position capturée. Cliquez dans RIS/Word puis réessayez.');
+          logger.error('❌ Aucune position capturée. Verrouillez une position pour plus de fiabilité.');
           return false;
         }
       })();

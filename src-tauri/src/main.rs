@@ -11,7 +11,7 @@ use arboard::Clipboard;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use active_win_pos_rs::get_active_window;
-use log::{info, warn, error, debug};
+use log::info;
 use std::fs::{OpenOptions, create_dir_all};
 use std::io::Write;
 use std::path::PathBuf;
@@ -266,7 +266,7 @@ async fn get_cursor_position() -> Result<CursorPosition, String> {
                         .min(u64::MAX as u128) as u64,
                 });
             },
-            Err(e) if retry_count < max_retries - 1 => {
+            Err(_e) if retry_count < max_retries - 1 => {
                 retry_count += 1;
                 thread::sleep(Duration::from_millis(150)); // 🆕 Augmenté de 100ms → 150ms
                 continue;
@@ -636,7 +636,7 @@ async fn perform_injection_at_position_direct(x: i32, y: i32, text: String, stat
 
 // 🆕 Commande: Récupérer la fenêtre sous le curseur (même si AirADCR a le focus)
 #[tauri::command]
-async fn get_window_at_point(x: i32, y: i32) -> Result<WindowInfo, String> {
+async fn get_window_at_point(_x: i32, _y: i32) -> Result<WindowInfo, String> {
     #[cfg(target_os = "windows")]
     {
         use winapi::shared::windef::POINT;
@@ -800,7 +800,7 @@ pub struct ClientRectInfo {
 }
 
 #[tauri::command]
-async fn get_window_client_rect_at_point(x: i32, y: i32) -> Result<ClientRectInfo, String> {
+async fn get_window_client_rect_at_point(_x: i32, _y: i32) -> Result<ClientRectInfo, String> {
     #[cfg(target_os = "windows")]
     {
         unsafe {
@@ -1005,7 +1005,7 @@ async fn get_log_path() -> Result<String, String> {
 #[tauri::command]
 async fn open_log_folder() -> Result<(), String> {
     let app_data = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
-    let log_dir = format!("{}\\AIRADCR\\logs", app_data);
+    let _log_dir = format!("{}\\AIRADCR\\logs", app_data);
     
     #[cfg(target_os = "windows")]
     {
@@ -1175,74 +1175,15 @@ fn main() {
             open_log_folder,
             handle_recording_notification
         ])
-        .setup(|app| {
-            // 🎤 Enregistrement des raccourcis globaux SpeechMike avec gestion d'état
-            let app_handle = app.handle();
-            let app_state = app.state::<AppState>();
-            let mut shortcut_manager = app.global_shortcut_manager();
-            
-            // F10: Bouton rouge contextuel (Record/Finish selon l'état)
-            let handle_f10 = app_handle.clone();
-            let state_f10 = app_state.inner().clone();
-            shortcut_manager
-                .register("F10", move || {
-                    println!("🔴 [SpeechMike] F10 pressé (bouton rouge)");
-                    if let Some(window) = handle_f10.get_window("main") {
-                        let mut dictation_state = match state_f10.dictation_state.lock() {
-                            Ok(guard) => guard,
-                            Err(poisoned) => {
-                                eprintln!("Dictation state mutex poisoned, recovering...");
-                                poisoned.into_inner()
-                            }
-                        };
-                        dictation_state.handle_record_button(&window);
-                    }
-                })
-                .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement F10: {}", e));
-            
-            // F11: Pause explicite (rarement utilisé)
-            let handle_f11 = app_handle.clone();
-            shortcut_manager
-                .register("F11", move || {
-                    println!("⏸️ [SpeechMike] F11 pressé (pause explicite)");
-                    if let Some(window) = handle_f11.get_window("main") {
-                        let script = r#"
-                            console.log('[Tauri→Web] Envoi commande: airadcr:speechmike_pause');
-                            window.postMessage({ type: 'airadcr:speechmike_pause', payload: null }, '*');
-                        "#;
-                        let _ = window.eval(script);
-                    }
-                })
-                .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement F11: {}", e));
-            
-            // F12: Terminer dictée (uniquement en production)
-            #[cfg(not(debug_assertions))]
-            {
-                let handle_f12 = app_handle.clone();
-                shortcut_manager
-                    .register("F12", move || {
-                        if let Some(window) = handle_f12.get_window("main") {
-                            let window_clone = window.clone();
-                            tauri::async_runtime::spawn(async move {
-                                let _ = simulate_key_in_iframe(window_clone, "F12".to_string()).await;
-                            });
-                        }
-                    })
-                    .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement F12: {}", e));
-                
-                println!("✅ [SpeechMike] Raccourcis globaux enregistrés: F10 (Démarrer/Reprendre), F11 (Pause), F12 (Terminer)");
-            }
-            
-            #[cfg(debug_assertions)]
-            println!("⚠️ [DEV] F12 non enregistré (disponible pour DevTools)");
-            
-            Ok(())
-        })
+        .setup(|_app| Ok(()))
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
     app.run(|app_handle, event| {
         if let tauri::RunEvent::Ready = event {
+            // 🎤 Enregistrer les raccourcis globaux avec lifetime 'static
+            register_global_shortcuts(app_handle);
+            
             if let Some(window) = app_handle.get_window("main") {
                 let window_clone = window.clone();
                 
@@ -1255,4 +1196,66 @@ fn main() {
             }
         }
     });
+}
+
+// 🎤 Fonction helper pour enregistrer les raccourcis globaux SpeechMike
+fn register_global_shortcuts(app_handle: &tauri::AppHandle) {
+    let app_state = app_handle.state::<AppState>();
+    let mut shortcut_manager = app_handle.global_shortcut_manager();
+    
+    // F10: Bouton rouge contextuel (Record/Finish selon l'état)
+    let handle_f10 = app_handle.clone();
+    let state_f10 = app_state.inner().clone();
+    shortcut_manager
+        .register("F10", move || {
+            println!("🔴 [SpeechMike] F10 pressé (bouton rouge)");
+            if let Some(window) = handle_f10.get_window("main") {
+                let mut dictation_state = match state_f10.dictation_state.lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => {
+                        eprintln!("Dictation state mutex poisoned, recovering...");
+                        poisoned.into_inner()
+                    }
+                };
+                dictation_state.handle_record_button(&window);
+            }
+        })
+        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement F10: {}", e));
+    
+    // F11: Pause explicite (rarement utilisé)
+    let handle_f11 = app_handle.clone();
+    shortcut_manager
+        .register("F11", move || {
+            println!("⏸️ [SpeechMike] F11 pressé (pause explicite)");
+            if let Some(window) = handle_f11.get_window("main") {
+                let script = r#"
+                    console.log('[Tauri→Web] Envoi commande: airadcr:speechmike_pause');
+                    window.postMessage({ type: 'airadcr:speechmike_pause', payload: null }, '*');
+                "#;
+                let _ = window.eval(script);
+            }
+        })
+        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement F11: {}", e));
+    
+    // F12: Terminer dictée (uniquement en production)
+    #[cfg(not(debug_assertions))]
+    {
+        let handle_f12 = app_handle.clone();
+        shortcut_manager
+            .register("F12", move || {
+                if let Some(window) = handle_f12.get_window("main") {
+                    let window_clone = window.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let _ = simulate_key_in_iframe(window_clone, "F12".to_string()).await;
+                    });
+                }
+            })
+            .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement F12: {}", e));
+        
+        println!("✅ [SpeechMike] Raccourcis globaux enregistrés: F10 (Démarrer/Reprendre), F11 (Pause), F12 (Terminer)");
+    }
+    
+    #[cfg(debug_assertions)]
+    println!("⚠️ [DEV] F12 non enregistré (disponible pour DevTools)");
+}
 }

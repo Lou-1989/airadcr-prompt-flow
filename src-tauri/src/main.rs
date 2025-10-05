@@ -11,7 +11,7 @@ use arboard::Clipboard;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use active_win_pos_rs::get_active_window;
-use log::{info, warn, error, debug};
+use log::info;
 use std::fs::{OpenOptions, create_dir_all};
 use std::io::Write;
 extern crate chrono;
@@ -366,11 +366,19 @@ use winapi::um::winuser::{SetCursorPos, SendInput, INPUT, INPUT_MOUSE, INPUT_KEY
 #[cfg(target_os = "windows")]
 use winapi::um::winuser::{VK_CONTROL, KEYEVENTF_SCANCODE};
 #[cfg(target_os = "windows")]
-use winapi::um::winuser::{WindowFromPoint, GetAncestor, SetForegroundWindow, GA_ROOT, GetForegroundWindow, GetWindowRect, IsIconic, ShowWindow, GetWindowPlacement, SetWindowPlacement, SW_RESTORE, SW_SHOWNORMAL};
+use winapi::um::winuser::{WindowFromPoint, GetAncestor, SetForegroundWindow, GA_ROOT, GetForegroundWindow, GetWindowRect, IsIconic, ShowWindow, GetWindowPlacement, SetWindowPlacement, SW_RESTORE, SW_SHOWNORMAL, GetWindowTextW, GetWindowThreadProcessId};
 #[cfg(target_os = "windows")]
 use winapi::shared::windef::{POINT, RECT};
 #[cfg(target_os = "windows")]
 use winapi::um::winuser::WINDOWPLACEMENT;
+#[cfg(target_os = "windows")]
+use winapi::um::handleapi::CloseHandle;
+#[cfg(target_os = "windows")]
+use winapi::um::processthreadsapi::OpenProcess;
+#[cfg(target_os = "windows")]
+use winapi::um::psapi::GetModuleFileNameExW;
+#[cfg(target_os = "windows")]
+use winapi::um::winnt::{PROCESS_QUERY_INFORMATION, PROCESS_VM_READ};
 
 // 🆕 INJECTION WINDOWS ROBUSTE avec Win32 API pour multi-écrans
 #[tauri::command]
@@ -561,9 +569,6 @@ async fn get_window_at_point(x: i32, y: i32) -> Result<WindowInfo, String> {
     #[cfg(target_os = "windows")]
     {
         use winapi::shared::windef::POINT;
-        use winapi::um::processthreadsapi::OpenProcess;
-        use winapi::um::psapi::GetModuleFileNameExW;
-        use winapi::um::winnt::{PROCESS_QUERY_INFORMATION, PROCESS_VM_READ};
         
         unsafe {
             let point = POINT { x, y };

@@ -7,7 +7,7 @@ import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import { useTauriWindow } from "@/hooks/useTauriWindow";
 import { InjectionProvider, useInjectionContext } from "@/contexts/InjectionContext";
-import { useSecureMessaging } from "@/hooks/useSecureMessaging";
+
 import { useGlobalShortcuts } from "@/hooks/useGlobalShortcuts";
 import { DebugPanel } from "@/components/DebugPanel";
 import { DevLogWindow } from "@/components/DevLogWindow";
@@ -32,8 +32,8 @@ const AppContent = () => {
     isMonitoring
   } = useInjectionContext();
 
-  // Active le système de communication sécurisée postMessage
-  useSecureMessaging();
+// Communication sécurisée gérée dans WebViewContainer uniquement (pour éviter les doublons)
+
 
   // Fonction de test pour le debug panel
   const handleTestInjection = async () => {

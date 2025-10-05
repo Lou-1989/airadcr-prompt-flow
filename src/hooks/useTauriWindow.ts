@@ -81,20 +81,13 @@ export const useTauriWindow = () => {
     initWindow();
   }, [isTauriApp]);
 
-  // 📡 Écouter les événements d'injection pour contrôle explicite always-on-top
+  // 📡 Écouter les événements d'injection - AOT reste TOUJOURS actif
   useEffect(() => {
     if (!isTauriApp) return;
     
     const handleInjectionStart = async () => {
       setIsInjectionInProgress(true);
-      
-      try {
-        // 🎯 DÉSACTIVER always-on-top pour que l'application cible reste au premier plan
-        await invoke('set_always_on_top', { alwaysOnTop: false });
-        logger.debug('⏸️ Always-on-top DÉSACTIVÉ (injection démarrée)');
-      } catch (error) {
-        logger.error('Erreur désactivation always-on-top:', error);
-      }
+      logger.debug('🎯 Injection démarrée (AOT maintenu actif)');
     };
     
     const handleInjectionEnd = async () => {
@@ -102,35 +95,27 @@ export const useTauriWindow = () => {
       lastInjectionEndRef.current = Date.now();
       
       try {
-        // ⏳ Attendre stabilisation LONGUE pour multi-écrans (1 seconde)
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // ⏳ Grace period courte pour stabilisation
+        await new Promise(resolve => setTimeout(resolve, 300));
         
-        // 🆕 VÉRIFIER que AIRADCR a le focus AVANT de réactiver always-on-top
-        const hasFocus = await invoke('check_app_focus');
-        if (hasFocus) {
-          // 🔄 Retry avec focus forcé (3 tentatives)
-          let success = false;
-          for (let i = 0; i < 3 && !success; i++) {
-            try {
-              await invoke('set_always_on_top', { alwaysOnTop: true });
-              await appWindow.setFocus();
-              setIsAlwaysOnTop(true);
-              success = true;
-              logger.debug(`▶️ Always-on-top RÉACTIVÉ (tentative ${i + 1}/3)`);
-            } catch (error) {
-              if (i < 2) {
-                logger.debug(`⚠️ Retry réactivation always-on-top (${i + 1}/3)...`);
-                await new Promise(resolve => setTimeout(resolve, 500));
-              } else {
-                logger.error('❌ Échec réactivation always-on-top après 3 tentatives:', error);
-              }
+        // 🔄 RÉACTIVATION INCONDITIONNELLE avec retry (3 tentatives)
+        let success = false;
+        for (let i = 0; i < 3 && !success; i++) {
+          try {
+            await invoke('set_always_on_top', { alwaysOnTop: true });
+            setIsAlwaysOnTop(true);
+            success = true;
+            logger.debug(`✅ Always-on-top confirmé (tentative ${i + 1}/3)`);
+          } catch (error) {
+            if (i < 2) {
+              await new Promise(resolve => setTimeout(resolve, 200));
+            } else {
+              logger.error('❌ Échec confirmation always-on-top après 3 tentatives:', error);
             }
           }
-        } else {
-          logger.debug('⏸️ Always-on-top NON réactivé (application cible active)');
         }
       } catch (error) {
-        logger.error('Erreur réactivation always-on-top:', error);
+        logger.error('Erreur confirmation always-on-top:', error);
       }
     };
     

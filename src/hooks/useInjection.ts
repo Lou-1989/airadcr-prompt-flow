@@ -93,18 +93,27 @@ export const useInjection = () => {
   // Fonction pour capturer la position externe ET la fenêtre externe
   const captureExternalPosition = useCallback(async () => {
     try {
-      // ✅ SOLUTION: Capturer uniquement quand l'app N'A PAS le focus
-      const hasFocus = await checkAppFocus();
+      const position = await getCursorPosition();
+      if (!position) return;
       
-      if (hasFocus) {
-        // Ne pas capturer si on est dans AirADCR
-        return;
+      // 🆕 CAPTURE ROBUSTE: Utiliser get_window_at_point pour récupérer la fenêtre sous le curseur
+      // (même si AirADCR a le focus)
+      let windowInfo: WindowInfo | null = null;
+      
+      try {
+        windowInfo = await invoke<WindowInfo>('get_window_at_point', { 
+          x: position.x, 
+          y: position.y 
+        });
+      } catch (error) {
+        // Fallback: utiliser checkAppFocus classique
+        const hasFocus = await checkAppFocus();
+        if (!hasFocus) {
+          windowInfo = await getActiveWindowInfo();
+        }
       }
       
-      const position = await getCursorPosition();
-      const windowInfo = await getActiveWindowInfo(); // 🆕 Capturer la fenêtre EXTERNE
-      
-      if (position && windowInfo) {
+      if (windowInfo) {
         const newPosition: CursorPosition = {
           ...position,
           timestamp: Date.now()
@@ -399,62 +408,70 @@ export const useInjection = () => {
               y: extY
             });
             
-            logger.debug(`✅ INJECTION RÉUSSIE (${injectionType || 'default'}) externe à (${lastExternalPosition.x}, ${lastExternalPosition.y})`);
+            const duration = Date.now() - startTime;
+            const appName = lastExternalWindow?.app_name || 'Application inconnue';
+            
+            // 🆕 Avertir si fenêtre non éditable (Explorer, shell, etc.)
+            const nonEditableApps = ['explorer.exe', 'Explorer', 'Explorateur Windows', 'Shell', 'Taskbar'];
+            if (nonEditableApps.some(app => appName.toLowerCase().includes(app.toLowerCase()))) {
+              logger.warn(`⚠️ INJECTION dans fenêtre NON ÉDITABLE: ${appName} - Le texte peut ne pas apparaître. Ouvrez Word/RIS ou verrouillez une zone texte.`);
+            }
+            
+            logger.info(`✅ INJECTION RÉUSSIE (externe) à (${extX}, ${extY}) - ${appName} - Durée: ${duration}ms`);
             return true;
           }
         }
         
-        // PRIORITÉ 3: Capture automatique si aucune position récente
-        logger.info('⏱️ Aucune position récente, capture automatique...');
+        // PRIORITÉ 3: Capture automatique IMMÉDIATE (nouvelle méthode robuste)
+        logger.info('⏱️ Aucune position récente, capture immédiate du curseur...');
         
-        // Réactiver le monitoring temporairement
-        startMonitoring();
-        
-        // Afficher un toast pour guider l'utilisateur
-        try {
-          const { toast } = await import('@/hooks/use-toast');
-          toast({
-            title: "Positionnement automatique",
-            description: "Placez votre curseur dans l'application cible...",
-            duration: 2000
-          });
-        } catch (toastError) {
-          logger.warn('[Injection] Toast non disponible:', toastError);
-        }
-        
-        // Attendre 2 secondes pour capturer
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Récupérer la dernière position capturée
-        const capturedPosition = externalPositions[0];
-        
-        if (capturedPosition && (Date.now() - capturedPosition.timestamp < 3000)) {
-          logger.info(`✅ Position capturée automatiquement: (${capturedPosition.x}, ${capturedPosition.y})`);
-          
-          let capturedX = capturedPosition.x;
-          let capturedY = capturedPosition.y;
-          
-          if (virtualDesktop) {
-            const vdMaxX = virtualDesktop.x + virtualDesktop.width - 1;
-            const vdMaxY = virtualDesktop.y + virtualDesktop.height - 1;
-            
-            capturedX = Math.max(virtualDesktop.x, Math.min(capturedX, vdMaxX));
-            capturedY = Math.max(virtualDesktop.y, Math.min(capturedY, vdMaxY));
-          }
-          
-          await invoke('perform_injection_at_position_direct', {
-            text,
-            x: capturedX,
-            y: capturedY
-          });
-          
-          logger.info(`✅ INJECTION RÉUSSIE (auto-capture) à (${capturedX}, ${capturedY})`);
-          return true;
-        } else {
-          failureReason = 'NO_EXTERNAL_POSITION';
-          logger.error('❌ Aucune position capturée. Verrouillez une position pour plus de fiabilité.');
+        // 🆕 Capture directe avec get_window_at_point (sans attendre focus externe)
+        const currentPos = await getCursorPosition();
+        if (!currentPos) {
+          failureReason = 'NO_CURSOR_POSITION';
+          logger.error('❌ Impossible de récupérer la position du curseur');
           return false;
         }
+        
+        // Récupérer la fenêtre sous le curseur actuel
+        let targetWindow: WindowInfo | null = null;
+        try {
+          targetWindow = await invoke<WindowInfo>('get_window_at_point', {
+            x: currentPos.x,
+            y: currentPos.y
+          });
+        } catch (error) {
+          logger.warn('[Injection] get_window_at_point échoué, utilisation position brute:', error);
+        }
+        
+        let finalX = currentPos.x;
+        let finalY = currentPos.y;
+        
+        if (virtualDesktop) {
+          const vdMaxX = virtualDesktop.x + virtualDesktop.width - 1;
+          const vdMaxY = virtualDesktop.y + virtualDesktop.height - 1;
+          
+          finalX = Math.max(virtualDesktop.x, Math.min(finalX, vdMaxX));
+          finalY = Math.max(virtualDesktop.y, Math.min(finalY, vdMaxY));
+        }
+        
+        await invoke('perform_injection_at_position_direct', {
+          text,
+          x: finalX,
+          y: finalY
+        });
+        
+        const duration = Date.now() - startTime;
+        const appName = targetWindow?.app_name || 'Application inconnue';
+        
+        // 🆕 Avertir si fenêtre non éditable
+        const nonEditableApps = ['explorer.exe', 'Explorer', 'Explorateur Windows', 'Shell', 'Taskbar'];
+        if (nonEditableApps.some(app => appName.toLowerCase().includes(app.toLowerCase()))) {
+          logger.warn(`⚠️ INJECTION dans fenêtre NON ÉDITABLE: ${appName} - Le texte peut ne pas apparaître. Ouvrez Word/RIS ou verrouillez une zone texte.`);
+        }
+        
+        logger.info(`✅ INJECTION RÉUSSIE (auto-capture immédiate) à (${finalX}, ${finalY}) - ${appName} - Durée: ${duration}ms`);
+        return true;
       })();
       
       // Race entre injection et timeout

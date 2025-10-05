@@ -555,6 +555,62 @@ async fn perform_injection_at_position_direct(x: i32, y: i32, text: String, stat
     Ok(())
 }
 
+// 🆕 Commande: Récupérer la fenêtre sous le curseur (même si AirADCR a le focus)
+#[tauri::command]
+async fn get_window_at_point(x: i32, y: i32) -> Result<WindowInfo, String> {
+    #[cfg(target_os = "windows")]
+    {
+        use winapi::shared::windef::POINT;
+        
+        unsafe {
+            let point = POINT { x, y };
+            let hwnd = WindowFromPoint(point);
+            
+            if hwnd.is_null() {
+                return Err("Aucune fenêtre trouvée à cette position".to_string());
+            }
+            
+            let root_hwnd = GetAncestor(hwnd, GA_ROOT);
+            if root_hwnd.is_null() {
+                return Err("Impossible de récupérer la fenêtre racine".to_string());
+            }
+            
+            // Utiliser get_active_window pour récupérer les infos
+            match get_active_window() {
+                Ok(win) => Ok(WindowInfo {
+                    title: win.title,
+                    app_name: win.app_name,
+                    x: win.position.x as i32,
+                    y: win.position.y as i32,
+                    width: win.position.width as i32,
+                    height: win.position.height as i32,
+                }),
+                Err(_) => {
+                    // Fallback: retourner info minimale
+                    let mut rect: RECT = std::mem::zeroed();
+                    if GetWindowRect(root_hwnd, &mut rect) != 0 {
+                        Ok(WindowInfo {
+                            title: "Unknown".to_string(),
+                            app_name: "Unknown".to_string(),
+                            x: rect.left,
+                            y: rect.top,
+                            width: rect.right - rect.left,
+                            height: rect.bottom - rect.top,
+                        })
+                    } else {
+                        Err("Impossible de récupérer les infos de la fenêtre".to_string())
+                    }
+                }
+            }
+        }
+    }
+    
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("get_window_at_point non supporté sur cette plateforme".to_string())
+    }
+}
+
 // 🎤 Helper: Convertir nom de touche → keyCode JavaScript
 fn get_key_code(key_name: &str) -> u32 {
     match key_name {
@@ -954,6 +1010,7 @@ fn main() {
             set_ignore_cursor_events,
             perform_injection_at_position_direct,
             get_active_window_info,
+            get_window_at_point,
             simulate_key_in_iframe,
             get_virtual_desktop_info,
             get_physical_window_rect,

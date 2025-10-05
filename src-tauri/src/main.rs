@@ -14,8 +14,6 @@ use active_win_pos_rs::get_active_window;
 use log::info;
 use std::fs::{OpenOptions, create_dir_all};
 use std::io::Write;
-use std::path::PathBuf;
-use std::fs;
 extern crate chrono;
 
 #[cfg(target_os = "windows")]
@@ -558,7 +556,7 @@ async fn perform_injection_at_position_direct(x: i32, y: i32, text: String, stat
 
 // 🆕 Commande: Récupérer la fenêtre sous le curseur (même si AirADCR a le focus)
 #[tauri::command]
-async fn get_window_at_point(x: i32, y: i32) -> Result<WindowInfo, String> {
+async fn get_window_at_point(_x: i32, _y: i32) -> Result<WindowInfo, String> {
     #[cfg(target_os = "windows")]
     {
         use winapi::shared::windef::POINT;
@@ -722,7 +720,7 @@ pub struct ClientRectInfo {
 }
 
 #[tauri::command]
-async fn get_window_client_rect_at_point(x: i32, y: i32) -> Result<ClientRectInfo, String> {
+async fn get_window_client_rect_at_point(_x: i32, _y: i32) -> Result<ClientRectInfo, String> {
     #[cfg(target_os = "windows")]
     {
         unsafe {
@@ -897,7 +895,7 @@ async fn get_log_path() -> Result<String, String> {
 #[tauri::command]
 async fn open_log_folder() -> Result<(), String> {
     let app_data = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
-    let log_dir = format!("{}\\AIRADCR\\logs", app_data);
+    let _log_dir = format!("{}\\AIRADCR\\logs", app_data);
     
     #[cfg(target_os = "windows")]
     {
@@ -1127,8 +1125,9 @@ fn main() {
         .expect("error while building tauri application");
 
     // ✅ Utilisation idiomatique de Tauri - pas de custom logic dans .run()
-    app.run(tauri::generate_context!())
-        .expect("error while running tauri application");
+    app.run(|_app_handle, _event| {
+        // Handle app events if needed
+    });
 }
 
 // ✅ Raccourcis globaux simplifiés - Backend = relai, Frontend = logique

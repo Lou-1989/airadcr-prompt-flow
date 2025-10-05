@@ -10,6 +10,7 @@ import { InjectionProvider, useInjectionContext } from "@/contexts/InjectionCont
 import { useSecureMessaging } from "@/hooks/useSecureMessaging";
 import { useGlobalShortcuts } from "@/hooks/useGlobalShortcuts";
 import { DebugPanel } from "@/components/DebugPanel";
+import { DevLogWindow } from "@/components/DevLogWindow";
 import { logger } from "@/utils/logger";
 
 const queryClient = new QueryClient();
@@ -57,7 +58,7 @@ const AppContent = () => {
         </Routes>
       </BrowserRouter>
       
-      {/* Debug Panel - Accessible uniquement par F12 */}
+      {/* Debug Panel - Accessible par Ctrl+Shift+D */}
       <DebugPanel
         isTauriApp={isTauriApp}
         isAlwaysOnTop={isAlwaysOnTop}
@@ -70,6 +71,9 @@ const AppContent = () => {
         onUnlockPosition={unlockPosition}
         onClose={() => setIsDebugVisible(false)}
       />
+
+      {/* Fenêtre de logs flottante - Visible uniquement en dev */}
+      {import.meta.env.DEV && <DevLogWindow />}
     </>
   );
 };

@@ -12,6 +12,32 @@ export enum LogLevel {
   DEBUG = 3
 }
 
+export interface LogEntry {
+  timestamp: string;
+  level: string;
+  message: string;
+  args?: any[];
+}
+
+type LogListener = (entry: LogEntry) => void;
+
+class LogEmitter {
+  private listeners: LogListener[] = [];
+
+  subscribe(listener: LogListener): () => void {
+    this.listeners.push(listener);
+    return () => {
+      this.listeners = this.listeners.filter(l => l !== listener);
+    };
+  }
+
+  emit(entry: LogEntry) {
+    this.listeners.forEach(listener => listener(entry));
+  }
+}
+
+const logEmitter = new LogEmitter();
+
 class Logger {
   private level: LogLevel;
   private isDevelopment: boolean;
@@ -44,6 +70,12 @@ class Logger {
     if (this.level >= LogLevel.ERROR) {
       console.error(`[AirADCR Error] ${message}`, ...args);
       this.writeToFile('error', message, ...args);
+      logEmitter.emit({
+        timestamp: new Date().toLocaleTimeString(),
+        level: 'error',
+        message,
+        args
+      });
     }
   }
 
@@ -51,6 +83,12 @@ class Logger {
     if (this.level >= LogLevel.WARN) {
       console.warn(`[AirADCR Warn] ${message}`, ...args);
       this.writeToFile('warn', message, ...args);
+      logEmitter.emit({
+        timestamp: new Date().toLocaleTimeString(),
+        level: 'warn',
+        message,
+        args
+      });
     }
   }
 
@@ -58,6 +96,12 @@ class Logger {
     if (this.level >= LogLevel.INFO) {
       console.info(`[AirADCR Info] ${message}`, ...args);
       this.writeToFile('info', message, ...args);
+      logEmitter.emit({
+        timestamp: new Date().toLocaleTimeString(),
+        level: 'info',
+        message,
+        args
+      });
     }
   }
 
@@ -65,7 +109,17 @@ class Logger {
     if (this.level >= LogLevel.DEBUG) {
       console.log(`[AirADCR Debug] ${message}`, ...args);
       this.writeToFile('debug', message, ...args);
+      logEmitter.emit({
+        timestamp: new Date().toLocaleTimeString(),
+        level: 'debug',
+        message,
+        args
+      });
     }
+  }
+
+  subscribe(listener: LogListener): () => void {
+    return logEmitter.subscribe(listener);
   }
 
   tauri(action: string, result?: any, error?: any) {

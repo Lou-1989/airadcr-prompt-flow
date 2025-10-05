@@ -1007,20 +1007,26 @@ fn main() {
                 })
                 .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement F11: {}", e));
             
-            // F12: Terminer dictée
-            let handle_f12 = app_handle.clone();
-            shortcut_manager
-                .register("F12", move || {
-                    if let Some(window) = handle_f12.get_window("main") {
-                        let window_clone = window.clone();
-                        tauri::async_runtime::spawn(async move {
-                            let _ = simulate_key_in_iframe(window_clone, "F12".to_string()).await;
-                        });
-                    }
-                })
-                .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement F12: {}", e));
+            // F12: Terminer dictée (uniquement en production)
+            #[cfg(not(debug_assertions))]
+            {
+                let handle_f12 = app_handle.clone();
+                shortcut_manager
+                    .register("F12", move || {
+                        if let Some(window) = handle_f12.get_window("main") {
+                            let window_clone = window.clone();
+                            tauri::async_runtime::spawn(async move {
+                                let _ = simulate_key_in_iframe(window_clone, "F12".to_string()).await;
+                            });
+                        }
+                    })
+                    .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement F12: {}", e));
+                
+                println!("✅ [SpeechMike] Raccourcis globaux enregistrés: F10 (Démarrer/Reprendre), F11 (Pause), F12 (Terminer)");
+            }
             
-            println!("✅ [SpeechMike] Raccourcis globaux enregistrés: F10 (Démarrer/Reprendre), F11 (Pause), F12 (Terminer)");
+            #[cfg(debug_assertions)]
+            println!("⚠️ [DEV] F12 non enregistré (disponible pour DevTools)");
             
             Ok(())
         })

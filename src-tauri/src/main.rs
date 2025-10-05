@@ -1011,7 +1011,41 @@ fn get_lock_file_path() -> PathBuf {
 
 fn is_already_running() -> bool {
     let lock_path = get_lock_file_path();
-    lock_path.exists()
+    if !lock_path.exists() {
+        return false;
+    }
+
+    // Vérifier si le PID contenu dans le lock file est encore actif
+    match fs::read_to_string(&lock_path) {
+        Ok(content) => {
+            let pid_str = content.trim();
+            if let Ok(pid_u32) = pid_str.parse::<u32>() {
+                // Utiliser sysinfo pour vérifier si le processus existe encore
+                #[allow(unused_imports)]
+                use sysinfo::{Pid, System, SystemExt};
+                let mut sys = System::new();
+                sys.refresh_processes();
+                let pid = Pid::from_u32(pid_u32);
+                if sys.process(pid).is_some() {
+                    // Une instance est active
+                    return true;
+                } else {
+                    // Verrou orphelin → suppression et continuer
+                    let _ = fs::remove_file(&lock_path);
+                    println!("🔓 Verrou orphelin détecté (PID {}), suppression du lock file", pid_u32);
+                    return false;
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("⚠️ Impossible de lire le lock file: {}", e);
+        }
+    }
+
+    // Par défaut, considérer que le lock est invalide et le supprimer
+    let _ = fs::remove_file(&lock_path);
+    println!("🔓 Lock file corrompu supprimé");
+    false
 }
 
 fn create_lock_file() -> std::io::Result<()> {

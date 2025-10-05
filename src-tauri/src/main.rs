@@ -1002,7 +1002,8 @@ async fn open_log_folder() -> Result<(), String> {
     Ok(())
 }
 
-// 🔒 SYSTÈME DE LOCK FILE NATIF POUR SINGLE INSTANCE
+// 🔒 SYSTÈME DE LOCK FILE NATIF POUR SINGLE INSTANCE - DÉSACTIVÉ TEMPORAIREMENT
+/*
 fn get_lock_file_path() -> PathBuf {
     let mut path = std::env::temp_dir();
     path.push("airadcr-desktop.lock");
@@ -1047,7 +1048,9 @@ fn is_already_running() -> bool {
     println!("🔓 Lock file corrompu supprimé");
     false
 }
+*/
 
+/*
 fn create_lock_file() -> std::io::Result<()> {
     let lock_path = get_lock_file_path();
     fs::write(lock_path, std::process::id().to_string())
@@ -1057,6 +1060,7 @@ fn remove_lock_file() {
     let lock_path = get_lock_file_path();
     let _ = fs::remove_file(lock_path);
 }
+*/
 
 fn main() {
     // 🆕 Initialiser le système de logging
@@ -1163,9 +1167,9 @@ fn main() {
                 api.prevent_close();
             }
             WindowEvent::Destroyed => {
-                // 🔒 Supprimer le fichier de verrouillage à la fermeture
-                remove_lock_file();
-                println!("🔓 Fichier de verrouillage supprimé");
+                // 🔒 Lock file désactivé temporairement
+                // remove_lock_file();
+                // println!("🔓 Fichier de verrouillage supprimé");
             }
             _ => {}
         })

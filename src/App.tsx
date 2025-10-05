@@ -2,6 +2,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useEffect } from "react";
+import { invoke } from "@tauri-apps/api/tauri";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
@@ -34,6 +36,14 @@ const AppContent = () => {
 
 // Communication sécurisée gérée dans WebViewContainer uniquement (pour éviter les doublons)
 
+  // Démarrage: garantir une UI cliquable par défaut
+  useEffect(() => {
+    if (isTauriApp) {
+      invoke('set_ignore_cursor_events', { ignore: false })
+        .then(() => logger.info('[Startup] Click-through désactivé (UI cliquable)'))
+        .catch(err => logger.warn('[Startup] Impossible de désactiver click-through:', err));
+    }
+  }, [isTauriApp]);
 
   // Fonction de test pour le debug panel
   const handleTestInjection = async () => {

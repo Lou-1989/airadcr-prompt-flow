@@ -200,7 +200,10 @@ async fn get_cursor_position() -> Result<CursorPosition, String> {
             }
         }
         
-        return Err(format!("Failed to get cursor position with GetCursorPos after {} retries", max_retries));
+        unsafe {
+            let code = GetLastError();
+            return Err(format!("Failed to get cursor position with GetCursorPos after {} retries (LastError={})", max_retries, code));
+        }
     }
     
     #[cfg(not(target_os = "windows"))]
@@ -416,6 +419,8 @@ use winapi::um::processthreadsapi::OpenProcess;
 use winapi::um::psapi::GetModuleFileNameExW;
 #[cfg(target_os = "windows")]
 use winapi::um::winnt::{PROCESS_QUERY_INFORMATION, PROCESS_VM_READ};
+#[cfg(target_os = "windows")]
+use winapi::um::errhandlingapi::GetLastError;
 
 // 🆕 INJECTION WINDOWS ROBUSTE avec Win32 API pour multi-écrans
 #[tauri::command]

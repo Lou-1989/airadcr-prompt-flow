@@ -15,6 +15,9 @@ export const useInteractionMode = (isInjecting: boolean) => {
   const interactionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastInjectionEndRef = useRef<number>(0); // 🔒 Timestamp de la dernière injection
+  // 🔒 FAILSAFE pour clickability
+  const failSafeRef = useRef<boolean>(false);
+  const consecutiveErrorsRef = useRef<number>(0);
 
   // Vérifier si on est dans Tauri au montage
   useEffect(() => {
@@ -29,6 +32,8 @@ export const useInteractionMode = (isInjecting: boolean) => {
   const checkCornerPosition = useCallback(async () => {
     try {
       const position = await invoke<{ x: number; y: number }>('get_cursor_position');
+      // reset erreurs consécutives (OK)
+      consecutiveErrorsRef.current = 0;
       
       // Obtenir les dimensions de l'écran (estimation, ajuster si nécessaire)
       const screenWidth = window.screen.width;
@@ -62,6 +67,16 @@ export const useInteractionMode = (isInjecting: boolean) => {
       }
     } catch (error) {
       logger.warn('[InteractionMode] Erreur détection position:', error);
+      consecutiveErrorsRef.current += 1;
+      if (consecutiveErrorsRef.current >= 10 && !failSafeRef.current) {
+        failSafeRef.current = true;
+        try { await invoke('set_ignore_cursor_events', { ignore: false }); } catch {}
+        logger.error('[InteractionMode] FAILSAFE activé: click-through désactivé (erreurs répétées)');
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+      }
     }
   }, [isInteractionMode, isInjecting]);
 
@@ -112,10 +127,13 @@ export const useInteractionMode = (isInjecting: boolean) => {
       }
       
       // Réactiver click-through uniquement si sûr
-      await invoke('set_ignore_cursor_events', { ignore: true });
+      if (!failSafeRef.current) {
+        await invoke('set_ignore_cursor_events', { ignore: true });
+        logger.debug('[InteractionMode] ✅ Mode interaction DÉSACTIVÉ - Click-through réactivé');
+      } else {
+        logger.debug('[InteractionMode] ✅ Mode interaction DÉSACTIVÉ - FAILSAFE actif (click-through reste désactivé)');
+      }
       setIsInteractionMode(false);
-      
-      logger.debug('[InteractionMode] ✅ Mode interaction DÉSACTIVÉ - Click-through réactivé');
       
       if (interactionTimeoutRef.current) {
         clearTimeout(interactionTimeoutRef.current);

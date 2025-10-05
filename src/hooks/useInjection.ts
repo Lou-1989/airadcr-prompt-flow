@@ -101,9 +101,9 @@ export const useInjection = () => {
       const position = await getCursorPosition();
       if (!position) return;
       
-      // 🔓 CRITIQUE: Désactiver temporairement click-through pour détecter la vraie fenêtre
-      logger.debug('[Monitoring] 🔍 Click-through désactivé temporairement pour scan');
-      await invoke('set_ignore_cursor_events', { ignore: false });
+      // 🔓 CRITIQUE: Activer temporairement le click-through pour scanner la fenêtre SOUS AirADCR
+      logger.debug('[Monitoring] 🔍 Click-through ACTIVÉ temporairement pour scan (bypass hit-test)');
+      await invoke('set_ignore_cursor_events', { ignore: true });
       
       // 🆕 CAPTURE ROBUSTE: Utiliser get_window_at_point pour récupérer la fenêtre sous le curseur
       // (même si AirADCR a le focus)
@@ -121,9 +121,9 @@ export const useInjection = () => {
           windowInfo = await getActiveWindowInfo();
         }
       } finally {
-        // ✅ TOUJOURS réactiver click-through (même en cas d'erreur)
-        await invoke('set_ignore_cursor_events', { ignore: true });
-        logger.debug('[Monitoring] 🔒 Click-through réactivé après scan');
+        // ✅ TOUJOURS désactiver le click-through après scan pour garder l'UI cliquable
+        await invoke('set_ignore_cursor_events', { ignore: false });
+        logger.debug('[Monitoring] 🔓 Click-through DÉSACTIVÉ après scan (UI cliquable)');
       }
       
       // 🔒 FILTRAGE STRICT: Ignorer AirADCR pour capturer uniquement les fenêtres externes
@@ -148,9 +148,9 @@ export const useInjection = () => {
         logger.debug('[Monitoring] ⏭️ Position ignorée (AirADCR détecté)');
       }
     } catch (error) {
-      // 🔒 SÉCURITÉ: Garantir réactivation du click-through même en cas d'erreur totale
+      // 🔒 SÉCURITÉ: Toujours rendre l'UI cliquable même en cas d'erreur
       try {
-        await invoke('set_ignore_cursor_events', { ignore: true });
+        await invoke('set_ignore_cursor_events', { ignore: false });
       } catch {}
       logger.warn('[Monitoring] Erreur capture position:', error);
     }

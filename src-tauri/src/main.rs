@@ -11,7 +11,7 @@ use arboard::Clipboard;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use active_win_pos_rs::get_active_window;
-use log::info;
+use log::{info, warn, error, debug};
 use std::fs::{OpenOptions, create_dir_all};
 use std::io::Write;
 extern crate chrono;
@@ -169,74 +169,34 @@ async fn get_system_info() -> Result<SystemInfo, String> {
 
 #[tauri::command]
 async fn get_cursor_position() -> Result<CursorPosition, String> {
-    #[cfg(target_os = "windows")]
-    {
-        // Utilisation de l'API native Windows pour une fiabilité maximale
-        use winapi::shared::windef::POINT;
-        
-        let max_retries = 5;
-        let mut retry_count = 0;
-        
-        while retry_count < max_retries {
-            unsafe {
-                let mut point = POINT { x: 0, y: 0 };
-                
-                if GetCursorPos(&mut point) != 0 {
-                    return Ok(CursorPosition {
-                        x: point.x,
-                        y: point.y,
-                        timestamp: SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_millis()
-                            .min(u64::MAX as u128) as u64,
-                    });
-                }
-            }
-            
-            retry_count += 1;
-            if retry_count < max_retries {
-                thread::sleep(Duration::from_millis(30));
-            }
-        }
-        
-        unsafe {
-            let code = GetLastError();
-            return Err(format!("Failed to get cursor position with GetCursorPos after {} retries (LastError={})", max_retries, code));
+    // Retry logic pour gérer les erreurs temporaires multi-écrans
+    let mut retry_count = 0;
+    let max_retries = 3;
+    
+    while retry_count < max_retries {
+        let enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
+        match enigo.location() {
+            Ok((x, y)) => {
+                return Ok(CursorPosition {
+                    x,
+                    y,
+                    timestamp: SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis()
+                        .min(u64::MAX as u128) as u64,
+                });
+            },
+            Err(e) if retry_count < max_retries - 1 => {
+                retry_count += 1;
+                thread::sleep(Duration::from_millis(100));
+                continue;
+            },
+            Err(e) => return Err(format!("Failed to get cursor position after {} retries: {}", max_retries, e))
         }
     }
     
-    #[cfg(not(target_os = "windows"))]
-    {
-        // Utilisation d'Enigo pour macOS et Linux
-        let mut retry_count = 0;
-        let max_retries = 3;
-        
-        while retry_count < max_retries {
-            let enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
-            match enigo.location() {
-                Ok((x, y)) => {
-                    return Ok(CursorPosition {
-                        x,
-                        y,
-                        timestamp: SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_millis()
-                            .min(u64::MAX as u128) as u64,
-                    });
-                },
-                Err(_) if retry_count < max_retries - 1 => {
-                    retry_count += 1;
-                    thread::sleep(Duration::from_millis(100));
-                    continue;
-                },
-                Err(e) => return Err(format!("Failed to get cursor position after {} retries: {}", max_retries, e))
-            }
-        }
-        
-        Err("Failed to get cursor position".to_string())
-    }
+    Err("Failed to get cursor position".to_string())
 }
 
 #[tauri::command]
@@ -406,21 +366,11 @@ use winapi::um::winuser::{SetCursorPos, SendInput, INPUT, INPUT_MOUSE, INPUT_KEY
 #[cfg(target_os = "windows")]
 use winapi::um::winuser::{VK_CONTROL, KEYEVENTF_SCANCODE};
 #[cfg(target_os = "windows")]
-use winapi::um::winuser::{WindowFromPoint, GetAncestor, SetForegroundWindow, GA_ROOT, GetForegroundWindow, GetWindowRect, IsIconic, ShowWindow, GetWindowPlacement, SetWindowPlacement, SW_RESTORE, SW_SHOWNORMAL, GetWindowTextW, GetWindowThreadProcessId, GetCursorPos};
+use winapi::um::winuser::{WindowFromPoint, GetAncestor, SetForegroundWindow, GA_ROOT, GetForegroundWindow, GetWindowRect, IsIconic, ShowWindow, GetWindowPlacement, SetWindowPlacement, SW_RESTORE, SW_SHOWNORMAL};
 #[cfg(target_os = "windows")]
 use winapi::shared::windef::{POINT, RECT};
 #[cfg(target_os = "windows")]
 use winapi::um::winuser::WINDOWPLACEMENT;
-#[cfg(target_os = "windows")]
-use winapi::um::handleapi::CloseHandle;
-#[cfg(target_os = "windows")]
-use winapi::um::processthreadsapi::OpenProcess;
-#[cfg(target_os = "windows")]
-use winapi::um::psapi::GetModuleFileNameExW;
-#[cfg(target_os = "windows")]
-use winapi::um::winnt::{PROCESS_QUERY_INFORMATION, PROCESS_VM_READ};
-#[cfg(target_os = "windows")]
-use winapi::um::errhandlingapi::GetLastError;
 
 // 🆕 INJECTION WINDOWS ROBUSTE avec Win32 API pour multi-écrans
 #[tauri::command]
@@ -625,52 +575,33 @@ async fn get_window_at_point(x: i32, y: i32) -> Result<WindowInfo, String> {
                 return Err("Impossible de récupérer la fenêtre racine".to_string());
             }
             
-            // ✅ CORRECTION CRITIQUE: Récupérer les infos de la fenêtre trouvée (pas get_active_window)
-            
-            // 1️⃣ Récupérer le titre de la fenêtre
-            let mut title_buffer = vec![0u16; 256];
-            let title_len = GetWindowTextW(root_hwnd, title_buffer.as_mut_ptr(), 256);
-            let title = String::from_utf16_lossy(&title_buffer[..title_len as usize]);
-            
-            // 2️⃣ Récupérer le nom du processus
-            let mut process_id: u32 = 0;
-            GetWindowThreadProcessId(root_hwnd, &mut process_id);
-            
-            let process_handle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, 0, process_id);
-            let app_name = if !process_handle.is_null() {
-                let mut process_name = vec![0u16; 260];
-                let size = GetModuleFileNameExW(
-                    process_handle, 
-                    std::ptr::null_mut(), 
-                    process_name.as_mut_ptr(), 
-                    260
-                );
-                CloseHandle(process_handle);
-                
-                if size > 0 {
-                    let full_path = String::from_utf16_lossy(&process_name[..size as usize]);
-                    full_path.split('\\').last().unwrap_or("Unknown").to_string()
-                } else {
-                    "Unknown".to_string()
+            // Utiliser get_active_window pour récupérer les infos
+            match get_active_window() {
+                Ok(win) => Ok(WindowInfo {
+                    title: win.title,
+                    app_name: win.app_name,
+                    x: win.position.x as i32,
+                    y: win.position.y as i32,
+                    width: win.position.width as i32,
+                    height: win.position.height as i32,
+                }),
+                Err(_) => {
+                    // Fallback: retourner info minimale
+                    let mut rect: RECT = std::mem::zeroed();
+                    if GetWindowRect(root_hwnd, &mut rect) != 0 {
+                        Ok(WindowInfo {
+                            title: "Unknown".to_string(),
+                            app_name: "Unknown".to_string(),
+                            x: rect.left,
+                            y: rect.top,
+                            width: rect.right - rect.left,
+                            height: rect.bottom - rect.top,
+                        })
+                    } else {
+                        Err("Impossible de récupérer les infos de la fenêtre".to_string())
+                    }
                 }
-            } else {
-                "Unknown".to_string()
-            };
-            
-            // 3️⃣ Récupérer le rectangle de la fenêtre
-            let mut rect: RECT = std::mem::zeroed();
-            if GetWindowRect(root_hwnd, &mut rect) == 0 {
-                return Err("Impossible de récupérer les dimensions de la fenêtre".to_string());
             }
-            
-            Ok(WindowInfo {
-                title,
-                app_name,
-                x: rect.left,
-                y: rect.top,
-                width: rect.right - rect.left,
-                height: rect.bottom - rect.top,
-            })
         }
     }
     

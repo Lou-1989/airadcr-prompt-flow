@@ -26,7 +26,7 @@ log = "0.4"
 chrono = "0.4"
 
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3", features = ["winuser", "psapi", "handleapi", "processthreadsapi", "errhandlingapi"] }
+winapi = { version = "0.3", features = ["winuser"] }
 
 [features]
 # This feature is used for production builds or when `devPath` points to the filesystem

@@ -92,18 +92,9 @@ export const useInjection = () => {
   
   // Fonction pour capturer la position externe ET la fenêtre externe
   const captureExternalPosition = useCallback(async () => {
-    // 🔒 PROTECTION: Ne pas interférer avec une injection en cours
-    if (isInjecting) {
-      return;
-    }
-    
     try {
       const position = await getCursorPosition();
       if (!position) return;
-      
-      // 🔓 CRITIQUE: Activer temporairement le click-through pour scanner la fenêtre SOUS AirADCR
-      logger.debug('[Monitoring] 🔍 Click-through ACTIVÉ temporairement pour scan (bypass hit-test)');
-      await invoke('set_ignore_cursor_events', { ignore: true });
       
       // 🆕 CAPTURE ROBUSTE: Utiliser get_window_at_point pour récupérer la fenêtre sous le curseur
       // (même si AirADCR a le focus)
@@ -120,10 +111,6 @@ export const useInjection = () => {
         if (!hasFocus) {
           windowInfo = await getActiveWindowInfo();
         }
-      } finally {
-        // ✅ TOUJOURS désactiver le click-through après scan pour garder l'UI cliquable
-        await invoke('set_ignore_cursor_events', { ignore: false });
-        logger.debug('[Monitoring] 🔓 Click-through DÉSACTIVÉ après scan (UI cliquable)');
       }
       
       // 🔒 FILTRAGE STRICT: Ignorer AirADCR pour capturer uniquement les fenêtres externes
@@ -148,13 +135,9 @@ export const useInjection = () => {
         logger.debug('[Monitoring] ⏭️ Position ignorée (AirADCR détecté)');
       }
     } catch (error) {
-      // 🔒 SÉCURITÉ: Toujours rendre l'UI cliquable même en cas d'erreur
-      try {
-        await invoke('set_ignore_cursor_events', { ignore: false });
-      } catch {}
       logger.warn('[Monitoring] Erreur capture position:', error);
     }
-  }, [getCursorPosition, checkAppFocus, getActiveWindowInfo, isInjecting]);
+  }, [getCursorPosition, checkAppFocus, getActiveWindowInfo]);
   
   // Démarrer/arrêter la surveillance
   const startMonitoring = useCallback(() => {

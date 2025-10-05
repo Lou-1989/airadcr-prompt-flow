@@ -14,6 +14,8 @@ use active_win_pos_rs::get_active_window;
 use log::{info, warn, error, debug};
 use std::fs::{OpenOptions, create_dir_all};
 use std::io::Write;
+use std::path::PathBuf;
+use std::fs;
 extern crate chrono;
 
 #[cfg(target_os = "windows")]
@@ -1016,11 +1018,46 @@ async fn open_log_folder() -> Result<(), String> {
     Ok(())
 }
 
+// 🔒 SYSTÈME DE LOCK FILE NATIF POUR SINGLE INSTANCE
+fn get_lock_file_path() -> PathBuf {
+    let mut path = std::env::temp_dir();
+    path.push("airadcr-desktop.lock");
+    path
+}
+
+fn is_already_running() -> bool {
+    let lock_path = get_lock_file_path();
+    lock_path.exists()
+}
+
+fn create_lock_file() -> std::io::Result<()> {
+    let lock_path = get_lock_file_path();
+    fs::write(lock_path, std::process::id().to_string())
+}
+
+fn remove_lock_file() {
+    let lock_path = get_lock_file_path();
+    let _ = fs::remove_file(lock_path);
+}
+
 fn main() {
     // 🆕 Initialiser le système de logging
     env_logger::Builder::from_default_env()
         .filter_level(log::LevelFilter::Debug)
         .init();
+    
+    // 🔒 Vérifier si une instance est déjà en cours d'exécution
+    if is_already_running() {
+        eprintln!("⚠️ AIRADCR est déjà en cours d'exécution. Une seule instance est autorisée.");
+        std::process::exit(1);
+    }
+    
+    // 🔒 Créer le fichier de verrouillage
+    if let Err(e) = create_lock_file() {
+        eprintln!("❌ Erreur lors de la création du fichier de verrouillage: {}", e);
+    } else {
+        println!("🔒 Fichier de verrouillage créé: {:?}", get_lock_file_path());
+    }
     
     info!("🚀 Démarrage de AIRADCR Desktop v1.0.0");
     
@@ -1043,15 +1080,6 @@ fn main() {
     let system_tray = SystemTray::new().with_menu(tray_menu);
 
     let app = tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
-            println!("🔄 [Single Instance] Tentative ouverture d'une 2e instance détectée");
-            if let Some(window) = app.get_window("main") {
-                let _ = window.show();
-                let _ = window.set_focus();
-                let _ = window.unminimize();
-                println!("✅ [Single Instance] Fenêtre existante ramenée au premier plan");
-            }
-        }))
         .manage(AppState::default())
         .system_tray(system_tray)
         .on_system_tray_event(|app, event| match event {
@@ -1069,6 +1097,9 @@ fn main() {
             }
             SystemTrayEvent::MenuItemClick { id, .. } => match id.as_str() {
                 "quit" => {
+                    // 🔒 Supprimer le fichier de verrouillage avant de quitter
+                    remove_lock_file();
+                    println!("🔓 Fichier de verrouillage supprimé (quit)");
                     // Graceful shutdown instead of brutal exit
                     app.exit(0);
                 }
@@ -1109,6 +1140,11 @@ fn main() {
                     eprintln!("Error hiding window on close: {}", e);
                 }
                 api.prevent_close();
+            }
+            WindowEvent::Destroyed => {
+                // 🔒 Supprimer le fichier de verrouillage à la fermeture
+                remove_lock_file();
+                println!("🔓 Fichier de verrouillage supprimé");
             }
             _ => {}
         })

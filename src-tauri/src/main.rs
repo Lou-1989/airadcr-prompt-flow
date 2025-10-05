@@ -561,6 +561,9 @@ async fn get_window_at_point(x: i32, y: i32) -> Result<WindowInfo, String> {
     #[cfg(target_os = "windows")]
     {
         use winapi::shared::windef::POINT;
+        use winapi::um::processthreadsapi::OpenProcess;
+        use winapi::um::psapi::GetModuleFileNameExW;
+        use winapi::um::winnt::{PROCESS_QUERY_INFORMATION, PROCESS_VM_READ};
         
         unsafe {
             let point = POINT { x, y };
@@ -575,33 +578,52 @@ async fn get_window_at_point(x: i32, y: i32) -> Result<WindowInfo, String> {
                 return Err("Impossible de récupérer la fenêtre racine".to_string());
             }
             
-            // Utiliser get_active_window pour récupérer les infos
-            match get_active_window() {
-                Ok(win) => Ok(WindowInfo {
-                    title: win.title,
-                    app_name: win.app_name,
-                    x: win.position.x as i32,
-                    y: win.position.y as i32,
-                    width: win.position.width as i32,
-                    height: win.position.height as i32,
-                }),
-                Err(_) => {
-                    // Fallback: retourner info minimale
-                    let mut rect: RECT = std::mem::zeroed();
-                    if GetWindowRect(root_hwnd, &mut rect) != 0 {
-                        Ok(WindowInfo {
-                            title: "Unknown".to_string(),
-                            app_name: "Unknown".to_string(),
-                            x: rect.left,
-                            y: rect.top,
-                            width: rect.right - rect.left,
-                            height: rect.bottom - rect.top,
-                        })
-                    } else {
-                        Err("Impossible de récupérer les infos de la fenêtre".to_string())
-                    }
+            // ✅ CORRECTION CRITIQUE: Récupérer les infos de la fenêtre trouvée (pas get_active_window)
+            
+            // 1️⃣ Récupérer le titre de la fenêtre
+            let mut title_buffer = vec![0u16; 256];
+            let title_len = GetWindowTextW(root_hwnd, title_buffer.as_mut_ptr(), 256);
+            let title = String::from_utf16_lossy(&title_buffer[..title_len as usize]);
+            
+            // 2️⃣ Récupérer le nom du processus
+            let mut process_id: u32 = 0;
+            GetWindowThreadProcessId(root_hwnd, &mut process_id);
+            
+            let process_handle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, 0, process_id);
+            let app_name = if !process_handle.is_null() {
+                let mut process_name = vec![0u16; 260];
+                let size = GetModuleFileNameExW(
+                    process_handle, 
+                    std::ptr::null_mut(), 
+                    process_name.as_mut_ptr(), 
+                    260
+                );
+                CloseHandle(process_handle);
+                
+                if size > 0 {
+                    let full_path = String::from_utf16_lossy(&process_name[..size as usize]);
+                    full_path.split('\\').last().unwrap_or("Unknown").to_string()
+                } else {
+                    "Unknown".to_string()
                 }
+            } else {
+                "Unknown".to_string()
+            };
+            
+            // 3️⃣ Récupérer le rectangle de la fenêtre
+            let mut rect: RECT = std::mem::zeroed();
+            if GetWindowRect(root_hwnd, &mut rect) == 0 {
+                return Err("Impossible de récupérer les dimensions de la fenêtre".to_string());
             }
+            
+            Ok(WindowInfo {
+                title,
+                app_name,
+                x: rect.left,
+                y: rect.top,
+                width: rect.right - rect.left,
+                height: rect.bottom - rect.top,
+            })
         }
     }
     

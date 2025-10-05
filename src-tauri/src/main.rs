@@ -1043,6 +1043,15 @@ fn main() {
     let system_tray = SystemTray::new().with_menu(tray_menu);
 
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            println!("🔄 [Single Instance] Tentative ouverture d'une 2e instance détectée");
+            if let Some(window) = app.get_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+                let _ = window.unminimize();
+                println!("✅ [Single Instance] Fenêtre existante ramenée au premier plan");
+            }
+        }))
         .manage(AppState::default())
         .system_tray(system_tray)
         .on_system_tray_event(|app, event| match event {
@@ -1192,15 +1201,6 @@ fn main() {
             println!("⚠️ [DEV] F12 non enregistré (disponible pour DevTools)");
             
             Ok(())
-        })
-        .on_single_instance(|app, _argv, _cwd| {
-            println!("🔄 [Single Instance] Tentative ouverture d'une 2e instance détectée");
-            if let Some(window) = app.get_window("main") {
-                let _ = window.show();
-                let _ = window.set_focus();
-                let _ = window.unminimize();
-                println!("✅ [Single Instance] Fenêtre existante ramenée au premier plan");
-            }
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

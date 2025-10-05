@@ -165,6 +165,5 @@
       "menuOnLeftClick": false,
       "title": "AIRADCR"
     }
-  },
-  "singleInstance": true
+  }
 }

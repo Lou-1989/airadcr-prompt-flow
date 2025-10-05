@@ -1,21 +1,42 @@
-MIT License
+CONTRAT DE LICENCE UTILISATEUR FINAL (CLUF)
+AIRADCR - Application Médicale Professionnelle de Dictée Radiologique
 
-Copyright (c) 2025 AirADCR Team
+Site officiel : https://airadcr.com
+Développeur : Dr Lounes BENSID
+Copyright © 2025 AIRADCR. Tous droits réservés.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+=========================================
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+1. ACCEPTATION DES CONDITIONS
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+En installant AIRADCR ("le Logiciel"), vous acceptez d'être lié par les termes de cette licence.
+
+2. LICENCE D'UTILISATION
+
+AIRADCR vous accorde une licence non exclusive pour utiliser ce logiciel médical à des fins professionnelles de radiologie.
+
+3. PROPRIÉTÉ INTELLECTUELLE
+
+Ce logiciel est la propriété d'AIRADCR (https://airadcr.com). Tous droits réservés.
+
+4. USAGE MÉDICAL
+
+Ce logiciel est destiné aux professionnels de santé (radiologues) pour améliorer la qualité des comptes rendus radiologiques.
+
+5. CONFIDENTIALITÉ
+
+Toutes les données médicales restent locales sur votre machine. Aucune donnée n'est transmise à AIRADCR ou à des tiers.
+
+6. LIMITATION DE RESPONSABILITÉ
+
+Ce logiciel est fourni "en l'état". AIRADCR ne peut être tenu responsable des dommages directs ou indirects.
+
+7. CONTACT ET SUPPORT
+
+Site web : https://airadcr.com
+Email : contact@airadcr.com
+GitHub : https://github.com/airadcr/desktop
+
+=========================================
+
+Pour toute question, visitez https://airadcr.com ou contactez contact@airadcr.com

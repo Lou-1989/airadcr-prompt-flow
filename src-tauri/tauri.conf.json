@@ -60,6 +60,8 @@
       "active": true,
       "targets": ["nsis", "deb", "appimage", "dmg"],
       "identifier": "com.airadcr.desktop",
+      "publisher": "AIRADCR",
+      "homepage": "https://airadcr.com",
       "icon": [
         "icons/32x32.png",
         "icons/128x128.png",
@@ -68,10 +70,10 @@
       ],
       "resources": [],
       "externalBin": [],
-      "copyright": "Copyright © 2025 AIRADCR. Tous droits réservés.",
+      "copyright": "Copyright © 2025 AIRADCR. Tous droits réservés. Site officiel : https://airadcr.com",
       "category": "Medical",
-      "shortDescription": "Dictée intelligente pour radiologie",
-      "longDescription": "AIRADCR améliore la qualité des comptes rendus radiologiques grâce à une dictée intelligente optimisée pour la radiologie. La solution structure automatiquement les rapports, réduisant la variabilité inter-utilisateurs et le temps de dictée.",
+      "shortDescription": "Logiciel médical professionnel de dictée radiologique - AIRADCR",
+      "longDescription": "AIRADCR (https://airadcr.com) est une solution médicale professionnelle développée pour les radiologues. Elle améliore la qualité et la structure des comptes rendus radiologiques grâce à une interface de dictée intelligente. Utilisée par les professionnels de santé pour optimiser leur workflow médical. Développé par Dr Lounes BENSID.",
       "windows": {
         "certificateThumbprint": null,
         "digestAlgorithm": "sha256",

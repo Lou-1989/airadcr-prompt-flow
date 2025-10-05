@@ -1,16 +1,18 @@
 [package]
 name = "airadcr-desktop"
 version = "1.0.0"
-description = "AIRADCR améliore la qualité des comptes rendus radiologiques grâce à une dictée intelligente optimisée pour la radiologie. Solution desktop native pour radiologues."
-authors = ["AIRADCR"]
+description = "AIRADCR (https://airadcr.com) - Application médicale professionnelle de dictée radiologique pour radiologues. Développée par Dr Lounes BENSID pour améliorer la qualité des comptes rendus radiologiques."
+authors = ["AIRADCR <contact@airadcr.com>", "Dr Lounes BENSID"]
 license = "MIT"
 repository = "https://github.com/airadcr/desktop"
+homepage = "https://airadcr.com"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [build-dependencies]
 tauri-build = { version = "1.5", features = [] }
+winres = "0.1"
 
 [dependencies]
 serde_json = "1.0"

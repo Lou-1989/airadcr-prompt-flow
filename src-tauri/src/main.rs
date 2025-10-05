@@ -1200,17 +1200,21 @@ fn main() {
 
 // 🎤 Fonction helper pour enregistrer les raccourcis globaux SpeechMike
 fn register_global_shortcuts(app_handle: tauri::AppHandle) {
-    let app_state = app_handle.state::<AppState>();
+    // Cloner uniquement les ressources nécessaires depuis l'état pour éviter les emprunts non 'static
+    let dictation_state_arc = {
+        let state: tauri::State<AppState> = app_handle.state();
+        state.dictation_state.clone()
+    };
     let mut shortcut_manager = app_handle.global_shortcut_manager();
     
     // F10: Bouton rouge contextuel (Record/Finish selon l'état)
     let handle_f10 = app_handle.clone();
-    let state_f10 = app_state.inner().clone();
+    let dictation_state_f10 = dictation_state_arc.clone();
     shortcut_manager
         .register("F10", move || {
             println!("🔴 [SpeechMike] F10 pressé (bouton rouge)");
             if let Some(window) = handle_f10.get_window("main") {
-                let mut dictation_state = match state_f10.dictation_state.lock() {
+                let mut dictation_state = match dictation_state_f10.lock() {
                     Ok(guard) => guard,
                     Err(poisoned) => {
                         eprintln!("Dictation state mutex poisoned, recovering...");

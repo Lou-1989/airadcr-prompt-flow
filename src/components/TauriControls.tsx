@@ -2,6 +2,7 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useTauriWindow } from '@/hooks/useTauriWindow';
 import { invoke } from '@tauri-apps/api';
 import { toast } from 'sonner';
@@ -117,6 +118,36 @@ export const TauriControls: React.FC = () => {
             <span>{systemInfo?.arch}</span>
           </div>
         </div>
+        
+        {/* Injection info tooltip */}
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="mt-2 p-2 bg-primary/10 rounded text-xs text-muted-foreground cursor-help border border-primary/20">
+                <div className="font-medium mb-1 flex items-center gap-1">
+                  <Info className="h-3 w-3" />
+                  💡 Astuce injection
+                </div>
+                <div className="text-[10px] leading-tight">
+                  Pour remplacer du texte : sélectionnez-le dans votre logiciel avant d'injecter
+                </div>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="left" className="max-w-xs">
+              <div className="space-y-2 text-xs">
+                <p className="font-semibold">📝 Comment remplacer du texte :</p>
+                <ol className="list-decimal list-inside space-y-1">
+                  <li>Sélectionnez le texte dans votre RIS/Word</li>
+                  <li>Générez le rapport dans AirADCR</li>
+                  <li>Cliquez sur "Injecter"</li>
+                </ol>
+                <p className="text-muted-foreground mt-2">
+                  ✅ Le texte sélectionné sera automatiquement remplacé par Ctrl+V (comportement natif Windows)
+                </p>
+              </div>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
         
         {/* Raccourcis clavier */}
         <div className="mt-2 text-xs text-muted-foreground">

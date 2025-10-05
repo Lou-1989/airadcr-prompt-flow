@@ -154,18 +154,6 @@ export const useInjection = () => {
   
   // getCursorPosition déjà défini plus haut
   
-  // 🆕 DÉTECTION DE SÉLECTION DE TEXTE
-  const detectTextSelection = useCallback(async (): Promise<boolean> => {
-    try {
-      const hasSelection = await invoke<boolean>('has_text_selection');
-      logger.debug('🔍 Détection sélection:', hasSelection);
-      return hasSelection;
-    } catch (error) {
-      logger.error('❌ Erreur détection sélection:', error);
-      return false;
-    }
-  }, []);
-  
   // 🔒 FONCTION PRINCIPALE: Injection sécurisée avec click-through professionnel
   const performInjection = useCallback(async (text: string, injectionType?: string): Promise<boolean> => {
     // 🔒 PROTECTION: Bloquer si injection en cours
@@ -225,9 +213,14 @@ export const useInjection = () => {
           logger.warn('[Injection] get_virtual_desktop_info non supporté (non-Windows):', error);
         }
         
-        // 🆕 DÉTECTION SÉLECTION pour mode remplacement automatique
-        const shouldReplace = await detectTextSelection();
-        logger.debug(shouldReplace ? '🔄 Mode remplacement activé (texte sélectionné)' : '➕ Mode insertion activé (pas de sélection)');
+        // 💡 Afficher l'info au premier usage
+        const firstUsageKey = 'injection_tip_shown';
+        if (!localStorage.getItem(firstUsageKey)) {
+          setTimeout(() => {
+            logger.info('💡 Pour remplacer du texte : sélectionnez-le manuellement dans votre logiciel avant l\'injection');
+          }, 500);
+          localStorage.setItem(firstUsageKey, 'true');
+        }
         
         // PRIORITÉ 1: Position verrouillée avec conversion relative → absolue
         if (isLocked && lockedPosition) {
@@ -365,8 +358,7 @@ export const useInjection = () => {
           await invoke('perform_injection_at_position_direct', {
             text,
             x: targetX,
-            y: targetY,
-            replace_selection: shouldReplace
+            y: targetY
           });
           
           logger.debug(`✅ INJECTION RÉUSSIE (${injectionType || 'default'}) verrouillée à (${targetX}, ${targetY})`);
@@ -406,8 +398,7 @@ export const useInjection = () => {
             await invoke('perform_injection_at_position_direct', {
               text,
               x: extX,
-              y: extY,
-              replace_selection: shouldReplace
+              y: extY
             });
             
             logger.debug(`✅ INJECTION RÉUSSIE (${injectionType || 'default'}) externe à (${lastExternalPosition.x}, ${lastExternalPosition.y})`);

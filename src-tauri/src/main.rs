@@ -357,7 +357,7 @@ use winapi::um::winuser::WINDOWPLACEMENT;
 
 // 🆕 INJECTION WINDOWS ROBUSTE avec Win32 API pour multi-écrans
 #[tauri::command]
-async fn perform_injection_at_position_direct(x: i32, y: i32, text: String, replace_selection: bool, state: State<'_, AppState>) -> Result<(), String> {
+async fn perform_injection_at_position_direct(x: i32, y: i32, text: String, state: State<'_, AppState>) -> Result<(), String> {
     let _clipboard_guard = match state.clipboard_lock.lock() {
         Ok(guard) => guard,
         Err(poisoned) => {
@@ -543,25 +543,20 @@ async fn perform_injection_at_position_direct(x: i32, y: i32, text: String, repl
     // ✅ SAUVEGARDE du clipboard original
     let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
     let original_clipboard = clipboard.get_text().unwrap_or_default();
+    println!("💾 Clipboard sauvegardé : {} caractères", original_clipboard.len());
     
-    // 🆕 MODE REMPLACEMENT: Sélectionner tout avant paste si demandé
-    if replace_selection {
-        println!("🔄 Mode remplacement : Sélection du texte cible (Ctrl+A)...");
-        enigo.key(Key::Control, Direction::Press).map_err(|e| e.to_string())?;
-        enigo.key(Key::Unicode('a'), Direction::Click).map_err(|e| e.to_string())?;
-        enigo.key(Key::Control, Direction::Release).map_err(|e| e.to_string())?;
-        thread::sleep(Duration::from_millis(30));
-    }
-    
-    // Injection via Ctrl+V (remplace la sélection si Ctrl+A a été fait)
+    // Injection via Ctrl+V (remplace la sélection manuelle utilisateur si présente)
     clipboard.set_text(&text).map_err(|e| e.to_string())?;
+    println!("📋 Texte copié dans clipboard : {} caractères", text.len());
     thread::sleep(Duration::from_millis(10));
     
+    println!("⌨️  Envoi Ctrl+V pour injection...");
     enigo.key(Key::Control, Direction::Press).map_err(|e| e.to_string())?;
     enigo.key(Key::Unicode('v'), Direction::Click).map_err(|e| e.to_string())?;
     enigo.key(Key::Control, Direction::Release).map_err(|e| e.to_string())?;
     
     thread::sleep(Duration::from_millis(50));
+    println!("✅ Injection Ctrl+V terminée");
     
     // ✅ RESTAURATION du clipboard original
     if !original_clipboard.is_empty() {

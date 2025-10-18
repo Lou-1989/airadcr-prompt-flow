@@ -40,6 +40,10 @@
 
 ## 🎤 Raccourcis de contrôle de dictée
 
+### 📋 Raccourcis recommandés (avec Ctrl)
+
+Ces raccourcis sont les **nouveaux standards** pour l'utilisation avec le SpeechMike et fonctionnent **globalement** (même quand AirADCR n'a pas le focus).
+
 ### **Ctrl+F9** - Pause/Reprise dictée (Toggle)
 
 **Fonction:** Met en pause ou reprend l'enregistrement audio selon l'état actuel.
@@ -182,6 +186,18 @@ EXPLICATION:
 
 **Comportement SpeechMike:**
 - Bouton **Programmable 1** → Envoie `Ctrl+F12`
+
+---
+
+## 🔄 Raccourcis de compatibilité (Legacy)
+
+Ces raccourcis **sans Ctrl** sont conservés pour la rétrocompatibilité avec les anciens profils SpeechMike, mais les nouveaux raccourcis **avec Ctrl** (ci-dessus) sont recommandés.
+
+| Touche | Action | Disponible | Note |
+|--------|--------|------------|------|
+| `F10` | Enregistrer / Reprendre dictée (Legacy) | ✅ Global | ⚠️ Utilisez `Ctrl+F10` de préférence |
+| `F11` | Mettre en pause dictée (Legacy) | ✅ Global | ⚠️ Utilisez `Ctrl+F9` de préférence |
+| `F12` | Finaliser et injecter (Production uniquement - Legacy) | ✅ Global | ⚠️ Utilisez `Ctrl+F12` de préférence |
 
 ---
 

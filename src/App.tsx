@@ -106,6 +106,30 @@ const AppContent = () => {
         logger.debug('[SpeechMike] F12 → Finish');
         sendToIframe('airadcr:speechmike_finish');
       }),
+      
+      // 🎤 Ctrl+F9: Pause/Resume toggle
+      listen('airadcr:dictation_pause_toggle', () => {
+        logger.debug('[Shortcuts] Ctrl+F9 → Pause/Resume');
+        sendToIframe('PAUSE_RESUME_TOGGLE');
+      }),
+      
+      // 🎤 Ctrl+F10: Start/Stop toggle
+      listen('airadcr:dictation_startstop_toggle', () => {
+        logger.debug('[Shortcuts] Ctrl+F10 → Start/Stop');
+        sendToIframe('START_STOP_TOGGLE');
+      }),
+      
+      // 💉 Ctrl+F11: Inject raw text
+      listen('airadcr:inject_raw_text', () => {
+        logger.debug('[Shortcuts] Ctrl+F11 → Inject Raw');
+        sendToIframe('INJECT_RAW_TEXT');
+      }),
+      
+      // 💉 Ctrl+F12: Inject structured report
+      listen('airadcr:inject_structured_report', () => {
+        logger.debug('[Shortcuts] Ctrl+F12 → Inject Structured');
+        sendToIframe('INJECT_STRUCTURED_REPORT');
+      }),
     ];
 
     // Cleanup

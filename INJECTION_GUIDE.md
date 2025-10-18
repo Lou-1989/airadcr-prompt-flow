@@ -107,7 +107,20 @@ Dragon utilise une **API COM propriétaire** qui lui permet de :
 1. Ouvrir RIS/Word
 2. Cliquer dans le champ à remplir
 3. Générer le rapport dans AirADCR
-4. Cliquer sur "Injecter"
+4. Cliquer sur "Injecter" ou appuyer sur Ctrl+F11/Ctrl+F12
+```
+
+### Pour une utilisation intensive avec SpeechMike (Recommandé) :
+```
+1. Ouvrir RIS/Word
+2. Cliquer dans le champ "Conclusion" (ou autre champ cible)
+3. Dans AirADCR : Cliquer "Verrouiller position" 🔒
+4. Pour chaque patient :
+   - Bouton Record (Ctrl+F10) : Démarrer dictée
+   - Bouton Stop/Play (Ctrl+F9) : Pause/Resume si nécessaire
+   - Bouton Record (Ctrl+F10) : Terminer dictée
+   - Bouton F1 (Ctrl+F11) : Injecter texte brut OU
+   - Bouton F2 (Ctrl+F12) : Injecter rapport structuré
 ```
 
 ### Pour une utilisation intensive (répétitive) :
@@ -116,8 +129,10 @@ Dragon utilise une **API COM propriétaire** qui lui permet de :
 2. Cliquer dans le champ "Conclusion" (ou autre champ cible)
 3. Dans AirADCR : Cliquer "Verrouiller position" 🔒
 4. Pour chaque patient :
-   - Générer le rapport
-   - Cliquer "Injecter" (toujours au même endroit)
+   - Ctrl+F10 : Démarrer dictée
+   - Ctrl+F9 : Pause/Resume (optionnel)
+   - Ctrl+F10 : Terminer dictée
+   - Ctrl+F11 : Injecter texte brut OU Ctrl+F12 : Injecter rapport structuré
 ```
 
 ### Pour remplacer un ancien rapport :

@@ -1212,11 +1212,60 @@ fn register_global_shortcuts(app_handle: tauri::AppHandle) {
                 }
             })
             .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement F12: {}", e));
-        
+    }
+    
+    // 🎤 DICTATION: Ctrl+F9 (Pause/Resume toggle)
+    let handle_ctrlf9 = app_handle.clone();
+    shortcut_manager
+        .register("Ctrl+F9", move || {
+            println!("⏯️ [Shortcuts] Ctrl+F9 pressé (pause/resume toggle)");
+            if let Some(window) = handle_ctrlf9.get_window("main") {
+                window.emit("airadcr:dictation_pause_toggle", ()).ok();
+            }
+        })
+        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+F9: {}", e));
+
+    // 🎤 DICTATION: Ctrl+F10 (Start/Stop toggle)
+    let handle_ctrlf10 = app_handle.clone();
+    shortcut_manager
+        .register("Ctrl+F10", move || {
+            println!("🔴 [Shortcuts] Ctrl+F10 pressé (start/stop toggle)");
+            if let Some(window) = handle_ctrlf10.get_window("main") {
+                window.emit("airadcr:dictation_startstop_toggle", ()).ok();
+            }
+        })
+        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+F10: {}", e));
+
+    // 💉 INJECTION: Ctrl+F11 (Raw text)
+    let handle_ctrlf11 = app_handle.clone();
+    shortcut_manager
+        .register("Ctrl+F11", move || {
+            println!("💉 [Shortcuts] Ctrl+F11 pressé (inject raw text)");
+            if let Some(window) = handle_ctrlf11.get_window("main") {
+                window.emit("airadcr:inject_raw_text", ()).ok();
+            }
+        })
+        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+F11: {}", e));
+
+    // 💉 INJECTION: Ctrl+F12 (Structured report)
+    let handle_ctrlf12 = app_handle.clone();
+    shortcut_manager
+        .register("Ctrl+F12", move || {
+            println!("📋 [Shortcuts] Ctrl+F12 pressé (inject structured report)");
+            if let Some(window) = handle_ctrlf12.get_window("main") {
+                window.emit("airadcr:inject_structured_report", ()).ok();
+            }
+        })
+        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+F12: {}", e));
+    
+    #[cfg(not(debug_assertions))]
+    {
         println!("✅ [Shortcuts] Raccourcis globaux enregistrés:");
         println!("   🎨 Ctrl+Shift+D (Debug), Ctrl+Shift+L (Logs), Ctrl+Shift+T (Test)");
         println!("   🔓 F9 (Anti-fantôme)");
         println!("   🎤 F10 (Record), F11 (Pause), F12 (Finish)");
+        println!("   🎤 Ctrl+F9 (Pause/Resume), Ctrl+F10 (Start/Stop)");
+        println!("   💉 Ctrl+F11 (Inject Raw), Ctrl+F12 (Inject Structured)");
     }
     
     #[cfg(debug_assertions)]
@@ -1225,6 +1274,8 @@ fn register_global_shortcuts(app_handle: tauri::AppHandle) {
         println!("   🎨 Ctrl+Shift+D (Debug), Ctrl+Shift+L (Logs), Ctrl+Shift+T (Test)");
         println!("   🔓 F9 (Anti-fantôme)");
         println!("   🎤 F10 (Record), F11 (Pause)");
+        println!("   🎤 Ctrl+F9 (Pause/Resume), Ctrl+F10 (Start/Stop)");
+        println!("   💉 Ctrl+F11 (Inject Raw), Ctrl+F12 (Inject Structured)");
         println!("⚠️ [DEV] F12 non enregistré (disponible pour DevTools)");
     }
 }

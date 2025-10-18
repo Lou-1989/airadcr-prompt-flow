@@ -5,6 +5,9 @@ export const SECURITY_CONFIG = {
   ALLOWED_ORIGINS: [
     'https://airadcr.com',
     'https://www.airadcr.com',
+    'https://pathology.airadcr.com',
+    'https://transcription.airadcr.com',
+    'https://flashmode.airadcr.com',
     'tauri://localhost',      // Application Tauri (v1)
     'https://tauri.localhost', // Application Tauri (v2)
   ] as const,
@@ -16,8 +19,8 @@ export const SECURITY_CONFIG = {
     'style-src': ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
     'font-src': ["'self'", 'https://fonts.gstatic.com'],
     'img-src': ["'self'", 'data:', 'https:'],
-    'connect-src': ["'self'", 'https://airadcr.com'],
-    'frame-src': ['https://airadcr.com'],
+    'connect-src': ["'self'", 'https://airadcr.com', 'https://pathology.airadcr.com', 'https://transcription.airadcr.com', 'https://flashmode.airadcr.com'],
+    'frame-src': ['https://airadcr.com', 'https://pathology.airadcr.com', 'https://transcription.airadcr.com', 'https://flashmode.airadcr.com'],
     'frame-ancestors': ["'none'"], // Protection contre clickjacking
   },
   

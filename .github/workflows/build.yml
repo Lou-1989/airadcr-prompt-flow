@@ -293,7 +293,8 @@ jobs:
           Write-Host "[VERIFY] Code signature verification"
           Write-Host "================================"
           
-          $files = Get-ChildItem -Path "src-tauri\target\release\" -Include "*.exe","*.msi" -Recurse
+          $files = Get-ChildItem -Path "src-tauri\target\release\" -Include "*.exe","*.msi" -Recurse | 
+                   Where-Object { $_.Name -notmatch "^build_script" -and $_.Name -notmatch "deps" }
           
           $validCount = 0
           $invalidCount = 0
@@ -302,11 +303,11 @@ jobs:
             $sig = Get-AuthenticodeSignature $file.FullName
             
             if ($sig.Status -eq 'Valid') {
-              Write-Host "[OK] {0}: Signature valid" -f $file.Name
-              Write-Host "     Signer: {0}" -f $sig.SignerCertificate.Subject
+              Write-Host ("[OK] {0}: Signature valid" -f $file.Name)
+              Write-Host ("     Signer: {0}" -f $sig.SignerCertificate.Subject)
               $validCount++
             } else {
-              Write-Host "[ERROR] {0}: Status {1}" -f $file.Name, $sig.Status
+              Write-Host ("[ERROR] {0}: Status {1}" -f $file.Name, $sig.Status)
               $invalidCount++
             }
           }

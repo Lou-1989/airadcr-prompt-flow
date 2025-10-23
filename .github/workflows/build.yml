@@ -64,10 +64,146 @@ jobs:
       - name: Validate all icons and assets  
         run: node scripts/validate-icons.cjs
 
+      - name: Setup eSigner CodeSignTool (Windows only)
+        if: matrix.settings.platform == 'windows-latest'
+        shell: powershell
+        run: |
+          Write-Host "📦 Téléchargement de CodeSignTool..."
+          
+          # Télécharger CodeSignTool depuis SSL.com
+          $url = "https://www.ssl.com/download/codesigntool-for-windows/"
+          $output = "$env:TEMP\CodeSignTool.zip"
+          Invoke-WebRequest -Uri $url -OutFile $output
+          
+          # Extraire dans C:\CodeSignTool
+          Write-Host "📂 Installation de CodeSignTool..."
+          Expand-Archive -Path $output -DestinationPath "C:\CodeSignTool" -Force
+          
+          # Vérifier l'installation
+          if (Test-Path "C:\CodeSignTool\CodeSignTool.bat") {
+            Write-Host "✅ CodeSignTool installé avec succès"
+          } else {
+            Write-Error "❌ Échec de l'installation de CodeSignTool"
+            exit 1
+          }
+
       - name: Build the app
         run: npx tauri build ${{ matrix.settings.args }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sign Windows binaries with eSigner
+        if: matrix.settings.platform == 'windows-latest'
+        shell: powershell
+        run: |
+          Write-Host "🔏 SIGNATURE DES BINAIRES WINDOWS"
+          Write-Host "=================================="
+          
+          # Configuration des credentials eSigner
+          $username = "${{ secrets.ESIGNER_USERNAME }}"
+          $password = "${{ secrets.ESIGNER_PASSWORD }}"
+          $totpSecret = "${{ secrets.ESIGNER_TOTP_SECRET }}"
+          $credentialId = "${{ secrets.CREDENTIAL_ID }}"
+          
+          # Liste des fichiers à signer
+          $filesToSign = @(
+            "src-tauri\target\release\airadcr-desktop.exe",
+            "src-tauri\target\release\bundle\msi\*.msi",
+            "src-tauri\target\release\bundle\nsis\*.exe"
+          )
+          
+          $signedCount = 0
+          $failedCount = 0
+          
+          foreach ($pattern in $filesToSign) {
+            $files = Get-ChildItem -Path $pattern -ErrorAction SilentlyContinue
+            
+            foreach ($file in $files) {
+              Write-Host ""
+              Write-Host "🔐 Signature de: $($file.Name)"
+              
+              try {
+                # Signature avec CodeSignTool
+                C:\CodeSignTool\CodeSignTool.bat sign `
+                  -username="$username" `
+                  -password="$password" `
+                  -credential_id="$credentialId" `
+                  -totp_secret="$totpSecret" `
+                  -input_file_path="$($file.FullName)" `
+                  -override=true
+                
+                # Vérification de la signature
+                $signature = Get-AuthenticodeSignature $file.FullName
+                
+                if ($signature.Status -eq 'Valid') {
+                  Write-Host "  ✅ Signature valide"
+                  Write-Host "  📋 Signataire: $($signature.SignerCertificate.Subject)"
+                  $signedCount++
+                } else {
+                  Write-Host "  ⚠️  Status: $($signature.Status)"
+                  $failedCount++
+                }
+              } catch {
+                Write-Error "  ❌ Échec de la signature: $_"
+                $failedCount++
+              }
+            }
+          }
+          
+          Write-Host ""
+          Write-Host "=================================="
+          Write-Host "📊 RÉSUMÉ DE LA SIGNATURE"
+          Write-Host "  ✅ Fichiers signés: $signedCount"
+          Write-Host "  ❌ Échecs: $failedCount"
+          Write-Host "=================================="
+          
+          if ($failedCount -gt 0) {
+            Write-Error "❌ Certains fichiers n'ont pas pu être signés"
+            exit 1
+          }
+          
+          if ($signedCount -eq 0) {
+            Write-Error "❌ Aucun fichier n'a été signé"
+            exit 1
+          }
+          
+          Write-Host "🎉 Tous les binaires Windows sont signés!"
+
+      - name: Verify and report code signatures (Windows)
+        if: matrix.settings.platform == 'windows-latest'
+        shell: powershell
+        run: |
+          Write-Host "📋 RAPPORT DÉTAILLÉ DES SIGNATURES"
+          Write-Host "===================================="
+          
+          $allFiles = Get-ChildItem -Path "src-tauri\target\release\" -Include "*.exe","*.msi" -Recurse -ErrorAction SilentlyContinue
+          
+          foreach ($file in $allFiles) {
+            Write-Host ""
+            Write-Host "📄 Fichier: $($file.Name)"
+            Write-Host "   Chemin: $($file.FullName)"
+            
+            $sig = Get-AuthenticodeSignature $file.FullName
+            
+            Write-Host "   🔐 Status: $($sig.Status)"
+            
+            if ($sig.SignerCertificate) {
+              Write-Host "   👤 Signataire: $($sig.SignerCertificate.Subject)"
+              Write-Host "   🔑 Thumbprint: $($sig.SignerCertificate.Thumbprint)"
+              Write-Host "   📅 Valide du: $($sig.SignerCertificate.NotBefore)"
+              Write-Host "   📅 Valide jusqu'au: $($sig.SignerCertificate.NotAfter)"
+              Write-Host "   🏢 Émetteur: $($sig.SignerCertificate.Issuer)"
+              
+              if ($sig.TimeStamperCertificate) {
+                Write-Host "   ⏰ Timestamp: $($sig.TimeStamperCertificate.NotBefore)"
+              }
+            } else {
+              Write-Host "   ⚠️  Aucune signature trouvée!"
+            }
+          }
+          
+          Write-Host ""
+          Write-Host "===================================="
 
       - name: Debug bundle contents (Windows)
         if: matrix.settings.platform == 'windows-latest'

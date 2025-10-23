@@ -70,6 +70,39 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Debug Tauri build output (Windows)
+        if: matrix.settings.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          Write-Host "[DEBUG] Tauri build verification"
+          Write-Host "===================================="
+          
+          Write-Host ""
+          Write-Host "[1] Release directory contents:"
+          if (Test-Path "src-tauri/target/release/") {
+            Get-ChildItem -Path "src-tauri/target/release/" -Filter "*.exe" | ForEach-Object {
+              $sizeMB = [math]::Round($_.Length / 1MB, 2)
+              Write-Host ("  [EXE] {0} - {1} MB" -f $_.Name, $sizeMB)
+            }
+          } else {
+            Write-Host "  [ERROR] Release directory not found!"
+          }
+          
+          Write-Host ""
+          Write-Host "[2] Bundle artifacts (MSI + NSIS):"
+          if (Test-Path "src-tauri/target/release/bundle/") {
+            Get-ChildItem -Path "src-tauri/target/release/bundle/" -Recurse -Include "*.msi","*.exe" | ForEach-Object {
+              $sizeMB = [math]::Round($_.Length / 1MB, 2)
+              $relPath = $_.FullName.Replace("$PWD\", "")
+              Write-Host ("  [BUNDLE] {0} - {1} MB" -f $relPath, $sizeMB)
+            }
+          } else {
+            Write-Host "  [ERROR] Bundle directory not found!"
+          }
+          
+          Write-Host ""
+          Write-Host "===================================="
+
       - name: Pre-check files before signing (Windows)
         if: matrix.settings.platform == 'windows-latest'
         shell: pwsh
@@ -83,7 +116,7 @@ jobs:
             $exe = Get-Item "src-tauri\target\release\airadcr-desktop.exe"
             $exeSizeMB = [math]::Round($exe.Length / 1MB, 2)
             Write-Host "  [OK] Found: $($exe.FullName)"
-            Write-Host "  [SIZE] {0} MB" -f $exeSizeMB
+            Write-Host ("  [SIZE] {0} MB" -f $exeSizeMB)
           } else {
             Write-Host "  [ERROR] NOT FOUND"
           }
@@ -95,7 +128,7 @@ jobs:
             Write-Host "  [OK] Found $($msiFiles.Count) file(s):"
             foreach ($msi in $msiFiles) {
               $msiSizeMB = [math]::Round($msi.Length / 1MB, 2)
-              Write-Host "    - {0} ({1} MB)" -f $msi.Name, $msiSizeMB
+              Write-Host ("    - {0} ({1} MB)" -f $msi.Name, $msiSizeMB)
             }
           } else {
             Write-Host "  [ERROR] NO MSI FOUND"
@@ -108,7 +141,7 @@ jobs:
             Write-Host "  [OK] Found $($nsisFiles.Count) file(s):"
             foreach ($nsis in $nsisFiles) {
               $nsisSizeMB = [math]::Round($nsis.Length / 1MB, 2)
-              Write-Host "    - {0} ({1} MB)" -f $nsis.Name, $nsisSizeMB
+              Write-Host ("    - {0} ({1} MB)" -f $nsis.Name, $nsisSizeMB)
             }
           } else {
             Write-Host "  [ERROR] NO NSIS FOUND"

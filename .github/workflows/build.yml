@@ -72,43 +72,50 @@ jobs:
 
       - name: Pre-check files before signing (Windows)
         if: matrix.settings.platform == 'windows-latest'
-        shell: powershell
+        shell: pwsh
         run: |
-          Write-Host "📋 PRÉ-CHECK DES FICHIERS À SIGNER"
+          Write-Host "[PRE-CHECK] Files to be signed"
           Write-Host "=================================="
           
-          Write-Host "`n🔍 Recherche airadcr-desktop.exe:"
+          Write-Host ""
+          Write-Host "[SEARCH] airadcr-desktop.exe:"
           if (Test-Path "src-tauri\target\release\airadcr-desktop.exe") {
             $exe = Get-Item "src-tauri\target\release\airadcr-desktop.exe"
-            Write-Host "  ✅ Trouvé: $($exe.FullName)"
-            Write-Host "  📦 Taille: $([math]::Round($exe.Length / 1MB, 2)) MB"
+            $exeSizeMB = [math]::Round($exe.Length / 1MB, 2)
+            Write-Host "  [OK] Found: $($exe.FullName)"
+            Write-Host "  [SIZE] {0} MB" -f $exeSizeMB
           } else {
-            Write-Host "  ❌ INTROUVABLE"
+            Write-Host "  [ERROR] NOT FOUND"
           }
           
-          Write-Host "`n🔍 Recherche fichiers MSI:"
+          Write-Host ""
+          Write-Host "[SEARCH] MSI files:"
           $msiFiles = Get-ChildItem -Path "src-tauri\target\release\bundle\msi\*.msi" -ErrorAction SilentlyContinue
           if ($msiFiles) {
-            Write-Host "  ✅ Trouvé $($msiFiles.Count) fichier(s):"
+            Write-Host "  [OK] Found $($msiFiles.Count) file(s):"
             foreach ($msi in $msiFiles) {
-              Write-Host "    - $($msi.Name) ($([math]::Round($msi.Length / 1MB, 2)) MB)"
+              $msiSizeMB = [math]::Round($msi.Length / 1MB, 2)
+              Write-Host "    - {0} ({1} MB)" -f $msi.Name, $msiSizeMB
             }
           } else {
-            Write-Host "  ❌ AUCUN MSI TROUVÉ"
+            Write-Host "  [ERROR] NO MSI FOUND"
           }
           
-          Write-Host "`n🔍 Recherche fichiers NSIS:"
+          Write-Host ""
+          Write-Host "[SEARCH] NSIS files:"
           $nsisFiles = Get-ChildItem -Path "src-tauri\target\release\bundle\nsis\*.exe" -ErrorAction SilentlyContinue
           if ($nsisFiles) {
-            Write-Host "  ✅ Trouvé $($nsisFiles.Count) fichier(s):"
+            Write-Host "  [OK] Found $($nsisFiles.Count) file(s):"
             foreach ($nsis in $nsisFiles) {
-              Write-Host "    - $($nsis.Name) ($([math]::Round($nsis.Length / 1MB, 2)) MB)"
+              $nsisSizeMB = [math]::Round($nsis.Length / 1MB, 2)
+              Write-Host "    - {0} ({1} MB)" -f $nsis.Name, $nsisSizeMB
             }
           } else {
-            Write-Host "  ❌ AUCUN NSIS TROUVÉ"
+            Write-Host "  [ERROR] NO NSIS FOUND"
           }
           
-          Write-Host "`n=================================="
+          Write-Host ""
+          Write-Host "=================================="
 
       - name: Sign main executable (Windows)
         if: matrix.settings.platform == 'windows-latest'
@@ -124,20 +131,6 @@ jobs:
           output_path: ${{ github.workspace }}/artifacts
           override: true
 
-      - name: Collect signing logs on failure (EXE)
-        if: failure() && matrix.settings.platform == 'windows-latest'
-        shell: powershell
-        run: |
-          Write-Host "🔍 Recherche des logs CodeSignTool..."
-          $logPath = "codesign\CodeSignTool-v1.3.0\logs"
-          if (Test-Path $logPath) {
-            Get-ChildItem -Path $logPath -Recurse | ForEach-Object {
-              Write-Host "`n📄 Contenu de $($_.Name):"
-              Get-Content $_.FullName -Tail 200
-            }
-          } else {
-            Write-Host "⚠️ Aucun log trouvé dans $logPath"
-          }
 
       - name: Sign MSI installers (Windows)
         if: matrix.settings.platform == 'windows-latest'
@@ -153,20 +146,6 @@ jobs:
           output_path: ${{ github.workspace }}/artifacts
           override: true
 
-      - name: Collect signing logs on failure (MSI)
-        if: failure() && matrix.settings.platform == 'windows-latest'
-        shell: powershell
-        run: |
-          Write-Host "🔍 Recherche des logs CodeSignTool..."
-          $logPath = "codesign\CodeSignTool-v1.3.0\logs"
-          if (Test-Path $logPath) {
-            Get-ChildItem -Path $logPath -Recurse | ForEach-Object {
-              Write-Host "`n📄 Contenu de $($_.Name):"
-              Get-Content $_.FullName -Tail 200
-            }
-          } else {
-            Write-Host "⚠️ Aucun log trouvé dans $logPath"
-          }
 
       - name: Sign NSIS installers (Windows)
         if: matrix.settings.platform == 'windows-latest'
@@ -182,26 +161,27 @@ jobs:
           output_path: ${{ github.workspace }}/artifacts
           override: true
 
-      - name: Collect signing logs on failure (NSIS)
+      - name: Collect CodeSignTool logs on failure (Windows)
         if: failure() && matrix.settings.platform == 'windows-latest'
-        shell: powershell
+        shell: pwsh
         run: |
-          Write-Host "🔍 Recherche des logs CodeSignTool..."
+          Write-Host "[DEBUG] Searching for CodeSignTool logs..."
           $logPath = "codesign\CodeSignTool-v1.3.0\logs"
           if (Test-Path $logPath) {
             Get-ChildItem -Path $logPath -Recurse | ForEach-Object {
-              Write-Host "`n📄 Contenu de $($_.Name):"
+              Write-Host ""
+              Write-Host "[LOG FILE] $($_.Name):"
               Get-Content $_.FullName -Tail 200
             }
           } else {
-            Write-Host "⚠️ Aucun log trouvé dans $logPath"
+            Write-Host "[WARNING] No logs found in $logPath"
           }
 
       - name: Verify code signatures (Windows)
         if: matrix.settings.platform == 'windows-latest'
-        shell: powershell
+        shell: pwsh
         run: |
-          Write-Host "📋 VÉRIFICATION DES SIGNATURES"
+          Write-Host "[VERIFY] Code signature verification"
           Write-Host "================================"
           
           $files = Get-ChildItem -Path "src-tauri\target\release\" -Include "*.exe","*.msi" -Recurse
@@ -213,24 +193,24 @@ jobs:
             $sig = Get-AuthenticodeSignature $file.FullName
             
             if ($sig.Status -eq 'Valid') {
-              Write-Host "✅ $($file.Name): Signature valide"
-              Write-Host "   Signataire: $($sig.SignerCertificate.Subject)"
+              Write-Host "[OK] {0}: Signature valid" -f $file.Name
+              Write-Host "     Signer: {0}" -f $sig.SignerCertificate.Subject
               $validCount++
             } else {
-              Write-Host "❌ $($file.Name): Status $($sig.Status)"
+              Write-Host "[ERROR] {0}: Status {1}" -f $file.Name, $sig.Status
               $invalidCount++
             }
           }
           
           Write-Host ""
           Write-Host "================================"
-          Write-Host "📊 Résumé:"
-          Write-Host "  ✅ Signatures valides: $validCount"
-          Write-Host "  ❌ Signatures invalides: $invalidCount"
+          Write-Host "[SUMMARY]"
+          Write-Host "  Valid signatures: $validCount"
+          Write-Host "  Invalid signatures: $invalidCount"
           Write-Host "================================"
           
           if ($invalidCount -gt 0) {
-            Write-Error "❌ Certains fichiers ne sont pas correctement signés"
+            Write-Error "[FAILED] Some files are not properly signed"
             exit 1
           }
 

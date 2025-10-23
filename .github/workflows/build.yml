@@ -150,10 +150,79 @@ jobs:
           Write-Host ""
           Write-Host "=================================="
 
-      - name: Sign main executable (Windows)
+      - name: Check SSL.com secrets presence (Windows)
         if: matrix.settings.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          Write-Host "[SSL.com] Checking secrets presence..."
+          
+          $allPresent = $true
+          
+          if ([string]::IsNullOrEmpty("${{ secrets.ESIGNER_USERNAME }}")) {
+            Write-Host "[ERROR] ESIGNER_USERNAME is missing or empty"
+            $allPresent = $false
+          } else {
+            Write-Host "[OK] ESIGNER_USERNAME is present"
+          }
+          
+          if ([string]::IsNullOrEmpty("${{ secrets.ESIGNER_PASSWORD }}")) {
+            Write-Host "[ERROR] ESIGNER_PASSWORD is missing or empty"
+            $allPresent = $false
+          } else {
+            Write-Host "[OK] ESIGNER_PASSWORD is present"
+          }
+          
+          if ([string]::IsNullOrEmpty("${{ secrets.CREDENTIAL_ID }}")) {
+            Write-Host "[ERROR] CREDENTIAL_ID is missing or empty"
+            $allPresent = $false
+          } else {
+            Write-Host "[OK] CREDENTIAL_ID is present"
+          }
+          
+          if ([string]::IsNullOrEmpty("${{ secrets.ESIGNER_TOTP_SECRET }}")) {
+            Write-Host "[ERROR] ESIGNER_TOTP_SECRET is missing or empty"
+            $allPresent = $false
+          } else {
+            Write-Host "[OK] ESIGNER_TOTP_SECRET is present"
+          }
+          
+          if (-not $allPresent) {
+            Write-Error "[FAILED] One or more SSL.com secrets are missing. Please check GitHub Secrets."
+            exit 1
+          }
+          
+          Write-Host "[SUCCESS] All SSL.com secrets are present"
+
+      - name: eSigner - List credential IDs (login test)
+        id: esigner_login_test
+        if: matrix.settings.platform == 'windows-latest'
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: sslcom/esigner-codesign@v1
+        with:
+          command: get_credential_ids
+          username: ${{ secrets.ESIGNER_USERNAME }}
+          password: ${{ secrets.ESIGNER_PASSWORD }}
+          totp_secret: ${{ secrets.ESIGNER_TOTP_SECRET }}
+          clean_logs: false
+
+      - name: eSigner - Credential info (validate CREDENTIAL_ID)
+        if: matrix.settings.platform == 'windows-latest' && steps.esigner_login_test.outcome == 'success'
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: sslcom/esigner-codesign@v1
+        with:
+          command: credential_info
+          username: ${{ secrets.ESIGNER_USERNAME }}
+          password: ${{ secrets.ESIGNER_PASSWORD }}
+          credential_id: ${{ secrets.CREDENTIAL_ID }}
+          totp_secret: ${{ secrets.ESIGNER_TOTP_SECRET }}
+          clean_logs: false
+
+      - name: Sign main executable (Windows)
+        if: matrix.settings.platform == 'windows-latest' && steps.esigner_login_test.outcome == 'success'
         timeout-minutes: 12
-        uses: sslcom/esigner-codesign@develop
+        uses: sslcom/esigner-codesign@v1
         with:
           command: sign
           username: ${{ secrets.ESIGNER_USERNAME }}
@@ -163,12 +232,13 @@ jobs:
           file_path: ${{ github.workspace }}/src-tauri/target/release/AIRADCR.exe
           output_path: ${{ github.workspace }}/artifacts
           override: true
+          clean_logs: false
 
 
       - name: Sign MSI installers (Windows)
-        if: matrix.settings.platform == 'windows-latest'
+        if: matrix.settings.platform == 'windows-latest' && steps.esigner_login_test.outcome == 'success' && hashFiles('src-tauri/target/release/bundle/msi/*.msi') != ''
         timeout-minutes: 12
-        uses: sslcom/esigner-codesign@develop
+        uses: sslcom/esigner-codesign@v1
         with:
           command: sign
           username: ${{ secrets.ESIGNER_USERNAME }}
@@ -178,12 +248,13 @@ jobs:
           file_path: ${{ github.workspace }}/src-tauri/target/release/bundle/msi/*.msi
           output_path: ${{ github.workspace }}/artifacts
           override: true
+          clean_logs: false
 
 
       - name: Sign NSIS installers (Windows)
-        if: matrix.settings.platform == 'windows-latest'
+        if: matrix.settings.platform == 'windows-latest' && steps.esigner_login_test.outcome == 'success' && hashFiles('src-tauri/target/release/bundle/nsis/*.exe') != ''
         timeout-minutes: 12
-        uses: sslcom/esigner-codesign@develop
+        uses: sslcom/esigner-codesign@v1
         with:
           command: sign
           username: ${{ secrets.ESIGNER_USERNAME }}
@@ -193,6 +264,7 @@ jobs:
           file_path: ${{ github.workspace }}/src-tauri/target/release/bundle/nsis/*.exe
           output_path: ${{ github.workspace }}/artifacts
           override: true
+          clean_logs: false
 
       - name: Collect CodeSignTool logs on failure (Windows)
         if: failure() && matrix.settings.platform == 'windows-latest'

@@ -111,9 +111,9 @@ jobs:
           Write-Host "=================================="
           
           Write-Host ""
-          Write-Host "[SEARCH] airadcr-desktop.exe:"
-          if (Test-Path "src-tauri\target\release\airadcr-desktop.exe") {
-            $exe = Get-Item "src-tauri\target\release\airadcr-desktop.exe"
+          Write-Host "[SEARCH] AIRADCR.exe:"
+          if (Test-Path "src-tauri\target\release\AIRADCR.exe") {
+            $exe = Get-Item "src-tauri\target\release\AIRADCR.exe"
             $exeSizeMB = [math]::Round($exe.Length / 1MB, 2)
             Write-Host "  [OK] Found: $($exe.FullName)"
             Write-Host ("  [SIZE] {0} MB" -f $exeSizeMB)
@@ -160,7 +160,7 @@ jobs:
           password: ${{ secrets.ESIGNER_PASSWORD }}
           credential_id: ${{ secrets.CREDENTIAL_ID }}
           totp_secret: ${{ secrets.ESIGNER_TOTP_SECRET }}
-          file_path: ${{ github.workspace }}/src-tauri/target/release/airadcr-desktop.exe
+          file_path: ${{ github.workspace }}/src-tauri/target/release/AIRADCR.exe
           output_path: ${{ github.workspace }}/artifacts
           override: true
 

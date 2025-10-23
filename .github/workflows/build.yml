@@ -204,10 +204,11 @@ jobs:
           username: ${{ secrets.ESIGNER_USERNAME }}
           password: ${{ secrets.ESIGNER_PASSWORD }}
           totp_secret: ${{ secrets.ESIGNER_TOTP_SECRET }}
+          environment_name: PROD
           clean_logs: false
 
       - name: eSigner - Credential info (validate CREDENTIAL_ID)
-        if: matrix.settings.platform == 'windows-latest' && steps.esigner_login_test.outcome == 'success'
+        if: matrix.settings.platform == 'windows-latest'
         timeout-minutes: 5
         continue-on-error: true
         uses: sslcom/esigner-codesign@develop
@@ -217,10 +218,11 @@ jobs:
           password: ${{ secrets.ESIGNER_PASSWORD }}
           credential_id: ${{ secrets.CREDENTIAL_ID }}
           totp_secret: ${{ secrets.ESIGNER_TOTP_SECRET }}
+          environment_name: PROD
           clean_logs: false
 
       - name: Sign main executable (Windows)
-        if: matrix.settings.platform == 'windows-latest' && steps.esigner_login_test.outcome == 'success'
+        if: matrix.settings.platform == 'windows-latest'
         timeout-minutes: 12
         uses: sslcom/esigner-codesign@develop
         with:
@@ -232,11 +234,12 @@ jobs:
           file_path: ${{ github.workspace }}/src-tauri/target/release/AIRADCR.exe
           output_path: ${{ github.workspace }}/artifacts
           override: true
+          environment_name: PROD
           clean_logs: false
 
 
       - name: Sign MSI installers (Windows)
-        if: matrix.settings.platform == 'windows-latest' && steps.esigner_login_test.outcome == 'success' && hashFiles('src-tauri/target/release/bundle/msi/*.msi') != ''
+        if: matrix.settings.platform == 'windows-latest' && hashFiles('src-tauri/target/release/bundle/msi/*.msi') != ''
         timeout-minutes: 12
         uses: sslcom/esigner-codesign@develop
         with:
@@ -248,11 +251,12 @@ jobs:
           file_path: ${{ github.workspace }}/src-tauri/target/release/bundle/msi/*.msi
           output_path: ${{ github.workspace }}/artifacts
           override: true
+          environment_name: PROD
           clean_logs: false
 
 
       - name: Sign NSIS installers (Windows)
-        if: matrix.settings.platform == 'windows-latest' && steps.esigner_login_test.outcome == 'success' && hashFiles('src-tauri/target/release/bundle/nsis/*.exe') != ''
+        if: matrix.settings.platform == 'windows-latest' && hashFiles('src-tauri/target/release/bundle/nsis/*.exe') != ''
         timeout-minutes: 12
         uses: sslcom/esigner-codesign@develop
         with:
@@ -264,6 +268,7 @@ jobs:
           file_path: ${{ github.workspace }}/src-tauri/target/release/bundle/nsis/*.exe
           output_path: ${{ github.workspace }}/artifacts
           override: true
+          environment_name: PROD
           clean_logs: false
 
       - name: Collect CodeSignTool logs on failure (Windows)

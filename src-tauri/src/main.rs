@@ -1257,6 +1257,50 @@ fn register_global_shortcuts(app_handle: tauri::AppHandle) {
             }
         })
         .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+F12: {}", e));
+
+    // 🎤 DICTATION: Ctrl+Alt+D (Start/Stop toggle - Alternative)
+    let handle_ctrlaltd = app_handle.clone();
+    shortcut_manager
+        .register("Ctrl+Alt+D", move || {
+            println!("🔴 [Shortcuts] Ctrl+Alt+D pressé (start/stop toggle - alternative)");
+            if let Some(window) = handle_ctrlaltd.get_window("main") {
+                window.emit("airadcr:dictation_startstop_toggle", ()).ok();
+            }
+        })
+        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+Alt+D: {}", e));
+
+    // 🎤 DICTATION: Ctrl+Alt+P (Pause/Resume toggle - Alternative)
+    let handle_ctrlaltp = app_handle.clone();
+    shortcut_manager
+        .register("Ctrl+Alt+P", move || {
+            println!("⏯️ [Shortcuts] Ctrl+Alt+P pressé (pause/resume toggle - alternative)");
+            if let Some(window) = handle_ctrlaltp.get_window("main") {
+                window.emit("airadcr:dictation_pause_toggle", ()).ok();
+            }
+        })
+        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+Alt+P: {}", e));
+
+    // 💉 INJECTION: Ctrl+Alt+T (Raw text - Alternative)
+    let handle_ctrlaltt = app_handle.clone();
+    shortcut_manager
+        .register("Ctrl+Alt+T", move || {
+            println!("💉 [Shortcuts] Ctrl+Alt+T pressé (inject raw text - alternative)");
+            if let Some(window) = handle_ctrlaltt.get_window("main") {
+                window.emit("airadcr:inject_raw_text", ()).ok();
+            }
+        })
+        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+Alt+T: {}", e));
+
+    // 💉 INJECTION: Ctrl+Alt+S (Structured report - Alternative)
+    let handle_ctrlalts = app_handle.clone();
+    shortcut_manager
+        .register("Ctrl+Alt+S", move || {
+            println!("📋 [Shortcuts] Ctrl+Alt+S pressé (inject structured report - alternative)");
+            if let Some(window) = handle_ctrlalts.get_window("main") {
+                window.emit("airadcr:inject_structured_report", ()).ok();
+            }
+        })
+        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+Alt+S: {}", e));
     
     #[cfg(not(debug_assertions))]
     {
@@ -1265,7 +1309,9 @@ fn register_global_shortcuts(app_handle: tauri::AppHandle) {
         println!("   🔓 F9 (Anti-fantôme)");
         println!("   🎤 F10 (Record), F11 (Pause), F12 (Finish)");
         println!("   🎤 Ctrl+F9 (Pause/Resume), Ctrl+F10 (Start/Stop)");
+        println!("   🎤 Ctrl+Alt+D (Start/Stop), Ctrl+Alt+P (Pause/Resume)");
         println!("   💉 Ctrl+F11 (Inject Raw), Ctrl+F12 (Inject Structured)");
+        println!("   💉 Ctrl+Alt+T (Inject Raw), Ctrl+Alt+S (Inject Structured)");
     }
     
     #[cfg(debug_assertions)]
@@ -1275,7 +1321,9 @@ fn register_global_shortcuts(app_handle: tauri::AppHandle) {
         println!("   🔓 F9 (Anti-fantôme)");
         println!("   🎤 F10 (Record), F11 (Pause)");
         println!("   🎤 Ctrl+F9 (Pause/Resume), Ctrl+F10 (Start/Stop)");
+        println!("   🎤 Ctrl+Alt+D (Start/Stop), Ctrl+Alt+P (Pause/Resume)");
         println!("   💉 Ctrl+F11 (Inject Raw), Ctrl+F12 (Inject Structured)");
+        println!("   💉 Ctrl+Alt+T (Inject Raw), Ctrl+Alt+S (Inject Structured)");
         println!("⚠️ [DEV] F12 non enregistré (disponible pour DevTools)");
     }
 }

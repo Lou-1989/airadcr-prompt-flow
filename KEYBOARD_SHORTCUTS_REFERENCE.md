@@ -201,6 +201,80 @@ Ces raccourcis **sans Ctrl** sont conservés pour la rétrocompatibilité avec l
 
 ---
 
+## 🆕 Raccourcis alternatifs (Ctrl+Alt)
+
+Ces raccourcis offrent une alternative aux raccourcis `Ctrl+F*` pour les utilisateurs préférant des combinaisons sans touches de fonction. Ils fonctionnent globalement (même hors focus) et déclenchent les mêmes actions.
+
+### **Ctrl+Alt+D** - Démarrer/Terminer dictée (Alternative)
+
+**Fonction:** Identique à `Ctrl+F10` - Démarre ou termine l'enregistrement audio.
+
+**Événement émis:** `airadcr:dictation_startstop_toggle`
+
+**Tauri → React → iframe:**
+- Tauri capture `Ctrl+Alt+D` globalement
+- React écoute l'événement `airadcr:dictation_startstop_toggle`
+- Envoie `postMessage` type `airadcr:speechmike_record` à l'iframe
+
+**Fichiers concernés:**
+- `src-tauri/src/main.rs` (raccourci global)
+- `src/App.tsx` (listener React)
+
+---
+
+### **Ctrl+Alt+P** - Pause/Reprise dictée (Alternative)
+
+**Fonction:** Identique à `Ctrl+F9` - Met en pause ou reprend la dictée.
+
+**Événement émis:** `airadcr:dictation_pause_toggle`
+
+**Tauri → React → iframe:**
+- Tauri capture `Ctrl+Alt+P` globalement
+- React écoute l'événement `airadcr:dictation_pause_toggle`
+- Envoie `postMessage` type `airadcr:speechmike_pause` à l'iframe
+
+**Fichiers concernés:**
+- `src-tauri/src/main.rs` (raccourci global)
+- `src/App.tsx` (listener React)
+
+---
+
+### **Ctrl+Alt+T** - Injecter texte brut (Alternative)
+
+**Fonction:** Identique à `Ctrl+F11` - Injecte le texte dicté brut dans l'application cible.
+
+**Événement émis:** `airadcr:inject_raw_text`
+
+**Tauri → React → iframe:**
+- Tauri capture `Ctrl+Alt+T` globalement
+- React écoute l'événement `airadcr:inject_raw_text`
+- Envoie `postMessage` à l'iframe pour récupérer le texte brut
+- Déclenche l'injection au dernier curseur connu
+
+**Fichiers concernés:**
+- `src-tauri/src/main.rs` (raccourci global + injection)
+- `src/App.tsx` (listener React)
+
+---
+
+### **Ctrl+Alt+S** - Injecter rapport structuré (Alternative)
+
+**Fonction:** Identique à `Ctrl+F12` - Injecte le rapport structuré complet.
+
+**Événement émis:** `airadcr:inject_structured_report`
+
+**Tauri → React → iframe:**
+- Tauri capture `Ctrl+Alt+S` globalement
+- React écoute l'événement `airadcr:inject_structured_report`
+- Envoie `postMessage` à l'iframe pour récupérer le rapport structuré
+- Déclenche l'injection au dernier curseur connu
+
+**Fichiers concernés:**
+- `src-tauri/src/main.rs` (raccourci global + injection)
+- `src/App.tsx` (listener React)
+
+---
+
 ## 🐛 Raccourcis de débogage (développement)
 
 ### **Ctrl+Shift+D** - Toggle panneau de débogage

@@ -230,12 +230,22 @@ jobs:
           password: ${{ secrets.ESIGNER_PASSWORD }}
           credential_id: ${{ secrets.CREDENTIAL_ID }}
           totp_secret: ${{ secrets.ESIGNER_TOTP_SECRET }}
-          file_path: ${{ github.workspace }}/src-tauri/target/release/AIRADCR.exe
-          output_path: ${{ github.workspace }}/artifacts
+          file_path: ${{ github.workspace }}\src-tauri\target\release\AIRADCR.exe
+          output_path: ${{ github.workspace }}\artifacts
           override: true
           environment_name: PROD
           clean_logs: false
 
+
+      - name: Resolve MSI path
+        if: matrix.settings.platform == 'windows-latest'
+        id: find_msi
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem -Path "src-tauri\target\release\bundle\msi" -Filter "*.msi" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $msi) { Write-Error "No MSI found in bundle\msi"; exit 1 }
+          Write-Host "[DISCOVER] MSI: $($msi.FullName)"
+          "msi_path=$($msi.FullName)" >> $env:GITHUB_OUTPUT
 
       - name: Sign MSI installers (Windows)
         if: matrix.settings.platform == 'windows-latest' && hashFiles('src-tauri/target/release/bundle/msi/*.msi') != ''
@@ -247,12 +257,22 @@ jobs:
           password: ${{ secrets.ESIGNER_PASSWORD }}
           credential_id: ${{ secrets.CREDENTIAL_ID }}
           totp_secret: ${{ secrets.ESIGNER_TOTP_SECRET }}
-          file_path: ${{ github.workspace }}\src-tauri\target\release\bundle\msi\AIRADCR_1.0.0_x64_en-US.msi
+          file_path: ${{ steps.find_msi.outputs.msi_path }}
           output_path: ${{ github.workspace }}\artifacts
           override: true
           environment_name: PROD
           clean_logs: false
 
+
+      - name: Resolve NSIS path
+        if: matrix.settings.platform == 'windows-latest'
+        id: find_nsis
+        shell: pwsh
+        run: |
+          $nsis = Get-ChildItem -Path "src-tauri\target\release\bundle\nsis" -Filter "*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $nsis) { Write-Error "No NSIS installer found in bundle\nsis"; exit 1 }
+          Write-Host "[DISCOVER] NSIS: $($nsis.FullName)"
+          "nsis_path=$($nsis.FullName)" >> $env:GITHUB_OUTPUT
 
       - name: Sign NSIS installers (Windows)
         if: matrix.settings.platform == 'windows-latest' && hashFiles('src-tauri/target/release/bundle/nsis/*.exe') != ''
@@ -264,7 +284,7 @@ jobs:
           password: ${{ secrets.ESIGNER_PASSWORD }}
           credential_id: ${{ secrets.CREDENTIAL_ID }}
           totp_secret: ${{ secrets.ESIGNER_TOTP_SECRET }}
-          file_path: ${{ github.workspace }}\src-tauri\target\release\bundle\nsis\AIRADCR_1.0.0_x64-setup.exe
+          file_path: ${{ steps.find_nsis.outputs.nsis_path }}
           output_path: ${{ github.workspace }}\artifacts
           override: true
           environment_name: PROD
@@ -318,14 +338,10 @@ jobs:
           
           if (-not $files -or $files.Count -eq 0) {
             # Fallback: vérifier explicitement les livrables connus dans target/release
-            $candidatePaths = @(
-              "src-tauri\target\release\AIRADCR.exe",
-              "src-tauri\target\release\bundle\nsis\AIRADCR_1.0.0_x64-setup.exe",
-              "src-tauri\target\release\bundle\msi\AIRADCR_1.0.0_x64_en-US.msi"
-            )
-            foreach ($p in $candidatePaths) {
-              if (Test-Path $p) { $files += Get-Item $p }
-            }
+            Write-Host "[FALLBACK] Searching for files in release directory..."
+            $files += Get-ChildItem -Path "src-tauri\target\release" -Include "AIRADCR.exe" -Recurse -ErrorAction SilentlyContinue
+            $files += Get-ChildItem -Path "src-tauri\target\release\bundle\msi" -Filter "*.msi" -ErrorAction SilentlyContinue
+            $files += Get-ChildItem -Path "src-tauri\target\release\bundle\nsis" -Filter "*.exe" -ErrorAction SilentlyContinue
           }
           
           if (-not $files -or $files.Count -eq 0) {

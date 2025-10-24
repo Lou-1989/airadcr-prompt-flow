@@ -16,12 +16,12 @@ AIRADCR utilise des **API Windows légitimes** pour injecter du texte médical d
 
 ---
 
-## ✅ Solution 1 : Téléchargement Officiel Sécurisé (RECOMMANDÉ)
+## ✅ Solution 1 : Installer via le fichier .msi (RECOMMANDÉ)
 
-Téléchargez l'installateur directement depuis le site officiel :
+Le fichier `.msi` est moins suspect que le `.exe` portable :
 
-1. Télécharger **AIRADCR_1.0.0_x64-setup.exe** depuis https://airadcr.com/downloads/AIRADCR_1.0.0_x64-setup.exe
-2. **Double-clic** sur le fichier pour lancer l'installation
+1. Télécharger **AIRADCR-1.0.0-setup.msi** depuis https://airadcr.com/download
+2. **Clic droit** sur le fichier → **Installer**
 3. Si Windows SmartScreen bloque :
    - Cliquer sur **"Informations complémentaires"**
    - Puis **"Exécuter quand même"**

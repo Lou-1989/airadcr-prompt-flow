@@ -1257,6 +1257,50 @@ fn register_global_shortcuts(app_handle: tauri::AppHandle) {
             }
         })
         .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+F12: {}", e));
+
+    // 🎤 DICTATION: Ctrl+Shift+D (Start/Stop toggle)
+    let handle_ctrlshiftd = app_handle.clone();
+    shortcut_manager
+        .register("Ctrl+Shift+D", move || {
+            println!("🔴 [Shortcuts] Ctrl+Shift+D pressé (start/stop toggle)");
+            if let Some(window) = handle_ctrlshiftd.get_window("main") {
+                window.emit("airadcr:dictation_startstop_toggle", ()).ok();
+            }
+        })
+        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+Shift+D: {}", e));
+
+    // 🎤 DICTATION: Ctrl+Shift+P (Pause/Resume toggle)
+    let handle_ctrlshiftp = app_handle.clone();
+    shortcut_manager
+        .register("Ctrl+Shift+P", move || {
+            println!("⏯️ [Shortcuts] Ctrl+Shift+P pressé (pause/resume toggle)");
+            if let Some(window) = handle_ctrlshiftp.get_window("main") {
+                window.emit("airadcr:dictation_pause_toggle", ()).ok();
+            }
+        })
+        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+Shift+P: {}", e));
+
+    // 💉 INJECTION: Ctrl+Shift+T (Raw text)
+    let handle_ctrlshiftt = app_handle.clone();
+    shortcut_manager
+        .register("Ctrl+Shift+T", move || {
+            println!("💉 [Shortcuts] Ctrl+Shift+T pressé (inject raw text)");
+            if let Some(window) = handle_ctrlshiftt.get_window("main") {
+                window.emit("airadcr:inject_raw_text", ()).ok();
+            }
+        })
+        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+Shift+T: {}", e));
+
+    // 💉 INJECTION: Ctrl+Shift+S (Structured report)
+    let handle_ctrlshifts = app_handle.clone();
+    shortcut_manager
+        .register("Ctrl+Shift+S", move || {
+            println!("📋 [Shortcuts] Ctrl+Shift+S pressé (inject structured report)");
+            if let Some(window) = handle_ctrlshifts.get_window("main") {
+                window.emit("airadcr:inject_structured_report", ()).ok();
+            }
+        })
+        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+Shift+S: {}", e));
     
     #[cfg(not(debug_assertions))]
     {
@@ -1265,7 +1309,9 @@ fn register_global_shortcuts(app_handle: tauri::AppHandle) {
         println!("   🔓 F9 (Anti-fantôme)");
         println!("   🎤 F10 (Record), F11 (Pause), F12 (Finish)");
         println!("   🎤 Ctrl+F9 (Pause/Resume), Ctrl+F10 (Start/Stop)");
+        println!("   🎤 Ctrl+Shift+D (Start/Stop), Ctrl+Shift+P (Pause/Resume)");
         println!("   💉 Ctrl+F11 (Inject Raw), Ctrl+F12 (Inject Structured)");
+        println!("   💉 Ctrl+Shift+T (Inject Raw), Ctrl+Shift+S (Inject Structured)");
     }
     
     #[cfg(debug_assertions)]
@@ -1275,7 +1321,9 @@ fn register_global_shortcuts(app_handle: tauri::AppHandle) {
         println!("   🔓 F9 (Anti-fantôme)");
         println!("   🎤 F10 (Record), F11 (Pause)");
         println!("   🎤 Ctrl+F9 (Pause/Resume), Ctrl+F10 (Start/Stop)");
+        println!("   🎤 Ctrl+Shift+D (Start/Stop), Ctrl+Shift+P (Pause/Resume)");
         println!("   💉 Ctrl+F11 (Inject Raw), Ctrl+F12 (Inject Structured)");
+        println!("   💉 Ctrl+Shift+T (Inject Raw), Ctrl+Shift+S (Inject Structured)");
         println!("⚠️ [DEV] F12 non enregistré (disponible pour DevTools)");
     }
 }

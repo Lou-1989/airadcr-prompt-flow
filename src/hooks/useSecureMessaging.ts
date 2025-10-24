@@ -268,25 +268,25 @@ export const useSecureMessaging = () => {
   useEffect(() => {
     const listeners: UnlistenFn[] = [];
     
-    // 🎤 Start/Stop toggle (Ctrl+F10, Ctrl+Alt+D)
+    // 🎤 Start/Stop toggle (Ctrl+F10, Ctrl+Shift+D)
     listen('airadcr:dictation_startstop_toggle', () => {
       logger.debug('[Tauri Event] 🔴 Dictation Start/Stop toggle');
       sendSecureMessage('airadcr:toggle_recording');
     }).then(unlisten => listeners.push(unlisten));
     
-    // 🎤 Pause/Resume toggle (Ctrl+F9, Ctrl+Alt+P)
+    // 🎤 Pause/Resume toggle (Ctrl+F9, Ctrl+Shift+P)
     listen('airadcr:dictation_pause_toggle', () => {
       logger.debug('[Tauri Event] ⏯️ Dictation Pause/Resume toggle');
       sendSecureMessage('airadcr:toggle_pause');
     }).then(unlisten => listeners.push(unlisten));
     
-    // 💉 Inject raw text (Ctrl+F11, Ctrl+Alt+T)
+    // 💉 Inject raw text (Ctrl+F11, Ctrl+Shift+T)
     listen('airadcr:inject_raw_text', () => {
       logger.debug('[Tauri Event] 💉 Inject raw text');
       sendSecureMessage('airadcr:request_injection', { type: 'brut' });
     }).then(unlisten => listeners.push(unlisten));
     
-    // 💉 Inject structured report (Ctrl+F12, Ctrl+Alt+S)
+    // 💉 Inject structured report (Ctrl+F12, Ctrl+Shift+S)
     listen('airadcr:inject_structured_report', () => {
       logger.debug('[Tauri Event] 📋 Inject structured report');
       sendSecureMessage('airadcr:request_injection', { type: 'structuré' });

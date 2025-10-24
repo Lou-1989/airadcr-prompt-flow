@@ -150,7 +150,7 @@ export const DevLogWindow = ({ isVisible, onClose }: DevLogWindowProps) => {
       
       <div className="p-2 border-t bg-muted/50">
         <p className="text-xs text-muted-foreground">
-          💡 Appuyez sur <kbd className="px-1 py-0.5 text-xs bg-background border rounded">Ctrl+Shift+L</kbd> pour masquer/afficher • <kbd className="px-1 py-0.5 text-xs bg-background border rounded">F12</kbd> pour SpeechMike (prod) / DevTools (dev)
+          💡 Appuyez sur <kbd className="px-1 py-0.5 text-xs bg-background border rounded">Ctrl+Alt+L</kbd> pour masquer/afficher • <kbd className="px-1 py-0.5 text-xs bg-background border rounded">F12</kbd> pour SpeechMike (prod) / DevTools (dev)
         </p>
       </div>
     </div>

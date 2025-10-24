@@ -60,19 +60,19 @@ const AppContent = () => {
     };
 
     const unlistenPromises = [
-      // Debug Panel: Ctrl+Shift+D
+      // Debug Panel: Ctrl+Alt+D
       listen('airadcr:toggle_debug', () => {
         setIsDebugVisible(prev => !prev);
         logger.debug('[Shortcuts] Debug Panel toggled');
       }),
       
-      // Log Window: Ctrl+Shift+L
+      // Log Window: Ctrl+Alt+L
       listen('airadcr:toggle_logs', () => {
         setIsLogWindowVisible(prev => !prev);
         logger.debug('[Shortcuts] Log Window toggled');
       }),
       
-      // Test Injection: Ctrl+Shift+T
+      // Test Injection: Ctrl+Alt+I
       listen('airadcr:test_injection', () => {
         handleTestInjection();
         logger.debug('[Shortcuts] Test injection déclenché');
@@ -150,7 +150,7 @@ const AppContent = () => {
         </Routes>
       </BrowserRouter>
       
-      {/* Debug Panel - Accessible par Ctrl+Shift+D */}
+      {/* Debug Panel - Accessible par Ctrl+Alt+D */}
       <DebugPanel
         isTauriApp={isTauriApp}
         isAlwaysOnTop={isAlwaysOnTop}
@@ -164,7 +164,7 @@ const AppContent = () => {
         onClose={() => setIsDebugVisible(false)}
       />
 
-      {/* Fenêtre de logs flottante - Accessible par Ctrl+Shift+L */}
+      {/* Fenêtre de logs flottante - Accessible par Ctrl+Alt+L */}
       <DevLogWindow 
         isVisible={isLogWindowVisible}
         onClose={() => setIsLogWindowVisible(false)}

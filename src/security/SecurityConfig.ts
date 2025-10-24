@@ -47,6 +47,12 @@ export const SECURITY_CONFIG = {
     'airadcr:injection_ack', // Acknowledgment immédiat de la requête d'injection
     'airadcr:injection_status', // Statut final de l'injection (success/fail + reason)
     
+    // 🆕 Commandes clavier globales (Desktop → Iframe)
+    'airadcr:toggle_recording',       // Start/Stop dictée (Ctrl+F10, Ctrl+Alt+D)
+    'airadcr:toggle_pause',            // Pause/Resume (Ctrl+F9, Ctrl+Alt+P)
+    'airadcr:request_injection',       // Demande injection brut/structuré (Ctrl+F11/F12, Ctrl+Alt+T/S)
+    'airadcr:finalize_and_inject',     // Finaliser + injecter (F12 SpeechMike)
+    
     // SpeechMike commands (Desktop → Web)
     'airadcr:speechmike_record', // Démarre ou reprend l'enregistrement
     'airadcr:speechmike_pause', // Met en pause l'enregistrement

@@ -3,6 +3,7 @@ import { isValidMessage, SECURITY_CONFIG } from '@/security/SecurityConfig';
 import { useInjectionContext } from '@/contexts/InjectionContext';
 import { logger } from '@/utils/logger';
 import { invoke } from '@tauri-apps/api/tauri';
+import { listen, UnlistenFn } from '@tauri-apps/api/event';
 
 type MessageHandler = (data: any) => void;
 
@@ -118,27 +119,6 @@ export const useSecureMessaging = () => {
         sendSecureMessage('airadcr:request_status');
         break;
       
-      // 🎤 COMMANDES SPEECHMIKE: Record/Pause/Finish  
-      case 'airadcr:speechmike_record':
-        logger.debug('🎤 [SpeechMike] Commande Record reçue depuis Tauri');
-        // Simuler le clic sur le bouton d'enregistrement AIRADCR
-        // TODO: Implémenter la logique de démarrage/reprise dictée
-        // Pour l'instant, juste logger
-        notifyRecordingState('started');
-        break;
-        
-      case 'airadcr:speechmike_pause':
-        logger.debug('⏸️ [SpeechMike] Commande Pause reçue depuis Tauri');
-        // TODO: Implémenter la logique de pause dictée
-        notifyRecordingState('paused');
-        break;
-        
-      case 'airadcr:speechmike_finish':
-        logger.debug('✅ [SpeechMike] Commande Finish reçue depuis Tauri');
-        // TODO: Implémenter la logique de finalisation dictée
-        notifyRecordingState('finished');
-        break;
-        
       case 'airadcr:inject':
         const now = Date.now();
         
@@ -283,6 +263,57 @@ export const useSecureMessaging = () => {
       window.removeEventListener('message', handleSecureMessage);
     };
   }, [handleSecureMessage]);
+  
+  // 🎤 ÉCOUTE DES ÉVÉNEMENTS TAURI (raccourcis clavier globaux)
+  useEffect(() => {
+    const listeners: UnlistenFn[] = [];
+    
+    // 🎤 Start/Stop toggle (Ctrl+F10, Ctrl+Alt+D)
+    listen('airadcr:dictation_startstop_toggle', () => {
+      logger.debug('[Tauri Event] 🔴 Dictation Start/Stop toggle');
+      sendSecureMessage('airadcr:toggle_recording');
+    }).then(unlisten => listeners.push(unlisten));
+    
+    // 🎤 Pause/Resume toggle (Ctrl+F9, Ctrl+Alt+P)
+    listen('airadcr:dictation_pause_toggle', () => {
+      logger.debug('[Tauri Event] ⏯️ Dictation Pause/Resume toggle');
+      sendSecureMessage('airadcr:toggle_pause');
+    }).then(unlisten => listeners.push(unlisten));
+    
+    // 💉 Inject raw text (Ctrl+F11, Ctrl+Alt+T)
+    listen('airadcr:inject_raw_text', () => {
+      logger.debug('[Tauri Event] 💉 Inject raw text');
+      sendSecureMessage('airadcr:request_injection', { type: 'brut' });
+    }).then(unlisten => listeners.push(unlisten));
+    
+    // 💉 Inject structured report (Ctrl+F12, Ctrl+Alt+S)
+    listen('airadcr:inject_structured_report', () => {
+      logger.debug('[Tauri Event] 📋 Inject structured report');
+      sendSecureMessage('airadcr:request_injection', { type: 'structuré' });
+    }).then(unlisten => listeners.push(unlisten));
+    
+    // 🎤 SPEECHMIKE: Record (F10)
+    listen('airadcr:speechmike_record', () => {
+      logger.debug('[Tauri Event] 🎤 SpeechMike Record');
+      sendSecureMessage('airadcr:toggle_recording');
+    }).then(unlisten => listeners.push(unlisten));
+    
+    // 🎤 SPEECHMIKE: Pause (F11)
+    listen('airadcr:speechmike_pause', () => {
+      logger.debug('[Tauri Event] ⏸️ SpeechMike Pause');
+      sendSecureMessage('airadcr:toggle_pause');
+    }).then(unlisten => listeners.push(unlisten));
+    
+    // 🎤 SPEECHMIKE: Finish (F12)
+    listen('airadcr:speechmike_finish', () => {
+      logger.debug('[Tauri Event] ✅ SpeechMike Finish');
+      sendSecureMessage('airadcr:finalize_and_inject');
+    }).then(unlisten => listeners.push(unlisten));
+    
+    return () => {
+      listeners.forEach(unlisten => unlisten());
+    };
+  }, [sendSecureMessage]);
   
   return {
     sendSecureMessage,

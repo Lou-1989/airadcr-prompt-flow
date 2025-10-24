@@ -1222,108 +1222,12 @@ fn register_global_shortcuts(app_handle: tauri::AppHandle) {
         })
         .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement F9: {}", e));
     
-    // 🎤 SPEECHMIKE F10: Record (Démarrer/Reprendre dictée)
-    let handle_f10 = app_handle.clone();
-    shortcut_manager
-        .register("F10", move || {
-            println!("🔴 [SpeechMike] F10 pressé (record)");
-            if let Some(window) = handle_f10.get_window("main") {
-                window.emit("airadcr:speechmike_record", ()).ok();
-            }
-        })
-        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement F10: {}", e));
-    
-    // 🎤 SPEECHMIKE F11: Pause (Mettre en pause dictée)
-    let handle_f11 = app_handle.clone();
-    shortcut_manager
-        .register("F11", move || {
-            println!("⏯️ [SpeechMike] F11 pressé (pause)");
-            if let Some(window) = handle_f11.get_window("main") {
-                window.emit("airadcr:speechmike_pause", ()).ok();
-            }
-        })
-        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement F11: {}", e));
-    
-    // 🎤 SPEECHMIKE F12: Finish (Finaliser et injecter - uniquement en production)
-    #[cfg(not(debug_assertions))]
-    {
-        let handle_f12 = app_handle.clone();
-        shortcut_manager
-            .register("F12", move || {
-                println!("⏹️ [SpeechMike] F12 pressé (finish)");
-                if let Some(window) = handle_f12.get_window("main") {
-                    window.emit("airadcr:speechmike_finish", ()).ok();
-                }
-            })
-            .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement F12: {}", e));
-    }
-    
-    // 🎤 DICTATION: Ctrl+F9 (Pause/Resume toggle)
-    let handle_ctrlf9 = app_handle.clone();
-    shortcut_manager
-        .register("Ctrl+F9", move || {
-            println!("⏯️ [Shortcuts] Ctrl+F9 pressé (pause/resume toggle)");
-            if let Some(window) = handle_ctrlf9.get_window("main") {
-                window.emit("airadcr:dictation_pause_toggle", ()).ok();
-            }
-        })
-        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+F9: {}", e));
-
-    // 🎤 DICTATION: Ctrl+F10 (Start/Stop toggle)
-    let handle_ctrlf10 = app_handle.clone();
-    shortcut_manager
-        .register("Ctrl+F10", move || {
-            println!("🔴 [Shortcuts] Ctrl+F10 pressé (start/stop toggle)");
-            if let Some(window) = handle_ctrlf10.get_window("main") {
-                window.emit("airadcr:dictation_startstop_toggle", ()).ok();
-            }
-        })
-        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+F10: {}", e));
-
-    // 💉 INJECTION: Ctrl+F11 (Raw text)
-    let handle_ctrlf11 = app_handle.clone();
-    shortcut_manager
-        .register("Ctrl+F11", move || {
-            println!("💉 [Shortcuts] Ctrl+F11 pressé (inject raw text)");
-            if let Some(window) = handle_ctrlf11.get_window("main") {
-                window.emit("airadcr:inject_raw_text", ()).ok();
-            }
-        })
-        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+F11: {}", e));
-
-    // 💉 INJECTION: Ctrl+F12 (Structured report)
-    let handle_ctrlf12 = app_handle.clone();
-    shortcut_manager
-        .register("Ctrl+F12", move || {
-            println!("📋 [Shortcuts] Ctrl+F12 pressé (inject structured report)");
-            if let Some(window) = handle_ctrlf12.get_window("main") {
-                window.emit("airadcr:inject_structured_report", ()).ok();
-            }
-        })
-        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+F12: {}", e));
-    
-    #[cfg(not(debug_assertions))]
-    {
-        println!("✅ [Shortcuts] Raccourcis globaux enregistrés:");
-        println!("   🎨 Ctrl+Alt+D (Debug), Ctrl+Alt+L (Logs), Ctrl+Alt+I (Test)");
-        println!("   🔓 F9 (Anti-fantôme)");
-        println!("   🎤 F10 (Record), F11 (Pause), F12 (Finish)");
-        println!("   🎤 Ctrl+Shift+D (Start/Stop), Ctrl+Shift+P (Pause/Resume)");
-        println!("   💉 Ctrl+Shift+T (Inject Raw), Ctrl+Shift+S (Inject Structured)");
-        println!("   🎤 Ctrl+F9 (Pause/Resume), Ctrl+F10 (Start/Stop)");
-        println!("   💉 Ctrl+F11 (Inject Raw), Ctrl+F12 (Inject Structured)");
-    }
-    
-    #[cfg(debug_assertions)]
-    {
-        println!("✅ [Shortcuts] Raccourcis globaux enregistrés:");
-        println!("   🎨 Ctrl+Alt+D (Debug), Ctrl+Alt+L (Logs), Ctrl+Alt+I (Test)");
-        println!("   🔓 F9 (Anti-fantôme)");
-        println!("   🎤 F10 (Record), F11 (Pause)");
-        println!("   🎤 Ctrl+Shift+D (Start/Stop), Ctrl+Shift+P (Pause/Resume)");
-        println!("   💉 Ctrl+Shift+T (Inject Raw), Ctrl+Shift+S (Inject Structured)");
-        println!("   🎤 Ctrl+F9 (Pause/Resume), Ctrl+F10 (Start/Stop)");
-        println!("   💉 Ctrl+F11 (Inject Raw), Ctrl+F12 (Inject Structured)");
-        println!("⚠️ [DEV] F12 non enregistré (disponible pour DevTools)");
-    }
+    println!("✅ [Shortcuts] Raccourcis globaux enregistrés (Système unifié v3.0):");
+    println!("   🎨 Ctrl+Alt+D (Debug), Ctrl+Alt+L (Logs), Ctrl+Alt+I (Test)");
+    println!("   🔓 F9 (Anti-fantôme)");
+    println!("   🎤 Ctrl+Shift+D (Start/Stop dictée)");
+    println!("   🎤 Ctrl+Shift+P (Pause/Resume dictée)");
+    println!("   💉 Ctrl+Shift+T (Inject texte brut - Insert)");
+    println!("   💉 Ctrl+Shift+S (Inject rapport structuré - EOL)");
+    println!("   ✅ SpeechMike utilise les MÊMES raccourcis Ctrl+Shift+D/P/T/S");
 }

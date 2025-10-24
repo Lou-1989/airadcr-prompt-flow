@@ -33,88 +33,80 @@
       </OperationList>
     </ApplicationProfile>
     
-    <!-- Profil spécifique : AIRADCR Desktop Application (VERSION 2.0 - Ctrl+F*) -->
-    <ApplicationProfile TargetApplication="airadcr-desktop.exe" Active="True" Comment="AIRADCR Desktop v2.0 - Dictée avec Ctrl+F9-F12">
+    <!-- Profil spécifique : AIRADCR Desktop Application (VERSION 3.0 - Système unifié) -->
+    <ApplicationProfile TargetApplication="airadcr-desktop.exe" Active="True" Comment="AIRADCR Desktop v3.0 - Système unifié Ctrl+Shift">
       <OperationList>
         
         <!-- ═══════════════════════════════════════════════════════════════ -->
-        <!-- 🎤 CONTRÔLE DE DICTÉE (Ctrl+F9 et Ctrl+F10)                    -->
+        <!-- 🎤 CONTRÔLE DE DICTÉE (Ctrl+Shift+D/P)                         -->
         <!-- ═══════════════════════════════════════════════════════════════ -->
         
-        <!-- Bouton Record : Ctrl+F10 (Démarrer/Terminer dictée - Toggle intelligent) -->
+        <!-- Bouton Record : Ctrl+Shift+D (Démarrer/Terminer dictée) -->
         <Operation Event="spmRecordPressed" ModifierKey="None" Name="AIRADCR Start/Stop">
           <Steps>
             <OperationElement Type="Hotkey">
-              <Hotkey Key="F10" Modifiers="Control" />
+              <Hotkey Key="D" Modifiers="Control+Shift" />
             </OperationElement>
           </Steps>
           <Comment>
-            Bouton Record du SpeechMike → Ctrl+F10:
-            - En état Idle: Démarre l'enregistrement
-            - En état Recording: Termine et transcrit
-            - En état Paused: Termine et transcrit
-            Toggle intelligent Start/Stop
+            Bouton Record du SpeechMike → Ctrl+Shift+D:
+            Démarre ou termine la dictée (toggle intelligent)
           </Comment>
         </Operation>
         
-        <!-- Bouton Pause : Ctrl+F9 (Pause/Reprise - Toggle) -->
+        <!-- Bouton Stop : Ctrl+Shift+P (Pause/Reprise) -->
         <Operation Event="spmStopPressed" ModifierKey="None" Name="AIRADCR Pause/Resume">
           <Steps>
             <OperationElement Type="Hotkey">
-              <Hotkey Key="F9" Modifiers="Control" />
+              <Hotkey Key="P" Modifiers="Control+Shift" />
             </OperationElement>
           </Steps>
           <Comment>
-            Bouton Pause du SpeechMike → Ctrl+F9:
-            - En état Recording: Met en pause
-            - En état Paused: Reprend l'enregistrement
-            Toggle Pause/Resume
+            Bouton Stop du SpeechMike → Ctrl+Shift+P:
+            Met en pause ou reprend l'enregistrement (toggle)
           </Comment>
         </Operation>
         
-        <!-- Bouton Play : Ctrl+F9 (Alternative pour Reprise) -->
+        <!-- Bouton Play : Ctrl+Shift+P (Alternative pour Reprise) -->
         <Operation Event="spmPlayPressed" ModifierKey="None" Name="AIRADCR Play/Continue">
           <Steps>
             <OperationElement Type="Hotkey">
-              <Hotkey Key="F9" Modifiers="Control" />
+              <Hotkey Key="P" Modifiers="Control+Shift" />
             </OperationElement>
           </Steps>
           <Comment>
-            Bouton Play du SpeechMike → Ctrl+F9:
-            Reprend l'enregistrement après une pause (= même action que bouton Pause)
+            Bouton Play du SpeechMike → Ctrl+Shift+P:
+            Reprend l'enregistrement (même action que Stop)
           </Comment>
         </Operation>
         
         <!-- ═══════════════════════════════════════════════════════════════ -->
-        <!-- 📋 INJECTION DE TEXTE (Ctrl+F11 et Ctrl+F12)                   -->
+        <!-- 📋 INJECTION DE TEXTE (Ctrl+Shift+T/S)                         -->
         <!-- ═══════════════════════════════════════════════════════════════ -->
         
-        <!-- Bouton Instruction : Ctrl+F11 (Injecter texte brut) -->
+        <!-- Bouton Instruction : Ctrl+Shift+T (Injecter texte brut - Insert) -->
         <Operation Event="spmInstructionPressed" ModifierKey="None" Name="AIRADCR Inject Raw">
           <Steps>
             <OperationElement Type="Hotkey">
-              <Hotkey Key="F11" Modifiers="Control" />
+              <Hotkey Key="T" Modifiers="Control+Shift" />
             </OperationElement>
           </Steps>
           <Comment>
-            Bouton Instruction du SpeechMike → Ctrl+F11:
-            Injecte le texte de dictée brut (non structuré) dans l'application cible (RIS, Word)
-            Format: Texte formaté avec titre et sections basiques
+            Bouton Instruction du SpeechMike → Ctrl+Shift+T:
+            Injecte le texte brut depuis textarea dans le RIS
           </Comment>
         </Operation>
         
-        <!-- Bouton Programmable 1 : Ctrl+F12 (Injecter rapport structuré) -->
+        <!-- Bouton Programmable 1 : Ctrl+Shift+S (Injecter rapport structuré - EOL) -->
         <Operation Event="spmProgrammable1Pressed" ModifierKey="None" Name="AIRADCR Inject Structured">
           <Steps>
             <OperationElement Type="Hotkey">
-              <Hotkey Key="F12" Modifiers="Control" />
+              <Hotkey Key="S" Modifiers="Control+Shift" />
             </OperationElement>
           </Steps>
           <Comment>
-            Bouton Programmable 1 du SpeechMike → Ctrl+F12:
-            Injecte le rapport structuré complet selon les préférences utilisateur
-            Format: Contenu personnalisé avec Titre, Indication, Technique, Résultats, Conclusion,
-                    Références documentaires, Traduction, Explication
+            Bouton Programmable 1 du SpeechMike → Ctrl+Shift+S:
+            Injecte le rapport structuré complet (EOL)
           </Comment>
         </Operation>
         
@@ -128,7 +120,7 @@
             <OperationElement Type="NoAction" />
           </Steps>
           <Comment>
-            Bouton Rewind du SpeechMike: Non utilisé dans AIRADCR v2.0
+            Bouton Rewind du SpeechMike: Non utilisé dans AIRADCR v3.0
           </Comment>
         </Operation>
         
@@ -138,7 +130,7 @@
             <OperationElement Type="NoAction" />
           </Steps>
           <Comment>
-            Bouton Fast Forward du SpeechMike: Non utilisé dans AIRADCR v2.0
+            Bouton Fast Forward du SpeechMike: Non utilisé dans AIRADCR v3.0
           </Comment>
         </Operation>
         
@@ -181,21 +173,24 @@
   </ApplicationProfileList>
   
   <!-- ═════════════════════════════════════════════════════════════════════ -->
-  <!-- RÉSUMÉ DES MAPPINGS AIRADCR v2.0                                      -->
+  <!-- RÉSUMÉ DES MAPPINGS AIRADCR v3.0 - SYSTÈME UNIFIÉ                     -->
   <!-- ═════════════════════════════════════════════════════════════════════ -->
   <!-- 
     ┌──────────────────────┬──────────────────┬─────────────────────────────┐
     │ Bouton SpeechMike    │ Raccourci envoyé │ Action AIRADCR              │
     ├──────────────────────┼──────────────────┼─────────────────────────────┤
-    │ 🔴 Record            │ Ctrl+F10         │ Démarrer/Terminer (toggle)  │
-    │ ⏸️ Pause/Stop        │ Ctrl+F9          │ Pause/Reprise (toggle)      │
-    │ ▶️ Play              │ Ctrl+F9          │ Reprise (alias Pause)       │
-    │ 📋 Instruction       │ Ctrl+F11         │ Injecter texte brut         │
-    │ 🔧 Programmable 1    │ Ctrl+F12         │ Injecter rapport structuré  │
+    │ 🔴 Record            │ Ctrl+Shift+D     │ Démarrer/Terminer (toggle)  │
+    │ ⏸️ Pause/Stop        │ Ctrl+Shift+P     │ Pause/Reprise (toggle)      │
+    │ ▶️ Play              │ Ctrl+Shift+P     │ Reprise (alias Pause)       │
+    │ 📋 Instruction       │ Ctrl+Shift+T     │ Injecter texte brut (Insert)│
+    │ 🔧 Programmable 1    │ Ctrl+Shift+S     │ Injecter rapport (EOL)      │
     │ ⏮️ Rewind            │ (Désactivé)      │ Aucune action               │
     │ ⏭️ Fast Forward      │ (Désactivé)      │ Aucune action               │
     │ F1, F2, F3, F4       │ F1, F2, F3, F4   │ Fonction par défaut         │
     └──────────────────────┴──────────────────┴─────────────────────────────┘
+    
+    SYSTÈME UNIFIÉ: SpeechMike et clavier utilisent EXACTEMENT les mêmes raccourcis!
+    Aucune couche intermédiaire, aucun doublon.
   -->
   
 </ApplicationControlConfiguration>

@@ -292,48 +292,6 @@ export const useSecureMessaging = () => {
       sendSecureMessage('airadcr:request_injection', { type: 'structuré' });
     }).then(unlisten => listeners.push(unlisten));
     
-    // 🎤 Start/Stop toggle (Ctrl+F10 - legacy)
-    listen('airadcr:dictation_startstop_toggle', () => {
-      logger.debug('[Tauri Event] 🔴 Ctrl+F10 → Start/Stop dictée (legacy)');
-      sendSecureMessage('airadcr:toggle_recording');
-    }).then(unlisten => listeners.push(unlisten));
-    
-    // 🎤 Pause/Resume toggle (Ctrl+F9 - legacy)
-    listen('airadcr:dictation_pause_toggle', () => {
-      logger.debug('[Tauri Event] ⏯️ Ctrl+F9 → Pause/Resume dictée (legacy)');
-      sendSecureMessage('airadcr:toggle_pause');
-    }).then(unlisten => listeners.push(unlisten));
-    
-    // 💉 Inject raw text (Ctrl+F11 - legacy)
-    listen('airadcr:inject_raw_text', () => {
-      logger.debug('[Tauri Event] 💉 Ctrl+F11 → Inject raw text (legacy)');
-      sendSecureMessage('airadcr:request_injection', { type: 'brut' });
-    }).then(unlisten => listeners.push(unlisten));
-    
-    // 💉 Inject structured report (Ctrl+F12 - legacy)
-    listen('airadcr:inject_structured_report', () => {
-      logger.debug('[Tauri Event] 📋 Ctrl+F12 → Inject structured report (legacy)');
-      sendSecureMessage('airadcr:request_injection', { type: 'structuré' });
-    }).then(unlisten => listeners.push(unlisten));
-    
-    // 🎤 SPEECHMIKE: Record (F10)
-    listen('airadcr:speechmike_record', () => {
-      logger.debug('[Tauri Event] 🎤 F10 → SpeechMike Record');
-      sendSecureMessage('airadcr:toggle_recording');
-    }).then(unlisten => listeners.push(unlisten));
-    
-    // 🎤 SPEECHMIKE: Pause (F11)
-    listen('airadcr:speechmike_pause', () => {
-      logger.debug('[Tauri Event] ⏸️ F11 → SpeechMike Pause');
-      sendSecureMessage('airadcr:toggle_pause');
-    }).then(unlisten => listeners.push(unlisten));
-    
-    // 🎤 SPEECHMIKE: Finish (F12)
-    listen('airadcr:speechmike_finish', () => {
-      logger.debug('[Tauri Event] ✅ F12 → SpeechMike Finish');
-      sendSecureMessage('airadcr:finalize_and_inject');
-    }).then(unlisten => listeners.push(unlisten));
-    
     return () => {
       listeners.forEach(unlisten => unlisten());
     };

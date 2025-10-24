@@ -1,31 +1,23 @@
 # 📋 Résumé des Raccourcis Clavier - AIRADCR Desktop
 
-## ✅ Raccourcis Fonctionnels (après correction)
+**Version:** 3.0 - Système unifié  
+**Date:** 2025-10-24
 
-### 🎤 Dictée (nouveaux raccourcis primaires)
-| Raccourci | Action | Événement Tauri | Message iframe |
-|-----------|--------|----------------|----------------|
-| **Ctrl+Shift+D** | Démarrer/Terminer dictée | `airadcr:dictation_startstop` | `airadcr:toggle_recording` |
-| **Ctrl+Shift+P** | Pause/Reprendre dictée | `airadcr:dictation_pause` | `airadcr:toggle_pause` |
-| **Ctrl+Shift+T** | Injecter texte brut | `airadcr:inject_raw` | `airadcr:request_injection` (type: 'brut') |
-| **Ctrl+Shift+S** | Injecter rapport structuré | `airadcr:inject_structured` | `airadcr:request_injection` (type: 'structuré') |
+---
 
-### 🎤 SpeechMike (boutons physiques)
-| Raccourci | Action | Événement Tauri | Message iframe |
-|-----------|--------|----------------|----------------|
-| **F10** | Record (Démarrer/Reprendre) | `airadcr:speechmike_record` | `airadcr:toggle_recording` |
-| **F11** | Pause | `airadcr:speechmike_pause` | `airadcr:toggle_pause` |
-| **F12** | Finish (Finaliser et injecter) | `airadcr:speechmike_finish` | `airadcr:finalize_and_inject` |
+## ✅ Raccourcis Fonctionnels - Système Unifié
 
-### 🎤 Dictée (legacy - Ctrl+F)
-| Raccourci | Action | Événement Tauri | Message iframe |
-|-----------|--------|----------------|----------------|
-| **Ctrl+F9** | Pause/Reprendre (legacy) | `airadcr:dictation_pause_toggle` | `airadcr:toggle_pause` |
-| **Ctrl+F10** | Démarrer/Terminer (legacy) | `airadcr:dictation_startstop_toggle` | `airadcr:toggle_recording` |
-| **Ctrl+F11** | Injecter texte brut (legacy) | `airadcr:inject_raw_text` | `airadcr:request_injection` (type: 'brut') |
-| **Ctrl+F12** | Injecter rapport structuré (legacy) | `airadcr:inject_structured_report` | `airadcr:request_injection` (type: 'structuré') |
+### 🎤 Dictée et Injection (Un seul système pour tout)
 
-### 🎨 Debug (modifiés - Ctrl+Alt)
+| Raccourci | Action | Source | Événement Tauri | Message iframe |
+|-----------|--------|--------|----------------|----------------|
+| **Ctrl+Shift+D** | Démarrer/Terminer dictée | Clavier **OU** SpeechMike Record | `airadcr:dictation_startstop` | `airadcr:toggle_recording` |
+| **Ctrl+Shift+P** | Pause/Reprendre dictée | Clavier **OU** SpeechMike Pause/Play | `airadcr:dictation_pause` | `airadcr:toggle_pause` |
+| **Ctrl+Shift+T** | Injecter texte brut (Insert) | Clavier **OU** SpeechMike Instruction | `airadcr:inject_raw` | `airadcr:request_injection` (type: 'brut') |
+| **Ctrl+Shift+S** | Injecter rapport structuré (EOL) | Clavier **OU** SpeechMike Programmable 1 | `airadcr:inject_structured` | `airadcr:request_injection` (type: 'structuré') |
+
+### 🎨 Debug (Ctrl+Alt)
+
 | Raccourci | Action | Événement Tauri |
 |-----------|--------|----------------|
 | **Ctrl+Alt+D** | Toggle Debug Panel | `airadcr:toggle_debug` |
@@ -33,37 +25,71 @@
 | **Ctrl+Alt+I** | Test Injection | `airadcr:test_injection` |
 
 ### 🔓 Autres
+
 | Raccourci | Action | Événement Tauri |
 |-----------|--------|----------------|
 | **F9** | Désactiver click-through (anti-ghost) | `airadcr:force_clickable` |
 
 ---
 
+## 🎯 Principe du Système Unifié
+
+**✅ AVANT (Version 2.0):** 3 systèmes parallèles confus
+- ❌ F10/F11/F12 pour SpeechMike
+- ❌ Ctrl+F9/F10/F11/F12 pour legacy
+- ❌ Ctrl+Shift+D/P/T/S nouveaux raccourcis
+- ❌ Couches intermédiaires multiples
+- ❌ Listeners dupliqués
+- ❌ Confusion sur quel raccourci utiliser
+
+**✅ APRÈS (Version 3.0):** Un seul système, zéro confusion
+- ✅ **Ctrl+Shift+D/P/T/S** partout
+- ✅ SpeechMike génère directement `Ctrl+Shift+*`
+- ✅ Clavier utilise directement `Ctrl+Shift+*`
+- ✅ **Aucune couche intermédiaire**
+- ✅ **4 raccourcis uniques** pour tout
+- ✅ Code simplifié, moins de bugs
+
+---
+
 ## 🔧 Modifications Effectuées
 
-### 1. **src-tauri/src/main.rs**
-- ✅ **Raccourcis debug déplacés** : `Ctrl+Shift` → `Ctrl+Alt`
-  - `Ctrl+Shift+D` → `Ctrl+Alt+D` (Debug Panel)
-  - `Ctrl+Shift+L` → `Ctrl+Alt+L` (Log Window)
-  - `Ctrl+Shift+T` → `Ctrl+Alt+I` (Test Injection)
+### 1. **airadcr_speechmike_ctrlf_profile.xml**
+- ✅ **SpeechMike génère directement `Ctrl+Shift+*`**
+  - Record → `Ctrl+Shift+D`
+  - Pause/Play → `Ctrl+Shift+P`
+  - Instruction → `Ctrl+Shift+T`
+  - Programmable 1 → `Ctrl+Shift+S`
+- ❌ Supprimé tous les `Ctrl+F*`
 
-- ✅ **Nouveaux raccourcis dictée ajoutés** : `Ctrl+Shift+D/P/T/S`
-  - `Ctrl+Shift+D` → Start/Stop dictée (`airadcr:dictation_startstop`)
-  - `Ctrl+Shift+P` → Pause/Resume dictée (`airadcr:dictation_pause`)
-  - `Ctrl+Shift+T` → Inject texte brut (`airadcr:inject_raw`)
-  - `Ctrl+Shift+S` → Inject rapport structuré (`airadcr:inject_structured`)
-
-### 2. **src/App.tsx**
-- ✅ **Fonction `sendToIframe` mise à jour** : Accepte maintenant un `payload` optionnel
-- ✅ **Écouteurs d'événements modifiés** : `Ctrl+Alt` pour debug
-- ✅ **Nouveaux écouteurs ajoutés** : `Ctrl+Shift+D/P/T/S` pour dictée/injection
-- ✅ **Double écoute SpeechMike supprimée** : Plus de duplication avec `useSecureMessaging`
-- ✅ **Compatibilité legacy** : Les raccourcis `Ctrl+F` restent fonctionnels
+### 2. **src-tauri/src/main.rs**
+- ✅ **Garde uniquement `Ctrl+Shift+D/P/T/S`**
+- ❌ **Supprimé F10/F11/F12** (lignes 1225-1259)
+- ❌ **Supprimé Ctrl+F9/F10/F11/F12** (lignes 1261-1303)
+- ✅ **Garde Ctrl+Alt+D/L/I** pour debug
+- ✅ **Garde F9** pour anti-ghost
 
 ### 3. **src/hooks/useSecureMessaging.ts**
-- ✅ **Écouteurs Tauri mis à jour** : Gère les nouveaux événements `Ctrl+Shift`
-- ✅ **SpeechMike conservé** : Les événements F10/F11/F12 restent fonctionnels
-- ✅ **Legacy supporté** : Les événements `Ctrl+F` continuent de fonctionner
+- ✅ **Garde uniquement les nouveaux raccourcis:**
+  - `airadcr:dictation_startstop` (ligne 272)
+  - `airadcr:dictation_pause` (ligne 278)
+  - `airadcr:inject_raw` (ligne 284)
+  - `airadcr:inject_structured` (ligne 290)
+- ❌ **Supprimé tous les listeners legacy:**
+  - `airadcr:dictation_startstop_toggle`
+  - `airadcr:dictation_pause_toggle`
+  - `airadcr:inject_raw_text`
+  - `airadcr:inject_structured_report`
+  - `airadcr:speechmike_record`
+  - `airadcr:speechmike_pause`
+  - `airadcr:speechmike_finish`
+
+### 4. **airadcr_speechmike_profile.xml**
+- ✅ **Mise à jour vers v3.0 avec `Ctrl+Shift+*`**
+
+### 5. **Documentation**
+- ✅ **KEYBOARD_SHORTCUTS_REFERENCE.md** réécrit pour v3.0
+- ✅ **KEYBOARD_SHORTCUTS_SUMMARY.md** (ce fichier) mis à jour
 
 ---
 
@@ -76,35 +102,37 @@
    - [ ] `Ctrl+Alt+L` ouvre/ferme la Log Window
    - [ ] `Ctrl+Alt+I` déclenche un test d'injection
 
-2. **Raccourcis Dictée (Ctrl+Shift)**
+2. **Raccourcis Dictée/Injection (Ctrl+Shift) - Clavier**
    - [ ] `Ctrl+Shift+D` démarre/termine la dictée
    - [ ] `Ctrl+Shift+P` met en pause/reprend la dictée
    - [ ] `Ctrl+Shift+T` injecte le texte brut
    - [ ] `Ctrl+Shift+S` injecte le rapport structuré
 
-3. **SpeechMike (F10/F11/F12)**
-   - [ ] F10 démarre/reprend l'enregistrement
-   - [ ] F11 met en pause
-   - [ ] F12 finalise et injecte (production uniquement)
+3. **SpeechMike (doit générer Ctrl+Shift+*)**
+   - [ ] Bouton Record → Génère `Ctrl+Shift+D`
+   - [ ] Bouton Pause → Génère `Ctrl+Shift+P`
+   - [ ] Bouton Instruction → Génère `Ctrl+Shift+T`
+   - [ ] Bouton Programmable 1 → Génère `Ctrl+Shift+S`
 
-4. **Legacy Ctrl+F (rétrocompatibilité)**
-   - [ ] `Ctrl+F9` pause/reprend
-   - [ ] `Ctrl+F10` démarre/termine
-   - [ ] `Ctrl+F11` injecte texte brut
-   - [ ] `Ctrl+F12` injecte rapport structuré
+4. **Anti-ghost**
+   - [ ] `F9` désactive le click-through
 
 ---
 
 ## 🔍 Cohérence du Code
 
-### Flux d'événements
+### Flux d'événements (simplifié)
+
 ```
+[SpeechMike OU Clavier]
+Génère Ctrl+Shift+D/P/T/S
+    ↓
 [Rust main.rs]
 Capture globale du raccourci
     ↓
 Émet événement Tauri (ex: `airadcr:dictation_startstop`)
     ↓
-[React App.tsx / useSecureMessaging.ts]
+[React useSecureMessaging.ts]
 Écoute l'événement Tauri
     ↓
 Envoie `postMessage` à iframe AirADCR
@@ -113,37 +141,53 @@ Envoie `postMessage` à iframe AirADCR
 Reçoit le message et exécute l'action
 ```
 
-### Pas de doublons d'écouteurs
-- ✅ SpeechMike géré uniquement dans `useSecureMessaging.ts`
-- ✅ Debug géré uniquement dans `App.tsx`
-- ✅ Dictée gérée par les deux (App.tsx et useSecureMessaging)
+### Pas de doublons d'écouteurs ✅
+- ✅ **Un seul listener par raccourci**
+- ✅ **Un seul événement Tauri par action**
+- ✅ **Un seul message iframe par action**
+- ✅ **Aucune duplication de code**
 
 ---
 
 ## 📝 Logs Console
 
 Lors de l'exécution, vous devriez voir :
+
 ```
-✅ [Shortcuts] Raccourcis globaux enregistrés:
+✅ [Shortcuts] Raccourcis globaux enregistrés (Système unifié v3.0):
    🎨 Ctrl+Alt+D (Debug), Ctrl+Alt+L (Logs), Ctrl+Alt+I (Test)
    🔓 F9 (Anti-fantôme)
-   🎤 F10 (Record), F11 (Pause), F12 (Finish)
-   🎤 Ctrl+Shift+D (Start/Stop), Ctrl+Shift+P (Pause/Resume)
-   💉 Ctrl+Shift+T (Inject Raw), Ctrl+Shift+S (Inject Structured)
-   🎤 Ctrl+F9 (Pause/Resume), Ctrl+F10 (Start/Stop)
-   💉 Ctrl+F11 (Inject Raw), Ctrl+F12 (Inject Structured)
+   🎤 Ctrl+Shift+D (Start/Stop dictée)
+   🎤 Ctrl+Shift+P (Pause/Resume dictée)
+   💉 Ctrl+Shift+T (Inject texte brut - Insert)
+   💉 Ctrl+Shift+S (Inject rapport structuré - EOL)
+   ✅ SpeechMike utilise les MÊMES raccourcis Ctrl+Shift+D/P/T/S
 ```
 
 ---
 
 ## 🎯 Recommandations
 
-1. **Tester en mode dev** : `npm run tauri dev`
-2. **Tester en mode build** : `npm run tauri build`
-3. **Vérifier les logs** : Ouvrir `Ctrl+Alt+L` pour voir les logs en temps réel
-4. **Profile SpeechMike** : Utiliser `airadcr_speechmike_ctrlf_profile.xml` pour mapper les boutons physiques
+1. **Tester en mode dev:** `npm run tauri dev`
+2. **Tester en mode build:** `npm run tauri build`
+3. **Vérifier les logs:** Ouvrir `Ctrl+Alt+L` pour voir les logs en temps réel
+4. **Profile SpeechMike:** Utiliser `airadcr_speechmike_ctrlf_profile.xml` pour mapper les boutons physiques
 
 ---
 
-**Date de mise à jour** : 2025-10-24  
-**Version** : 2.0 - Raccourcis Ctrl+Shift+D/P/T/S fonctionnels
+## 📊 Comparaison avec Version 2.0
+
+| Aspect | Version 2.0 | Version 3.0 |
+|--------|-------------|-------------|
+| **Nombre de raccourcis** | 12+ raccourcis | 4 raccourcis uniques |
+| **Systèmes parallèles** | 3 systèmes | 1 système unifié |
+| **Listeners Tauri** | 11 listeners | 4 listeners |
+| **Couches intermédiaires** | 2-3 couches | 1 couche |
+| **SpeechMike vs Clavier** | Différents raccourcis | **Mêmes raccourcis** |
+| **Confusion utilisateur** | ❌ Élevée | ✅ Nulle |
+| **Maintenabilité** | ❌ Difficile | ✅ Simple |
+
+---
+
+**Date de mise à jour:** 2025-10-24  
+**Version:** 3.0 - Système unifié Ctrl+Shift+D/P/T/S

@@ -33,44 +33,44 @@
       </OperationList>
     </ApplicationProfile>
     
-    <!-- Profil spécifique : AIRADCR Desktop Application -->
-    <ApplicationProfile TargetApplication="airadcr-desktop.exe" Active="True" Comment="AIRADCR Desktop - Dictée radiologique">
+    <!-- Profil spécifique : AIRADCR Desktop Application v3.0 - Système unifié -->
+    <ApplicationProfile TargetApplication="airadcr-desktop.exe" Active="True" Comment="AIRADCR Desktop v3.0 - Système unifié Ctrl+Shift">
       <OperationList>
-        <!-- Bouton rouge : Record - Démarrer/Arrêter dictée via Ctrl+F10 -->
+        <!-- Bouton rouge : Record - Démarrer/Arrêter dictée via Ctrl+Shift+D -->
         <Operation Event="spmRecordPressed" ModifierKey="None" Name="AIRADCR Start/Stop">
           <Steps>
             <OperationElement Type="Hotkey">
-              <Hotkey Key="F10" Modifiers="Control" />
+              <Hotkey Key="D" Modifiers="Control+Shift" />
             </OperationElement>
           </Steps>
           <Comment>
-            Bouton rouge du SpeechMike (Ctrl+F10):
-            - Démarre ou termine la dictée
+            Bouton rouge du SpeechMike (Ctrl+Shift+D):
+            Démarre ou termine la dictée
           </Comment>
         </Operation>
         
-        <!-- Bouton Stop : Pause/Resume via Ctrl+F9 -->
+        <!-- Bouton Stop : Pause/Resume via Ctrl+Shift+P -->
         <Operation Event="spmStopPressed" ModifierKey="None" Name="AIRADCR Pause/Resume">
           <Steps>
             <OperationElement Type="Hotkey">
-              <Hotkey Key="F9" Modifiers="Control" />
+              <Hotkey Key="P" Modifiers="Control+Shift" />
             </OperationElement>
           </Steps>
           <Comment>
-            Bouton Stop du SpeechMike (Ctrl+F9):
+            Bouton Stop du SpeechMike (Ctrl+Shift+P):
             Met en pause ou reprend la dictée
           </Comment>
         </Operation>
         
-        <!-- Bouton Play : Pause/Resume via Ctrl+F9 (même action que Stop) -->
+        <!-- Bouton Play : Pause/Resume via Ctrl+Shift+P (même action que Stop) -->
         <Operation Event="spmPlayPressed" ModifierKey="None" Name="AIRADCR Play/Continue">
           <Steps>
             <OperationElement Type="Hotkey">
-              <Hotkey Key="F9" Modifiers="Control" />
+              <Hotkey Key="P" Modifiers="Control+Shift" />
             </OperationElement>
           </Steps>
           <Comment>
-            Bouton Play du SpeechMike (Ctrl+F9):
+            Bouton Play du SpeechMike (Ctrl+Shift+P):
             Reprend l'enregistrement après une pause
           </Comment>
         </Operation>
@@ -95,27 +95,29 @@
           </Comment>
         </Operation>
         
-        <!-- Boutons F1-F2 : Injection de rapports -->
-        <Operation Event="spmF1Pressed" ModifierKey="None" Name="AIRADCR Inject Raw">
+        <!-- Bouton Instruction : Injection texte brut via Ctrl+Shift+T -->
+        <Operation Event="spmInstructionPressed" ModifierKey="None" Name="AIRADCR Inject Raw">
           <Steps>
             <OperationElement Type="Hotkey">
-              <Hotkey Key="F11" Modifiers="Control" />
+              <Hotkey Key="T" Modifiers="Control+Shift" />
             </OperationElement>
           </Steps>
           <Comment>
-            Bouton F1 du SpeechMike (Ctrl+F11):
-            Injecte le texte brut dans le RIS
+            Bouton Instruction du SpeechMike (Ctrl+Shift+T):
+            Injecte le texte brut depuis textarea dans le RIS (Insert)
           </Comment>
         </Operation>
-        <Operation Event="spmF2Pressed" ModifierKey="None" Name="AIRADCR Inject Structured">
+        
+        <!-- Bouton Programmable 1 : Injection rapport structuré via Ctrl+Shift+S -->
+        <Operation Event="spmProgrammable1Pressed" ModifierKey="None" Name="AIRADCR Inject Structured">
           <Steps>
             <OperationElement Type="Hotkey">
-              <Hotkey Key="F12" Modifiers="Control" />
+              <Hotkey Key="S" Modifiers="Control+Shift" />
             </OperationElement>
           </Steps>
           <Comment>
-            Bouton F2 du SpeechMike (Ctrl+F12):
-            Injecte le rapport structuré dans le RIS
+            Bouton Programmable 1 du SpeechMike (Ctrl+Shift+S):
+            Injecte le rapport structuré dans le RIS (EOL)
           </Comment>
         </Operation>
         <Operation Event="spmF3Pressed" ModifierKey="None" Name="F3 Key">

@@ -1,17 +1,18 @@
 # ⌨️ Référence complète - Raccourcis clavier AIRADCR Desktop
 
-**Version:** 2.0  
-**Date:** 2025-10-05  
+**Version:** 3.0 - Système unifié  
+**Date:** 2025-10-24  
 **Architecture:** Rust (Tauri GlobalShortcut) + React (Listeners) + iframe airadcr.com
 
 ---
 
-## 🎯 Vue d'ensemble de l'architecture
+## 🎯 Vue d'ensemble du système unifié
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  SpeechMike / Clavier physique                          │
-│  (Ctrl+F9, Ctrl+F10, Ctrl+F11, Ctrl+F12)               │
+│  Génèrent EXACTEMENT les mêmes raccourcis:              │
+│  Ctrl+Shift+D, Ctrl+Shift+P, Ctrl+Shift+T, Ctrl+Shift+S │
 └────────────────────┬────────────────────────────────────┘
                      │
                      ▼
@@ -23,7 +24,7 @@
                      │
                      ▼
 ┌─────────────────────────────────────────────────────────┐
-│  App.tsx React Listeners                                │
+│  React Listeners (useSecureMessaging.ts)                │
 │  - Écoute les événements Tauri                          │
 │  - Envoie postMessage à l'iframe                        │
 └────────────────────┬────────────────────────────────────┘
@@ -36,43 +37,26 @@
 └─────────────────────────────────────────────────────────┘
 ```
 
----
-
-## 🎤 Raccourcis de contrôle de dictée
-
-### 📋 Raccourcis recommandés (avec Ctrl)
-
-Ces raccourcis sont les **nouveaux standards** pour l'utilisation avec le SpeechMike et fonctionnent **globalement** (même quand AirADCR n'a pas le focus).
-
-### **Ctrl+F9** - Pause/Reprise dictée (Toggle)
-
-**Fonction:** Met en pause ou reprend l'enregistrement audio selon l'état actuel.
-
-**États et actions:**
-
-| État actuel | Action déclenchée | Nouvel état | Description UI |
-|------------|-------------------|-------------|----------------|
-| **Recording** | Met en pause | **Paused** | Bouton "⏸️ En pause" |
-| **Paused** | Reprend | **Recording** | Bouton "⏹️ Arrêter" |
-| **Idle** | Aucune action | **Idle** | Pas de changement |
-
-**Implémentation:**
-- **Rust (Tauri):** Enregistre `Ctrl+F9` globalement, émet `airadcr:dictation_pause_toggle`
-- **React (App.tsx):** Écoute `airadcr:dictation_pause_toggle`, envoie `postMessage` à l'iframe
-- **Web (airadcr.com):** Écoute `postMessage`, appelle `handlePauseResumeToggle()`
-
-**Fichiers concernés:**
-- `src-tauri/src/main.rs` (lignes ~480-490)
-- `src/App.tsx` (lignes ~108-112)
-- `src/components/dictation-recorder/DictationInput.tsx` (airadcr.com)
-- `src/components/widget/WidgetInterface.tsx` (airadcr.com)
-
-**Comportement SpeechMike:**
-- Bouton **Pause** (avec modificateur Ctrl) → Envoie `Ctrl+F9`
+**🎯 PRINCIPE CLÉ:** Une seule couche de raccourcis, aucune complexité, aucun doublon.
 
 ---
 
-### **Ctrl+F10** - Démarrer/Terminer dictée (Toggle intelligent)
+## 🎤 Raccourcis unifiés
+
+### 📋 Table unique des raccourcis
+
+| Raccourci | Action | Source | Événement Tauri | Message iframe |
+|-----------|--------|--------|-----------------|----------------|
+| **Ctrl+Shift+D** | Démarrer/Terminer dictée | Clavier **OU** SpeechMike Record | `airadcr:dictation_startstop` | `airadcr:toggle_recording` |
+| **Ctrl+Shift+P** | Pause/Reprendre dictée | Clavier **OU** SpeechMike Pause/Play | `airadcr:dictation_pause` | `airadcr:toggle_pause` |
+| **Ctrl+Shift+T** | Injecter texte brut (Insert) | Clavier **OU** SpeechMike Instruction | `airadcr:inject_raw` | `airadcr:request_injection` (type: 'brut') |
+| **Ctrl+Shift+S** | Injecter rapport structuré (EOL) | Clavier **OU** SpeechMike Programmable 1 | `airadcr:inject_structured` | `airadcr:request_injection` (type: 'structuré') |
+
+---
+
+## 🎤 Contrôle de dictée
+
+### **Ctrl+Shift+D** - Démarrer/Terminer dictée (Toggle intelligent)
 
 **Fonction:** Démarre ou termine l'enregistrement audio selon l'état actuel.
 
@@ -85,61 +69,70 @@ Ces raccourcis sont les **nouveaux standards** pour l'utilisation avec le Speech
 | **Paused** | Termine la dictée | **Idle** | Bouton "▶️ Continuer" → Finalisation + transcription |
 
 **Implémentation:**
-- **Rust (Tauri):** Enregistre `Ctrl+F10` globalement, émet `airadcr:dictation_startstop_toggle`
-- **React (App.tsx):** Écoute `airadcr:dictation_startstop_toggle`, envoie `postMessage` à l'iframe
+- **Rust (Tauri):** Enregistre `Ctrl+Shift+D` globalement, émet `airadcr:dictation_startstop`
+- **React (useSecureMessaging.ts):** Écoute `airadcr:dictation_startstop`, envoie `postMessage` type `airadcr:toggle_recording` à l'iframe
 - **Web (airadcr.com):** Écoute `postMessage`, appelle `handleStartStopToggle()`
 
 **Fichiers concernés:**
-- `src-tauri/src/main.rs` (lignes ~495-505)
-- `src/App.tsx` (lignes ~114-118)
-- `src/components/dictation-recorder/DictationInput.tsx` (airadcr.com)
-- `src/components/widget/WidgetInterface.tsx` (airadcr.com)
+- `src-tauri/src/main.rs` (lignes ~1178-1188)
+- `src/hooks/useSecureMessaging.ts` (lignes ~272-275)
 
 **Comportement SpeechMike:**
-- Bouton **Record** (avec modificateur Ctrl) → Envoie `Ctrl+F10`
+- Bouton **Record** → Génère `Ctrl+Shift+D` via profil XML
 
 ---
 
-## 📋 Raccourcis d'injection de texte
+### **Ctrl+Shift+P** - Pause/Reprendre dictée (Toggle)
 
-### **Ctrl+F11** - Injecter le texte dicté brut
+**Fonction:** Met en pause ou reprend l'enregistrement audio selon l'état actuel.
 
-**Fonction:** Injecte le texte de dictée brut (non structuré) dans l'application cible externe (RIS, Word, etc.).
+**États et actions:**
+
+| État actuel | Action déclenchée | Nouvel état | Description UI |
+|------------|-------------------|-------------|----------------|
+| **Recording** | Met en pause | **Paused** | Bouton "⏸️ En pause" |
+| **Paused** | Reprend | **Recording** | Bouton "⏹️ Arrêter" |
+| **Idle** | Aucune action | **Idle** | Pas de changement |
+
+**Implémentation:**
+- **Rust (Tauri):** Enregistre `Ctrl+Shift+P` globalement, émet `airadcr:dictation_pause`
+- **React (useSecureMessaging.ts):** Écoute `airadcr:dictation_pause`, envoie `postMessage` type `airadcr:toggle_pause` à l'iframe
+- **Web (airadcr.com):** Écoute `postMessage`, appelle `handlePauseResumeToggle()`
+
+**Fichiers concernés:**
+- `src-tauri/src/main.rs` (lignes ~1190-1200)
+- `src/hooks/useSecureMessaging.ts` (lignes ~278-281)
+
+**Comportement SpeechMike:**
+- Bouton **Pause/Play** → Génère `Ctrl+Shift+P` via profil XML
+
+---
+
+## 📋 Injection de texte
+
+### **Ctrl+Shift+T** - Injecter le texte dicté brut (Insert)
+
+**Fonction:** Injecte le texte de dictée brut depuis la textarea dans l'application cible externe (RIS, Word, etc.).
 
 **Conditions requises:**
 - ✅ Le texte de dictée (`dictationText`) ne doit **pas** être vide
 - ✅ La position d'injection doit être verrouillée (optionnel)
 
-**Format d'injection:**
-```
-=== [Titre du rapport] ===
-
-INDICATION:
-[Texte d'indication]
-
-TECHNIQUE:
-[Texte de technique]
-
-RÉSULTATS:
-[Texte des résultats bruts]
-```
-
 **Implémentation:**
-- **Rust (Tauri):** Enregistre `Ctrl+F11` globalement, émet `airadcr:inject_raw_text`
-- **React (App.tsx):** Écoute `airadcr:inject_raw_text`, envoie `postMessage` à l'iframe
+- **Rust (Tauri):** Enregistre `Ctrl+Shift+T` globalement, émet `airadcr:inject_raw`
+- **React (useSecureMessaging.ts):** Écoute `airadcr:inject_raw`, envoie `postMessage` à l'iframe
 - **Web (airadcr.com):** Écoute `postMessage`, appelle `handleInjectRawText()`
 
 **Fichiers concernés:**
-- `src-tauri/src/main.rs` (lignes ~510-520)
-- `src/App.tsx` (lignes ~120-124)
-- `src/components/dictation-recorder/DictationInput.tsx` (page principale uniquement)
+- `src-tauri/src/main.rs` (lignes ~1195-1205)
+- `src/hooks/useSecureMessaging.ts` (lignes ~284-287)
 
 **Comportement SpeechMike:**
-- Bouton **Instruction** → Envoie `Ctrl+F11`
+- Bouton **Instruction** → Génère `Ctrl+Shift+T` via profil XML
 
 ---
 
-### **Ctrl+F12** - Injecter le rapport structuré complet
+### **Ctrl+Shift+S** - Injecter le rapport structuré complet (EOL)
 
 **Fonction:** Injecte le rapport structuré complet selon les préférences utilisateur dans l'application cible externe.
 
@@ -175,109 +168,22 @@ EXPLICATION:
 ```
 
 **Implémentation:**
-- **Rust (Tauri):** Enregistre `Ctrl+F12` globalement, émet `airadcr:inject_structured_report`
-- **React (App.tsx):** Écoute `airadcr:inject_structured_report`, envoie `postMessage` à l'iframe
+- **Rust (Tauri):** Enregistre `Ctrl+Shift+S` globalement, émet `airadcr:inject_structured`
+- **React (useSecureMessaging.ts):** Écoute `airadcr:inject_structured`, envoie `postMessage` à l'iframe
 - **Web (airadcr.com):** Écoute `postMessage`, appelle `handleInjectStructuredReport()`
 
 **Fichiers concernés:**
-- `src-tauri/src/main.rs` (lignes ~525-535)
-- `src/App.tsx` (lignes ~126-130)
-- `src/components/ExportPanel.tsx` (rapport structuré final)
+- `src-tauri/src/main.rs` (lignes ~1202-1212)
+- `src/hooks/useSecureMessaging.ts` (lignes ~290-293)
 
 **Comportement SpeechMike:**
-- Bouton **Programmable 1** → Envoie `Ctrl+F12`
+- Bouton **Programmable 1** → Génère `Ctrl+Shift+S` via profil XML
 
 ---
 
-## 🔄 Raccourcis de compatibilité (Legacy)
+## 🐛 Raccourcis de débogage
 
-Ces raccourcis **sans Ctrl** sont conservés pour la rétrocompatibilité avec les anciens profils SpeechMike, mais les nouveaux raccourcis **avec Ctrl** (ci-dessus) sont recommandés.
-
-| Touche | Action | Disponible | Note |
-|--------|--------|------------|------|
-| `F10` | Enregistrer / Reprendre dictée (Legacy) | ✅ Global | ⚠️ Utilisez `Ctrl+F10` de préférence |
-| `F11` | Mettre en pause dictée (Legacy) | ✅ Global | ⚠️ Utilisez `Ctrl+F9` de préférence |
-| `F12` | Finaliser et injecter (Production uniquement - Legacy) | ✅ Global | ⚠️ Utilisez `Ctrl+F12` de préférence |
-
----
-
-## 🆕 Raccourcis alternatifs (Ctrl+Alt)
-
-Ces raccourcis offrent une alternative aux raccourcis `Ctrl+F*` pour les utilisateurs préférant des combinaisons sans touches de fonction. Ils fonctionnent globalement (même hors focus) et déclenchent les mêmes actions.
-
-### **Ctrl+Alt+D** - Démarrer/Terminer dictée (Alternative)
-
-**Fonction:** Identique à `Ctrl+F10` - Démarre ou termine l'enregistrement audio.
-
-**Événement émis:** `airadcr:dictation_startstop_toggle`
-
-**Tauri → React → iframe:**
-- Tauri capture `Ctrl+Alt+D` globalement
-- React écoute l'événement `airadcr:dictation_startstop_toggle`
-- Envoie `postMessage` type `airadcr:speechmike_record` à l'iframe
-
-**Fichiers concernés:**
-- `src-tauri/src/main.rs` (raccourci global)
-- `src/App.tsx` (listener React)
-
----
-
-### **Ctrl+Alt+P** - Pause/Reprise dictée (Alternative)
-
-**Fonction:** Identique à `Ctrl+F9` - Met en pause ou reprend la dictée.
-
-**Événement émis:** `airadcr:dictation_pause_toggle`
-
-**Tauri → React → iframe:**
-- Tauri capture `Ctrl+Alt+P` globalement
-- React écoute l'événement `airadcr:dictation_pause_toggle`
-- Envoie `postMessage` type `airadcr:speechmike_pause` à l'iframe
-
-**Fichiers concernés:**
-- `src-tauri/src/main.rs` (raccourci global)
-- `src/App.tsx` (listener React)
-
----
-
-### **Ctrl+Alt+T** - Injecter texte brut (Alternative)
-
-**Fonction:** Identique à `Ctrl+F11` - Injecte le texte dicté brut dans l'application cible.
-
-**Événement émis:** `airadcr:inject_raw_text`
-
-**Tauri → React → iframe:**
-- Tauri capture `Ctrl+Alt+T` globalement
-- React écoute l'événement `airadcr:inject_raw_text`
-- Envoie `postMessage` à l'iframe pour récupérer le texte brut
-- Déclenche l'injection au dernier curseur connu
-
-**Fichiers concernés:**
-- `src-tauri/src/main.rs` (raccourci global + injection)
-- `src/App.tsx` (listener React)
-
----
-
-### **Ctrl+Alt+S** - Injecter rapport structuré (Alternative)
-
-**Fonction:** Identique à `Ctrl+F12` - Injecte le rapport structuré complet.
-
-**Événement émis:** `airadcr:inject_structured_report`
-
-**Tauri → React → iframe:**
-- Tauri capture `Ctrl+Alt+S` globalement
-- React écoute l'événement `airadcr:inject_structured_report`
-- Envoie `postMessage` à l'iframe pour récupérer le rapport structuré
-- Déclenche l'injection au dernier curseur connu
-
-**Fichiers concernés:**
-- `src-tauri/src/main.rs` (raccourci global + injection)
-- `src/App.tsx` (listener React)
-
----
-
-## 🐛 Raccourcis de débogage (développement)
-
-### **Ctrl+Shift+D** - Toggle panneau de débogage
+### **Ctrl+Alt+D** - Toggle panneau de débogage
 
 **Fonction:** Affiche/masque le panneau de débogage avec informations système.
 
@@ -288,13 +194,13 @@ Ces raccourcis offrent une alternative aux raccourcis `Ctrl+F*` pour les utilisa
 - État de verrouillage de la cible d'injection
 
 **Fichiers concernés:**
-- `src-tauri/src/main.rs` (lignes ~450-460)
-- `src/App.tsx` (lignes ~95-99)
+- `src-tauri/src/main.rs` (lignes ~1140-1150)
+- `src/App.tsx`
 - `src/components/DebugPanel.tsx`
 
 ---
 
-### **Ctrl+Shift+L** - Afficher fenêtre de logs
+### **Ctrl+Alt+L** - Afficher fenêtre de logs
 
 **Fonction:** Ouvre une fenêtre popup affichant les logs en temps réel de l'application.
 
@@ -305,13 +211,13 @@ Ces raccourcis offrent une alternative aux raccourcis `Ctrl+F*` pour les utilisa
 - Erreurs et warnings
 
 **Fichiers concernés:**
-- `src-tauri/src/main.rs` (lignes ~465-475)
-- `src/App.tsx` (lignes ~101-105)
+- `src-tauri/src/main.rs` (lignes ~1152-1162)
+- `src/App.tsx`
 - `src/components/DevLogWindow.tsx`
 
 ---
 
-### **Ctrl+Shift+T** - Test d'injection
+### **Ctrl+Alt+I** - Test d'injection
 
 **Fonction:** Déclenche un test d'injection à la position actuelle du curseur.
 
@@ -321,25 +227,35 @@ Ces raccourcis offrent une alternative aux raccourcis `Ctrl+F*` pour les utilisa
 - Sinon, utilise la position actuelle du curseur
 
 **Fichiers concernés:**
-- `src-tauri/src/main.rs` (lignes ~478-488)
-- `src/App.tsx` (lignes ~107)
+- `src-tauri/src/main.rs` (lignes ~1164-1174)
+- `src/App.tsx`
 
 ---
 
-## 🎛️ Mapping SpeechMike (recommandé)
+### **F9** - Anti-ghost (Désactiver click-through)
+
+**Fonction:** Force la fenêtre à accepter les clics de souris (désactive le mode click-through).
+
+**Fichiers concernés:**
+- `src-tauri/src/main.rs` (lignes ~1214-1222)
+
+---
+
+## 🎛️ Configuration SpeechMike
 
 ### Profil SpeechControl XML recommandé
 
-Pour mapper le SpeechMike sur les nouveaux raccourcis `Ctrl+F*`, voici la configuration recommandée :
+**Fichier à utiliser:** `airadcr_speechmike_ctrlf_profile.xml` ou `airadcr_speechmike_profile.xml`
 
-| Bouton physique SpeechMike | Modificateur | Touche envoyée | Action AIRADCR |
-|----------------------------|-------------|----------------|----------------|
-| 🔴 **Record** | Ctrl | `Ctrl+F10` | Démarrer/Terminer dictée |
-| ⏸️ **Pause** | Ctrl | `Ctrl+F9` | Pause/Reprise toggle |
-| 📋 **Instruction** | Aucun | `Ctrl+F11` | Injecter texte brut |
-| 🔧 **Programmable 1** | Aucun | `Ctrl+F12` | Injecter rapport structuré |
-
-**Fichier XML à utiliser:** `airadcr_speechmike_ctrlf_profile.xml`
+| Bouton physique SpeechMike | Raccourci envoyé | Action AIRADCR |
+|----------------------------|------------------|----------------|
+| 🔴 **Record** | `Ctrl+Shift+D` | Démarrer/Terminer dictée |
+| ⏸️ **Pause** | `Ctrl+Shift+P` | Pause/Reprise toggle |
+| ▶️ **Play** | `Ctrl+Shift+P` | Reprise (même que Pause) |
+| 📋 **Instruction** | `Ctrl+Shift+T` | Injecter texte brut (Insert) |
+| 🔧 **Programmable 1** | `Ctrl+Shift+S` | Injecter rapport structuré (EOL) |
+| ⏮️ **Rewind** | (Désactivé) | Aucune action |
+| ⏭️ **Fast Forward** | (Désactivé) | Aucune action |
 
 ---
 
@@ -351,8 +267,8 @@ Pour mapper le SpeechMike sur les nouveaux raccourcis `Ctrl+F*`, voici la config
 1. 📍 POSITION INITIALE
    └─ Utilisateur ouvre RIS et clique dans le champ "Compte rendu"
    
-2. 🎤 DÉMARRAGE DICTÉE (Ctrl+F10)
-   ├─ Rust: Capture Ctrl+F10 globalement
+2. 🎤 DÉMARRAGE DICTÉE (Ctrl+Shift+D)
+   ├─ Rust: Capture Ctrl+Shift+D globalement
    ├─ React: Envoie postMessage à l'iframe
    └─ iframe: Démarre enregistrement audio
        └─ Toast: "🎤 Dictée démarrée"
@@ -360,29 +276,29 @@ Pour mapper le SpeechMike sur les nouveaux raccourcis `Ctrl+F*`, voici la config
 3. 🗣️ DICTÉE EN COURS
    └─ "Scanner thoracique. Indication pneumonie. Technique spiralée..."
    
-4. ⏸️ PAUSE (Ctrl+F9)
-   ├─ Rust: Capture Ctrl+F9 globalement
+4. ⏸️ PAUSE (Ctrl+Shift+P)
+   ├─ Rust: Capture Ctrl+Shift+P globalement
    ├─ React: Envoie postMessage à l'iframe
    └─ iframe: Met en pause (MediaRecorder.pause())
        └─ Toast: "⏸️ Dictée en pause"
    
-5. ▶️ REPRISE (Ctrl+F9)
-   ├─ Rust: Capture Ctrl+F9 globalement (même touche)
+5. ▶️ REPRISE (Ctrl+Shift+P)
+   ├─ Rust: Capture Ctrl+Shift+P globalement (même touche)
    └─ iframe: Reprend enregistrement
        └─ Toast: "▶️ Dictée reprise"
    
 6. 🗣️ SUITE DE LA DICTÉE
    └─ "...infiltrat lobe inférieur droit. Conclusion infection confirmée."
    
-7. ✅ TERMINER (Ctrl+F10)
-   ├─ Rust: Capture Ctrl+F10 globalement (même touche qu'au démarrage)
+7. ✅ TERMINER (Ctrl+Shift+D)
+   ├─ Rust: Capture Ctrl+Shift+D globalement (même touche qu'au démarrage)
    ├─ iframe: Fusionne chunks audio
    ├─ Envoi à Voxtral API pour transcription
    ├─ Structuration automatique (GPT-4)
    └─ Toast: "✅ Transcription complète"
    
-8. 📋 INJECTION RAPPORT STRUCTURÉ (Ctrl+F12)
-   ├─ Rust: Capture Ctrl+F12 globalement
+8. 📋 INJECTION RAPPORT STRUCTURÉ (Ctrl+Shift+S)
+   ├─ Rust: Capture Ctrl+Shift+S globalement
    ├─ React: Envoie postMessage à l'iframe
    ├─ iframe: Récupère rapport structuré depuis ExportPanel
    ├─ Tauri: Reçoit commande perform_injection_at_position_direct()
@@ -404,13 +320,13 @@ Pour mapper le SpeechMike sur les nouveaux raccourcis `Ctrl+F*`, voici la config
 
 **Procédure:**
 1. Lancer AIRADCR Desktop
-2. Appuyer sur `Ctrl+F10` → Vérifier démarrage dictée ✅
+2. Appuyer sur `Ctrl+Shift+D` → Vérifier démarrage dictée ✅
 3. Dicter 5 secondes de test
-4. Appuyer sur `Ctrl+F9` → Vérifier mise en pause ✅
-5. Appuyer sur `Ctrl+F9` → Vérifier reprise ✅
-6. Appuyer sur `Ctrl+F10` → Vérifier finalisation ✅
+4. Appuyer sur `Ctrl+Shift+P` → Vérifier mise en pause ✅
+5. Appuyer sur `Ctrl+Shift+P` → Vérifier reprise ✅
+6. Appuyer sur `Ctrl+Shift+D` → Vérifier finalisation ✅
 7. Attendre transcription (5-10s)
-8. Appuyer sur `Ctrl+F12` → Vérifier injection dans RIS ✅
+8. Appuyer sur `Ctrl+Shift+S` → Vérifier injection dans RIS ✅
 
 **Résultat attendu:** Toutes les étapes fonctionnent correctement.
 
@@ -422,25 +338,25 @@ Pour mapper le SpeechMike sur les nouveaux raccourcis `Ctrl+F*`, voici la config
 1. Lancer AIRADCR Desktop
 2. Ouvrir Word ou RIS
 3. Donner le focus à Word/RIS (cliquer dedans)
-4. Appuyer sur `Ctrl+F10` → Vérifier que l'enregistrement démarre dans AIRADCR ✅
+4. Appuyer sur `Ctrl+Shift+D` → Vérifier que l'enregistrement démarre dans AIRADCR ✅
 
 **Résultat attendu:** AIRADCR réagit même sans avoir le focus (GlobalShortcut).
 
 ---
 
-### Test 3: SpeechMike mappé sur Ctrl+F*
+### Test 3: SpeechMike mappé sur Ctrl+Shift+*
 
 **Prérequis:** Profil `airadcr_speechmike_ctrlf_profile.xml` installé dans SpeechControl.
 
 **Procédure:**
 1. Brancher le SpeechMike Philips
-2. Appuyer sur le bouton **Record** du SpeechMike → Doit envoyer `Ctrl+F10` ✅
+2. Appuyer sur le bouton **Record** du SpeechMike → Doit envoyer `Ctrl+Shift+D` ✅
 3. Vérifier que la dictée démarre dans AIRADCR ✅
-4. Appuyer sur le bouton **Pause** → Doit envoyer `Ctrl+F9` ✅
-5. Appuyer sur le bouton **Instruction** → Doit envoyer `Ctrl+F11` ✅
-6. Appuyer sur le bouton **Programmable 1** → Doit envoyer `Ctrl+F12` ✅
+4. Appuyer sur le bouton **Pause** → Doit envoyer `Ctrl+Shift+P` ✅
+5. Appuyer sur le bouton **Instruction** → Doit envoyer `Ctrl+Shift+T` ✅
+6. Appuyer sur le bouton **Programmable 1** → Doit envoyer `Ctrl+Shift+S` ✅
 
-**Résultat attendu:** Le SpeechMike contrôle AIRADCR via les nouveaux raccourcis.
+**Résultat attendu:** Le SpeechMike contrôle AIRADCR via les mêmes raccourcis que le clavier.
 
 ---
 
@@ -448,13 +364,14 @@ Pour mapper le SpeechMike sur les nouveaux raccourcis `Ctrl+F*`, voici la config
 
 | Raccourci clavier | Événement Tauri émis | Listener React | postMessage iframe | Action finale |
 |------------------|----------------------|----------------|-------------------|---------------|
-| `Ctrl+F9` | `airadcr:dictation_pause_toggle` | `App.tsx` ligne ~108 | `airadcr:dictation_pause_toggle` | Pause/Reprise |
-| `Ctrl+F10` | `airadcr:dictation_startstop_toggle` | `App.tsx` ligne ~114 | `airadcr:dictation_startstop_toggle` | Start/Stop |
-| `Ctrl+F11` | `airadcr:inject_raw_text` | `App.tsx` ligne ~120 | `airadcr:inject_raw_text` | Injecter brut |
-| `Ctrl+F12` | `airadcr:inject_structured_report` | `App.tsx` ligne ~126 | `airadcr:inject_structured_report` | Injecter structuré |
-| `Ctrl+Shift+D` | `airadcr:toggle_debug` | `App.tsx` ligne ~95 | - | Toggle debug |
-| `Ctrl+Shift+L` | `airadcr:show_logs` | `App.tsx` ligne ~101 | - | Afficher logs |
-| `Ctrl+Shift+T` | `airadcr:test_injection` | `App.tsx` ligne ~107 | - | Test injection |
+| `Ctrl+Shift+D` | `airadcr:dictation_startstop` | `useSecureMessaging.ts` | `airadcr:toggle_recording` | Start/Stop |
+| `Ctrl+Shift+P` | `airadcr:dictation_pause` | `useSecureMessaging.ts` | `airadcr:toggle_pause` | Pause/Reprise |
+| `Ctrl+Shift+T` | `airadcr:inject_raw` | `useSecureMessaging.ts` | `airadcr:request_injection` (brut) | Injecter brut |
+| `Ctrl+Shift+S` | `airadcr:inject_structured` | `useSecureMessaging.ts` | `airadcr:request_injection` (structuré) | Injecter structuré |
+| `Ctrl+Alt+D` | `airadcr:toggle_debug` | `App.tsx` | - | Toggle debug |
+| `Ctrl+Alt+L` | `airadcr:toggle_logs` | `App.tsx` | - | Afficher logs |
+| `Ctrl+Alt+I` | `airadcr:test_injection` | `App.tsx` | - | Test injection |
+| `F9` | `airadcr:force_clickable` | - | - | Anti-ghost |
 
 ---
 
@@ -469,53 +386,64 @@ L'iframe `airadcr.com` communique avec Tauri uniquement via `postMessage()` avec
 const ALLOWED_ORIGINS = [
   'https://airadcr.com',
   'https://www.airadcr.com',
-  'http://localhost:5173' // Dev uniquement
 ];
 
-window.addEventListener('message', (event) => {
+const handleSecureMessage = (event: MessageEvent) => {
   if (!ALLOWED_ORIGINS.includes(event.origin)) {
-    console.error('❌ Origine non autorisée:', event.origin);
+    console.warn('❌ Message ignoré - origine non autorisée:', event.origin);
     return;
   }
-  // Traiter le message sécurisé...
-});
+  // ... traitement sécurisé
+};
 ```
 
 ### Permissions Tauri minimales
 
+Configuration dans `tauri.conf.json`:
 ```json
-// src-tauri/tauri.conf.json
-"allowlist": {
-  "globalShortcut": { "all": true },    // Raccourcis globaux uniquement
-  "clipboard": { "all": true },         // Injection texte
-  "window": { "all": true },            // Always on top
-  "shell": { "open": false },           // ❌ Pas de shell
-  "fs": { "all": false }                // ❌ Pas d'accès fichiers
+{
+  "allowlist": {
+    "window": {
+      "all": false,
+      "setAlwaysOnTop": true,
+      "setPosition": true
+    },
+    "clipboard": {
+      "all": false,
+      "writeText": true,
+      "readText": true
+    },
+    "globalShortcut": {
+      "all": true
+    }
+  }
 }
 ```
 
 ---
 
-## 📝 Historique des versions
+## 📝 Version History
 
-### Version 2.0 (2025-10-05) - Migration Ctrl+F9-F12
-- ✅ Ajout de `Ctrl+F9` (Pause/Reprise toggle)
-- ✅ Ajout de `Ctrl+F10` (Start/Stop toggle)
-- ✅ Ajout de `Ctrl+F11` (Injection texte brut)
-- ✅ Ajout de `Ctrl+F12` (Injection rapport structuré)
-- ✅ Architecture hybride Rust + React + iframe
-- ✅ Support SpeechMike via profil `airadcr_speechmike_ctrlf_profile.xml`
-- ✅ Documentation complète des workflows
+### Version 3.0 (2025-10-24) - Système unifié
+- ✅ **Un seul système de raccourcis:** `Ctrl+Shift+D/P/T/S`
+- ✅ **SpeechMike et clavier utilisent les mêmes touches**
+- ✅ **Suppression de toutes les couches intermédiaires**
+- ❌ Suppression des raccourcis `Ctrl+F*` (legacy)
+- ❌ Suppression des raccourcis `F10/F11/F12` directs
+- ✅ **Code simplifié:** Moins de listeners, moins de confusion
 
-### Version 1.0 (2025-10-04) - Raccourcis basiques
-- ✅ Support F10/F11/F12 basique (SpeechMike legacy)
-- ✅ Architecture Tauri GlobalShortcut
-- ✅ Communication postMessage iframe
+### Version 2.0 (2025-10-05) - Migration vers Ctrl+F*
+- ✅ Nouveaux raccourcis `Ctrl+F9/F10/F11/F12`
+- ✅ Capture globale via GlobalShortcut
+- ✅ SpeechMike mappé sur Ctrl+F*
+
+### Version 1.0 (2025-09-28) - Fonctionnalités de base
+- ✅ Dictée vocale
+- ✅ Transcription automatique
+- ✅ Injection dans RIS
+- ✅ SpeechMike basique
 
 ---
 
-**FIN DE LA RÉFÉRENCE COMPLÈTE**
-
-*Dernière mise à jour : 2025-10-05*  
-*Version : 2.0*  
-*Équipe AIRADCR*
+**Date de mise à jour:** 2025-10-24  
+**Version:** 3.0 - Système unifié Ctrl+Shift+D/P/T/S

@@ -79,7 +79,6 @@
         "tsp": false,
         "wix": {
           "language": "fr-FR",
-          "template": "main.wxs",
           "fragmentPaths": [],
           "componentGroupRefs": [],
           "componentRefs": [],

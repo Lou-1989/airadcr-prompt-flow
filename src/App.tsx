@@ -112,30 +112,6 @@ const AppContent = () => {
         logger.debug('[Shortcuts] Ctrl+Shift+S → Inject rapport structuré');
         sendToIframe('airadcr:request_injection', { type: 'structuré' });
       }),
-      
-      // 🎤 Ctrl+F9: Pause/Resume toggle (legacy)
-      listen('airadcr:dictation_pause_toggle', () => {
-        logger.debug('[Shortcuts] Ctrl+F9 → Pause/Resume');
-        sendToIframe('airadcr:toggle_pause');
-      }),
-      
-      // 🎤 Ctrl+F10: Start/Stop toggle (legacy)
-      listen('airadcr:dictation_startstop_toggle', () => {
-        logger.debug('[Shortcuts] Ctrl+F10 → Start/Stop');
-        sendToIframe('airadcr:toggle_recording');
-      }),
-      
-      // 💉 Ctrl+F11: Inject raw text (legacy)
-      listen('airadcr:inject_raw_text', () => {
-        logger.debug('[Shortcuts] Ctrl+F11 → Inject Raw');
-        sendToIframe('airadcr:request_injection', { type: 'brut' });
-      }),
-      
-      // 💉 Ctrl+F12: Inject structured report (legacy)
-      listen('airadcr:inject_structured_report', () => {
-        logger.debug('[Shortcuts] Ctrl+F12 → Inject Structured');
-        sendToIframe('airadcr:request_injection', { type: 'structuré' });
-      }),
     ];
 
     // Cleanup

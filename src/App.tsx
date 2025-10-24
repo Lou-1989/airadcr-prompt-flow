@@ -49,30 +49,30 @@ const AppContent = () => {
   useEffect(() => {
     if (!isTauriApp) return;
 
-    const sendToIframe = (type: string) => {
+    const sendToIframe = (type: string, payload?: any) => {
       const iframe = document.querySelector('iframe[title="AirADCR"]') as HTMLIFrameElement;
       if (iframe?.contentWindow) {
-        iframe.contentWindow.postMessage({ type, payload: null }, 'https://airadcr.com');
-        logger.debug(`[Shortcuts] Message envoyé à iframe: ${type}`);
+        iframe.contentWindow.postMessage({ type, payload: payload || null }, 'https://airadcr.com');
+        logger.debug(`[Shortcuts] Message envoyé à iframe: ${type}`, payload);
       } else {
         logger.error('[Shortcuts] Iframe AirADCR non trouvée');
       }
     };
 
     const unlistenPromises = [
-      // Debug Panel: Ctrl+Shift+D
+      // Debug Panel: Ctrl+Alt+D (modifié de Ctrl+Shift+D)
       listen('airadcr:toggle_debug', () => {
         setIsDebugVisible(prev => !prev);
         logger.debug('[Shortcuts] Debug Panel toggled');
       }),
       
-      // Log Window: Ctrl+Shift+L
+      // Log Window: Ctrl+Alt+L (modifié de Ctrl+Shift+L)
       listen('airadcr:toggle_logs', () => {
         setIsLogWindowVisible(prev => !prev);
         logger.debug('[Shortcuts] Log Window toggled');
       }),
       
-      // Test Injection: Ctrl+Shift+T
+      // Test Injection: Ctrl+Alt+I (modifié de Ctrl+Shift+T)
       listen('airadcr:test_injection', () => {
         handleTestInjection();
         logger.debug('[Shortcuts] Test injection déclenché');
@@ -89,46 +89,52 @@ const AppContent = () => {
           });
       }),
       
-      // 🎤 SpeechMike F10: Record (Démarrer/Reprendre dictée)
-      listen('airadcr:speechmike_record', () => {
-        logger.debug('[SpeechMike] F10 → Record');
-        sendToIframe('airadcr:speechmike_record');
+      // 🎤 DICTATION: Ctrl+Shift+D (Start/Stop dictée)
+      listen('airadcr:dictation_startstop', () => {
+        logger.debug('[Shortcuts] Ctrl+Shift+D → Start/Stop dictée');
+        sendToIframe('airadcr:toggle_recording');
       }),
       
-      // 🎤 SpeechMike F11: Pause (Mettre en pause)
-      listen('airadcr:speechmike_pause', () => {
-        logger.debug('[SpeechMike] F11 → Pause');
-        sendToIframe('airadcr:speechmike_pause');
+      // 🎤 DICTATION: Ctrl+Shift+P (Pause/Resume dictée)
+      listen('airadcr:dictation_pause', () => {
+        logger.debug('[Shortcuts] Ctrl+Shift+P → Pause/Resume dictée');
+        sendToIframe('airadcr:toggle_pause');
       }),
       
-      // 🎤 SpeechMike F12: Finish (Finaliser et injecter)
-      listen('airadcr:speechmike_finish', () => {
-        logger.debug('[SpeechMike] F12 → Finish');
-        sendToIframe('airadcr:speechmike_finish');
+      // 💉 INJECTION: Ctrl+Shift+T (Inject texte brut)
+      listen('airadcr:inject_raw', () => {
+        logger.debug('[Shortcuts] Ctrl+Shift+T → Inject texte brut');
+        sendToIframe('airadcr:request_injection', { type: 'brut' });
       }),
       
-      // 🎤 Ctrl+F9: Pause/Resume toggle
+      // 💉 INJECTION: Ctrl+Shift+S (Inject rapport structuré)
+      listen('airadcr:inject_structured', () => {
+        logger.debug('[Shortcuts] Ctrl+Shift+S → Inject rapport structuré');
+        sendToIframe('airadcr:request_injection', { type: 'structuré' });
+      }),
+      
+      // 🎤 Ctrl+F9: Pause/Resume toggle (legacy)
       listen('airadcr:dictation_pause_toggle', () => {
         logger.debug('[Shortcuts] Ctrl+F9 → Pause/Resume');
-        sendToIframe('PAUSE_RESUME_TOGGLE');
+        sendToIframe('airadcr:toggle_pause');
       }),
       
-      // 🎤 Ctrl+F10: Start/Stop toggle
+      // 🎤 Ctrl+F10: Start/Stop toggle (legacy)
       listen('airadcr:dictation_startstop_toggle', () => {
         logger.debug('[Shortcuts] Ctrl+F10 → Start/Stop');
-        sendToIframe('START_STOP_TOGGLE');
+        sendToIframe('airadcr:toggle_recording');
       }),
       
-      // 💉 Ctrl+F11: Inject raw text
+      // 💉 Ctrl+F11: Inject raw text (legacy)
       listen('airadcr:inject_raw_text', () => {
         logger.debug('[Shortcuts] Ctrl+F11 → Inject Raw');
-        sendToIframe('INJECT_RAW_TEXT');
+        sendToIframe('airadcr:request_injection', { type: 'brut' });
       }),
       
-      // 💉 Ctrl+F12: Inject structured report
+      // 💉 Ctrl+F12: Inject structured report (legacy)
       listen('airadcr:inject_structured_report', () => {
         logger.debug('[Shortcuts] Ctrl+F12 → Inject Structured');
-        sendToIframe('INJECT_STRUCTURED_REPORT');
+        sendToIframe('airadcr:request_injection', { type: 'structuré' });
       }),
     ];
 
@@ -150,7 +156,7 @@ const AppContent = () => {
         </Routes>
       </BrowserRouter>
       
-      {/* Debug Panel - Accessible par Ctrl+Shift+D */}
+      {/* Debug Panel - Accessible par Ctrl+Alt+D */}
       <DebugPanel
         isTauriApp={isTauriApp}
         isAlwaysOnTop={isAlwaysOnTop}
@@ -164,7 +170,7 @@ const AppContent = () => {
         onClose={() => setIsDebugVisible(false)}
       />
 
-      {/* Fenêtre de logs flottante - Accessible par Ctrl+Shift+L */}
+      {/* Fenêtre de logs flottante - Accessible par Ctrl+Alt+L */}
       <DevLogWindow 
         isVisible={isLogWindowVisible}
         onClose={() => setIsLogWindowVisible(false)}

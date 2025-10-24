@@ -1134,38 +1134,82 @@ fn main() {
 fn register_global_shortcuts(app_handle: tauri::AppHandle) {
     let mut shortcut_manager = app_handle.global_shortcut_manager();
     
-    // 🎨 DEBUG PANEL: Ctrl+Shift+D
+    // 🎨 DEBUG PANEL: Ctrl+Alt+D (modifié de Ctrl+Shift+D)
     let handle_debug = app_handle.clone();
     shortcut_manager
-        .register("Ctrl+Shift+D", move || {
-            println!("🐛 [Shortcuts] Ctrl+Shift+D pressé (debug panel)");
+        .register("Ctrl+Alt+D", move || {
+            println!("🐛 [Shortcuts] Ctrl+Alt+D pressé (debug panel)");
             if let Some(window) = handle_debug.get_window("main") {
                 window.emit("airadcr:toggle_debug", ()).ok();
             }
         })
-        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+Shift+D: {}", e));
+        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+Alt+D: {}", e));
     
-    // 📋 LOG WINDOW: Ctrl+Shift+L
+    // 📋 LOG WINDOW: Ctrl+Alt+L (modifié de Ctrl+Shift+L)
     let handle_logs = app_handle.clone();
     shortcut_manager
-        .register("Ctrl+Shift+L", move || {
-            println!("📋 [Shortcuts] Ctrl+Shift+L pressé (log window)");
+        .register("Ctrl+Alt+L", move || {
+            println!("📋 [Shortcuts] Ctrl+Alt+L pressé (log window)");
             if let Some(window) = handle_logs.get_window("main") {
                 window.emit("airadcr:toggle_logs", ()).ok();
             }
         })
-        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+Shift+L: {}", e));
+        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+Alt+L: {}", e));
     
-    // 🧪 TEST INJECTION: Ctrl+Shift+T
+    // 🧪 TEST INJECTION: Ctrl+Alt+I (modifié de Ctrl+Shift+T)
     let handle_test = app_handle.clone();
     shortcut_manager
-        .register("Ctrl+Shift+T", move || {
-            println!("🧪 [Shortcuts] Ctrl+Shift+T pressé (test injection)");
+        .register("Ctrl+Alt+I", move || {
+            println!("🧪 [Shortcuts] Ctrl+Alt+I pressé (test injection)");
             if let Some(window) = handle_test.get_window("main") {
                 window.emit("airadcr:test_injection", ()).ok();
             }
         })
+        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+Alt+I: {}", e));
+    
+    // 🎤 DICTATION: Ctrl+Shift+D (Start/Stop dictée)
+    let handle_ctrl_shift_d = app_handle.clone();
+    shortcut_manager
+        .register("Ctrl+Shift+D", move || {
+            println!("🔴 [Shortcuts] Ctrl+Shift+D pressé (start/stop dictée)");
+            if let Some(window) = handle_ctrl_shift_d.get_window("main") {
+                window.emit("airadcr:dictation_startstop", ()).ok();
+            }
+        })
+        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+Shift+D: {}", e));
+    
+    // 🎤 DICTATION: Ctrl+Shift+P (Pause/Resume dictée)
+    let handle_ctrl_shift_p = app_handle.clone();
+    shortcut_manager
+        .register("Ctrl+Shift+P", move || {
+            println!("⏯️ [Shortcuts] Ctrl+Shift+P pressé (pause/resume dictée)");
+            if let Some(window) = handle_ctrl_shift_p.get_window("main") {
+                window.emit("airadcr:dictation_pause", ()).ok();
+            }
+        })
+        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+Shift+P: {}", e));
+    
+    // 💉 INJECTION: Ctrl+Shift+T (Inject texte brut)
+    let handle_ctrl_shift_t = app_handle.clone();
+    shortcut_manager
+        .register("Ctrl+Shift+T", move || {
+            println!("💉 [Shortcuts] Ctrl+Shift+T pressé (inject texte brut)");
+            if let Some(window) = handle_ctrl_shift_t.get_window("main") {
+                window.emit("airadcr:inject_raw", ()).ok();
+            }
+        })
         .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+Shift+T: {}", e));
+    
+    // 💉 INJECTION: Ctrl+Shift+S (Inject rapport structuré)
+    let handle_ctrl_shift_s = app_handle.clone();
+    shortcut_manager
+        .register("Ctrl+Shift+S", move || {
+            println!("📋 [Shortcuts] Ctrl+Shift+S pressé (inject rapport structuré)");
+            if let Some(window) = handle_ctrl_shift_s.get_window("main") {
+                window.emit("airadcr:inject_structured", ()).ok();
+            }
+        })
+        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+Shift+S: {}", e));
     
     // 🔓 ANTI-GHOST: F9 (désactiver click-through)
     let handle_f9 = app_handle.clone();
@@ -1261,9 +1305,11 @@ fn register_global_shortcuts(app_handle: tauri::AppHandle) {
     #[cfg(not(debug_assertions))]
     {
         println!("✅ [Shortcuts] Raccourcis globaux enregistrés:");
-        println!("   🎨 Ctrl+Shift+D (Debug), Ctrl+Shift+L (Logs), Ctrl+Shift+T (Test)");
+        println!("   🎨 Ctrl+Alt+D (Debug), Ctrl+Alt+L (Logs), Ctrl+Alt+I (Test)");
         println!("   🔓 F9 (Anti-fantôme)");
         println!("   🎤 F10 (Record), F11 (Pause), F12 (Finish)");
+        println!("   🎤 Ctrl+Shift+D (Start/Stop), Ctrl+Shift+P (Pause/Resume)");
+        println!("   💉 Ctrl+Shift+T (Inject Raw), Ctrl+Shift+S (Inject Structured)");
         println!("   🎤 Ctrl+F9 (Pause/Resume), Ctrl+F10 (Start/Stop)");
         println!("   💉 Ctrl+F11 (Inject Raw), Ctrl+F12 (Inject Structured)");
     }
@@ -1271,9 +1317,11 @@ fn register_global_shortcuts(app_handle: tauri::AppHandle) {
     #[cfg(debug_assertions)]
     {
         println!("✅ [Shortcuts] Raccourcis globaux enregistrés:");
-        println!("   🎨 Ctrl+Shift+D (Debug), Ctrl+Shift+L (Logs), Ctrl+Shift+T (Test)");
+        println!("   🎨 Ctrl+Alt+D (Debug), Ctrl+Alt+L (Logs), Ctrl+Alt+I (Test)");
         println!("   🔓 F9 (Anti-fantôme)");
         println!("   🎤 F10 (Record), F11 (Pause)");
+        println!("   🎤 Ctrl+Shift+D (Start/Stop), Ctrl+Shift+P (Pause/Resume)");
+        println!("   💉 Ctrl+Shift+T (Inject Raw), Ctrl+Shift+S (Inject Structured)");
         println!("   🎤 Ctrl+F9 (Pause/Resume), Ctrl+F10 (Start/Stop)");
         println!("   💉 Ctrl+F11 (Inject Raw), Ctrl+F12 (Inject Structured)");
         println!("⚠️ [DEV] F12 non enregistré (disponible pour DevTools)");

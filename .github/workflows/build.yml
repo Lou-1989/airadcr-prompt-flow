@@ -247,8 +247,8 @@ jobs:
           password: ${{ secrets.ESIGNER_PASSWORD }}
           credential_id: ${{ secrets.CREDENTIAL_ID }}
           totp_secret: ${{ secrets.ESIGNER_TOTP_SECRET }}
-          file_path: ${{ github.workspace }}/src-tauri/target/release/bundle/msi/AIRADCR_1.0.0_x64_en-US.msi
-          output_path: ${{ github.workspace }}/artifacts
+          file_path: ${{ github.workspace }}\src-tauri\target\release\bundle\msi\AIRADCR_1.0.0_x64_en-US.msi
+          output_path: ${{ github.workspace }}\artifacts
           override: true
           environment_name: PROD
           clean_logs: false
@@ -264,8 +264,8 @@ jobs:
           password: ${{ secrets.ESIGNER_PASSWORD }}
           credential_id: ${{ secrets.CREDENTIAL_ID }}
           totp_secret: ${{ secrets.ESIGNER_TOTP_SECRET }}
-          file_path: ${{ github.workspace }}/src-tauri/target/release/bundle/nsis/AIRADCR_1.0.0_x64-setup.exe
-          output_path: ${{ github.workspace }}/artifacts
+          file_path: ${{ github.workspace }}\src-tauri\target\release\bundle\nsis\AIRADCR_1.0.0_x64-setup.exe
+          output_path: ${{ github.workspace }}\artifacts
           override: true
           environment_name: PROD
           clean_logs: false

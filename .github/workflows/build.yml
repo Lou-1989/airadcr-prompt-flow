@@ -201,8 +201,8 @@ jobs:
         uses: sslcom/esigner-codesign@develop
         with:
           command: get_credential_ids
-          ra_username: ${{ secrets.ESIGNER_USERNAME }}
-          ra_password: ${{ secrets.ESIGNER_PASSWORD }}
+          username: ${{ secrets.ESIGNER_USERNAME }}
+          password: ${{ secrets.ESIGNER_PASSWORD }}
           environment_name: PROD
           clean_logs: false
 

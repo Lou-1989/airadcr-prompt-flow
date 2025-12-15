@@ -33,10 +33,11 @@ actix-rt = "2"
 # 📦 Base de données SQLite
 rusqlite = { version = "0.31", features = ["bundled"] }
 
-# 🔐 Hachage et UUID
+# 🔐 Hachage, UUID et génération aléatoire
 sha2 = "0.10"
 hex = "0.4"
 uuid = { version = "1", features = ["v4"] }
+rand = "0.8"
 
 # 📁 Répertoires système
 dirs = "5"

@@ -16,6 +16,10 @@ use std::fs::{OpenOptions, create_dir_all};
 use std::io::Write;
 extern crate chrono;
 
+// 🌐 Modules serveur HTTP et base de données
+mod http_server;
+mod database;
+
 #[cfg(target_os = "windows")]
 use winapi::um::winuser::{GetSystemMetrics, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN};
 
@@ -994,6 +998,53 @@ fn main() {
     
     #[cfg(target_os = "windows")]
     enable_dpi_awareness();
+    
+    // 🌐 Démarrer le serveur HTTP local dans un thread séparé
+    let app_data_dir = dirs::data_local_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("airadcr-desktop");
+    
+    let db = match database::Database::new(app_data_dir) {
+        Ok(db) => {
+            println!("✅ [Database] Initialisée avec succès");
+            Arc::new(db)
+        }
+        Err(e) => {
+            eprintln!("❌ [Database] Erreur d'initialisation: {}", e);
+            // Continuer sans base de données (le serveur HTTP ne fonctionnera pas)
+            std::process::exit(1);
+        }
+    };
+    
+    // Clone pour le serveur HTTP
+    let db_for_server = Arc::clone(&db);
+    
+    // Démarrer le serveur HTTP dans un thread séparé
+    thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
+        rt.block_on(async {
+            if let Err(e) = http_server::start_server(8741, db_for_server).await {
+                eprintln!("❌ [HTTP Server] Erreur: {}", e);
+            }
+        });
+    });
+    
+    // Clone pour le cleanup périodique
+    let db_for_cleanup = Arc::clone(&db);
+    
+    // 🧹 Démarrer le cleanup automatique des rapports expirés (toutes les 10 minutes)
+    thread::spawn(move || {
+        loop {
+            thread::sleep(Duration::from_secs(600)); // 10 minutes
+            match db_for_cleanup.cleanup_expired_reports() {
+                Ok(count) if count > 0 => {
+                    println!("🧹 [Cleanup] {} rapport(s) expiré(s) supprimé(s)", count);
+                }
+                Ok(_) => {} // Rien à nettoyer
+                Err(e) => eprintln!("❌ [Cleanup] Erreur: {}", e),
+            }
+        }
+    });
     
     let quit = CustomMenuItem::new("quit".to_string(), "Quitter");
     let show = CustomMenuItem::new("show".to_string(), "Afficher");

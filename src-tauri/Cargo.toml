@@ -23,7 +23,24 @@ tokio = { version = "1.0", features = ["full"] }
 active-win-pos-rs = "0.8.0"
 env_logger = "0.11"
 log = "0.4"
-chrono = "0.4"
+chrono = { version = "0.4", features = ["serde"] }
+
+# 🌐 Serveur HTTP local (port 8741)
+actix-web = "4"
+actix-cors = "0.7"
+actix-rt = "2"
+
+# 📦 Base de données SQLite
+rusqlite = { version = "0.31", features = ["bundled"] }
+
+# 🔐 Hachage et UUID
+sha2 = "0.10"
+hex = "0.4"
+uuid = { version = "1", features = ["v4"] }
+
+# 📁 Répertoires système
+dirs = "5"
+
 # sysinfo = "0.29"  # 🔒 DÉSACTIVÉ TEMPORAIREMENT
 
 [target.'cfg(windows)'.dependencies]

@@ -1,0 +1,18 @@
+// ============================================================================
+// AIRADCR Desktop - Routes HTTP
+// ============================================================================
+
+use actix_web::web;
+use super::handlers;
+
+/// Configure toutes les routes du serveur HTTP
+pub fn configure(cfg: &mut web::ServiceConfig) {
+    cfg
+        // Health check (sans authentification)
+        .route("/health", web::get().to(handlers::health_check))
+        
+        // Pending reports API
+        .route("/pending-report", web::post().to(handlers::store_pending_report))
+        .route("/pending-report", web::get().to(handlers::get_pending_report))
+        .route("/pending-report", web::delete().to(handlers::delete_pending_report));
+}

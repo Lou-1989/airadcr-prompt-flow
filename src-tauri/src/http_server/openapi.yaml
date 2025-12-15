@@ -1,0 +1,286 @@
+openapi: 3.0.3
+info:
+  title: AIRADCR Desktop Local API
+  description: |
+    API HTTP locale exposée par l'application AIRADCR Desktop sur le port 8741.
+    Permet aux systèmes RIS/PACS externes d'envoyer des rapports radiologiques
+    pré-remplis de manière sécurisée et confidentielle (stockage local uniquement).
+    
+    ## Sécurité Patient-Safe
+    Toutes les données nominatives sont **INTERDITES** et seront rejetées automatiquement.
+    Les champs suivants déclenchent une erreur 400 :
+    - patient_id, patient_name, birth_date, ssn, address, phone, email, etc.
+    
+    ## Authentification
+    L'endpoint POST nécessite une clé API via l'en-tête `X-API-Key`.
+    Les endpoints GET et DELETE sont accessibles localement sans authentification.
+  version: 1.0.0
+  contact:
+    name: AIRADCR Support
+    email: contact@airadcr.com
+    url: https://airadcr.com
+
+servers:
+  - url: http://localhost:8741
+    description: Serveur HTTP local (Tauri Desktop)
+
+paths:
+  /health:
+    get:
+      summary: Vérification de l'état du serveur
+      description: Retourne le statut du serveur HTTP local
+      operationId: healthCheck
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Serveur opérationnel
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: "ok"
+                timestamp: "2025-12-15T23:15:00Z"
+                version: "1.0.0"
+
+  /pending-report:
+    post:
+      summary: Stocke un rapport radiologique en attente
+      description: |
+        Enregistre un rapport pré-rempli depuis un système RIS/PACS externe.
+        Le rapport sera récupérable via l'URL `https://airadcr.com/app?tid=XXX`.
+        
+        **Validation Patient-Safe** : Toute donnée nominative sera rejetée.
+      operationId: storePendingReport
+      tags:
+        - Pending Reports
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StorePendingReportRequest'
+            example:
+              technical_id: "TEO_2024_001"
+              structured:
+                title: "IRM Cérébrale"
+                indication: "Céphalées chroniques"
+                technique: "Séquences T1, T2, FLAIR, diffusion"
+                results: "Résultats de l'analyse IA CAD..."
+                conclusion: ""
+              source_type: "teohub"
+              ai_modules: ["nodule_detection", "brain_volumetry"]
+              expires_in_hours: 24
+      responses:
+        '200':
+          description: Rapport stocké avec succès
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoreSuccessResponse'
+        '400':
+          description: Violation Patient-Safe ou données invalides
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Patient-Safe violation: nominative data detected"
+                field: "patient_id"
+        '401':
+          description: Clé API invalide
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Invalid API key"
+
+    get:
+      summary: Récupère un rapport en attente
+      description: |
+        Retourne les données d'un rapport stocké localement.
+        Marque automatiquement le rapport comme "récupéré".
+      operationId: getPendingReport
+      tags:
+        - Pending Reports
+      parameters:
+        - name: tid
+          in: query
+          required: true
+          description: Identifiant technique du rapport
+          schema:
+            type: string
+          example: "TEO_2024_001"
+      responses:
+        '200':
+          description: Rapport trouvé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetReportResponse'
+        '404':
+          description: Rapport non trouvé ou expiré
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetReportResponse'
+              example:
+                success: false
+                error: "Report not found or expired"
+
+    delete:
+      summary: Supprime un rapport en attente
+      description: Supprime définitivement un rapport de la base locale
+      operationId: deletePendingReport
+      tags:
+        - Pending Reports
+      parameters:
+        - name: tid
+          in: query
+          required: true
+          description: Identifiant technique du rapport
+          schema:
+            type: string
+          example: "TEO_2024_001"
+      responses:
+        '200':
+          description: Rapport supprimé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteResponse'
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Clé API pour l'authentification des systèmes RIS/PACS
+
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok]
+        timestamp:
+          type: string
+          format: date-time
+        version:
+          type: string
+
+    StorePendingReportRequest:
+      type: object
+      required:
+        - technical_id
+        - structured
+      properties:
+        technical_id:
+          type: string
+          description: Identifiant technique unique du rapport
+          example: "TEO_2024_001"
+        structured:
+          type: object
+          description: Données structurées du rapport (sans données nominatives!)
+          properties:
+            title:
+              type: string
+              example: "IRM Cérébrale"
+            indication:
+              type: string
+              example: "Céphalées chroniques"
+            technique:
+              type: string
+              example: "Séquences T1, T2, FLAIR, diffusion"
+            results:
+              type: string
+              example: "Résultats de l'analyse IA..."
+            conclusion:
+              type: string
+              example: ""
+        source_type:
+          type: string
+          default: "tauri_local"
+          example: "teohub"
+        ai_modules:
+          type: array
+          items:
+            type: string
+          example: ["nodule_detection", "brain_volumetry"]
+        expires_in_hours:
+          type: integer
+          default: 24
+          minimum: 1
+          maximum: 168
+          example: 24
+
+    StoreSuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        technical_id:
+          type: string
+          example: "TEO_2024_001"
+        retrieval_url:
+          type: string
+          format: uri
+          example: "https://airadcr.com/app?tid=TEO_2024_001"
+        expires_at:
+          type: string
+          format: date-time
+          example: "2025-12-16T23:15:00Z"
+
+    GetReportResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          nullable: true
+          properties:
+            structured:
+              type: object
+            source_type:
+              type: string
+            ai_modules:
+              type: array
+              items:
+                type: string
+            created_at:
+              type: string
+              format: date-time
+        error:
+          type: string
+          nullable: true
+
+    DeleteResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        deleted:
+          type: boolean
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        field:
+          type: string
+          nullable: true
+
+tags:
+  - name: Health
+    description: Vérification de l'état du serveur
+  - name: Pending Reports
+    description: Gestion des rapports radiologiques en attente

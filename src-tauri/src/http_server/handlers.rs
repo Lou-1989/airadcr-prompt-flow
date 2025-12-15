@@ -108,6 +108,77 @@ pub struct CreateApiKeyResponse {
     pub message: String,
 }
 
+#[derive(Serialize)]
+pub struct ApiKeyInfo {
+    pub id: String,
+    pub name: String,
+    pub prefix: String,
+    pub is_active: bool,
+    pub created_at: String,
+}
+
+#[derive(Serialize)]
+pub struct ListApiKeysResponse {
+    pub success: bool,
+    pub keys: Vec<ApiKeyInfo>,
+}
+
+#[derive(Serialize)]
+pub struct RevokeApiKeyResponse {
+    pub success: bool,
+    pub revoked: bool,
+    pub prefix: String,
+}
+
+// ============================================================================
+// Validation des entrées
+// ============================================================================
+
+use regex::Regex;
+use std::sync::OnceLock;
+
+static TECHNICAL_ID_REGEX: OnceLock<Regex> = OnceLock::new();
+static API_KEY_NAME_REGEX: OnceLock<Regex> = OnceLock::new();
+
+fn get_technical_id_regex() -> &'static Regex {
+    TECHNICAL_ID_REGEX.get_or_init(|| {
+        Regex::new(r"^[a-zA-Z0-9_-]{1,64}$").unwrap()
+    })
+}
+
+fn get_api_key_name_regex() -> &'static Regex {
+    API_KEY_NAME_REGEX.get_or_init(|| {
+        Regex::new(r"^[a-zA-Z0-9\s\-_]{1,100}$").unwrap()
+    })
+}
+
+fn validate_technical_id(tid: &str) -> Result<(), String> {
+    if tid.is_empty() {
+        return Err("technical_id cannot be empty".to_string());
+    }
+    if tid.len() > 64 {
+        return Err("technical_id must be 64 characters or less".to_string());
+    }
+    if !get_technical_id_regex().is_match(tid) {
+        return Err("technical_id must contain only alphanumeric characters, hyphens, and underscores".to_string());
+    }
+    Ok(())
+}
+
+fn validate_api_key_name(name: &str) -> Result<(), String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("API key name cannot be empty".to_string());
+    }
+    if name.len() > 100 {
+        return Err("API key name must be 100 characters or less".to_string());
+    }
+    if !get_api_key_name_regex().is_match(name) {
+        return Err("API key name must contain only alphanumeric characters, spaces, hyphens, and underscores".to_string());
+    }
+    Ok(())
+}
+
 // ============================================================================
 // Handlers
 // ============================================================================
@@ -142,7 +213,16 @@ pub async fn store_pending_report(
         });
     }
     
-    // 2. Validation Patient-Safe
+    // 2. Validation technical_id
+    if let Err(msg) = validate_technical_id(&body.technical_id) {
+        println!("❌ [HTTP] Invalid technical_id: {}", msg);
+        return HttpResponse::BadRequest().json(ErrorResponse {
+            error: msg,
+            field: Some("technical_id".to_string()),
+        });
+    }
+    
+    // 3. Validation Patient-Safe
     if let Err((field, message)) = validate_patient_safe(&body.structured) {
         println!("❌ [HTTP] Patient-Safe violation: {} ({})", message, field);
         return HttpResponse::BadRequest().json(ErrorResponse {
@@ -151,7 +231,7 @@ pub async fn store_pending_report(
         });
     }
     
-    // 3. Préparer les données
+    // 4. Préparer les données
     let id = Uuid::new_v4().to_string();
     let now = Utc::now();
     let expires_at = now + Duration::hours(body.expires_in_hours);
@@ -161,7 +241,7 @@ pub async fn store_pending_report(
         .as_ref()
         .map(|m| serde_json::to_string(m).unwrap_or_default());
     
-    // 4. Insérer en base
+    // 5. Insérer en base
     match state.db.insert_pending_report(
         &id,
         &body.technical_id,
@@ -301,17 +381,10 @@ pub async fn create_api_key(
         });
     }
     
-    // 2. Validation du nom
-    if body.name.trim().is_empty() {
+    // 2. Validation du nom avec regex
+    if let Err(msg) = validate_api_key_name(&body.name) {
         return HttpResponse::BadRequest().json(ErrorResponse {
-            error: "API key name cannot be empty".to_string(),
-            field: Some("name".to_string()),
-        });
-    }
-    
-    if body.name.len() > 100 {
-        return HttpResponse::BadRequest().json(ErrorResponse {
-            error: "API key name must be less than 100 characters".to_string(),
+            error: msg,
             field: Some("name".to_string()),
         });
     }
@@ -353,6 +426,101 @@ pub async fn create_api_key(
         }
         Err(e) => {
             eprintln!("❌ [HTTP] Erreur création clé API: {}", e);
+            HttpResponse::InternalServerError().json(ErrorResponse {
+                error: format!("Database error: {}", e),
+                field: None,
+            })
+        }
+    }
+}
+
+/// GET /api-keys - Liste toutes les clés API (requiert authentification admin)
+pub async fn list_api_keys(
+    req: HttpRequest,
+    state: web::Data<HttpServerState>,
+) -> HttpResponse {
+    // Validation clé Admin
+    let admin_key = req
+        .headers()
+        .get("x-admin-key")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    
+    if !validate_admin_key(admin_key) {
+        println!("❌ [HTTP] Clé admin invalide pour liste API keys");
+        return HttpResponse::Unauthorized().json(ErrorResponse {
+            error: "Invalid or missing admin key".to_string(),
+            field: None,
+        });
+    }
+    
+    match state.db.list_api_keys() {
+        Ok(keys) => {
+            let api_keys: Vec<ApiKeyInfo> = keys.into_iter().map(|(id, name, prefix, is_active, created_at)| {
+                ApiKeyInfo { id, name, prefix, is_active, created_at }
+            }).collect();
+            
+            println!("✅ [HTTP] Liste API keys: {} clé(s)", api_keys.len());
+            HttpResponse::Ok().json(ListApiKeysResponse {
+                success: true,
+                keys: api_keys,
+            })
+        }
+        Err(e) => {
+            eprintln!("❌ [HTTP] Erreur liste API keys: {}", e);
+            HttpResponse::InternalServerError().json(ErrorResponse {
+                error: format!("Database error: {}", e),
+                field: None,
+            })
+        }
+    }
+}
+
+/// DELETE /api-keys/{prefix} - Révoque une clé API (soft-delete)
+pub async fn revoke_api_key(
+    req: HttpRequest,
+    path: web::Path<String>,
+    state: web::Data<HttpServerState>,
+) -> HttpResponse {
+    // Validation clé Admin
+    let admin_key = req
+        .headers()
+        .get("x-admin-key")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    
+    if !validate_admin_key(admin_key) {
+        println!("❌ [HTTP] Clé admin invalide pour révocation API key");
+        return HttpResponse::Unauthorized().json(ErrorResponse {
+            error: "Invalid or missing admin key".to_string(),
+            field: None,
+        });
+    }
+    
+    let prefix = path.into_inner();
+    
+    if prefix.is_empty() || prefix.len() > 16 {
+        return HttpResponse::BadRequest().json(ErrorResponse {
+            error: "Invalid API key prefix".to_string(),
+            field: Some("prefix".to_string()),
+        });
+    }
+    
+    match state.db.revoke_api_key(&prefix) {
+        Ok(revoked) => {
+            if revoked {
+                println!("✅ [HTTP] Clé API révoquée: prefix={}", prefix);
+            } else {
+                println!("⚠️ [HTTP] Clé API non trouvée: prefix={}", prefix);
+            }
+            HttpResponse::Ok().json(RevokeApiKeyResponse {
+                success: true,
+                revoked,
+                prefix,
+            })
+        }
+        Err(e) => {
+            eprintln!("❌ [HTTP] Erreur révocation API key: {}", e);
             HttpResponse::InternalServerError().json(ErrorResponse {
                 error: format!("Database error: {}", e),
                 field: None,

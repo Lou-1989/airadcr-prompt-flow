@@ -11,6 +11,7 @@ pub mod middleware;
 
 use actix_web::{App, HttpServer, web, middleware::Logger};
 use actix_cors::Cors;
+use actix_governor::{Governor, GovernorConfigBuilder};
 use std::sync::Arc;
 use crate::database::Database;
 
@@ -24,6 +25,13 @@ pub async fn start_server(port: u16, db: Arc<Database>) -> std::io::Result<()> {
     let state = web::Data::new(HttpServerState { db });
     
     println!("🌐 [HTTP Server] Démarrage sur http://127.0.0.1:{}", port);
+    
+    // Configuration du rate limiting : 60 requêtes par minute par IP
+    let governor_conf = GovernorConfigBuilder::default()
+        .per_second(1) // 1 requête par seconde en moyenne
+        .burst_size(60) // Burst autorisé de 60 requêtes
+        .finish()
+        .unwrap();
     
     HttpServer::new(move || {
         // Configuration CORS permissive pour localhost et airadcr.com
@@ -42,15 +50,19 @@ pub async fn start_server(port: u16, db: Arc<Database>) -> std::io::Result<()> {
                 actix_web::http::header::CONTENT_TYPE,
                 actix_web::http::header::AUTHORIZATION,
                 actix_web::http::header::HeaderName::from_static("x-api-key"),
+                actix_web::http::header::HeaderName::from_static("x-admin-key"),
             ])
             .max_age(3600);
         
         App::new()
             .app_data(state.clone())
+            .wrap(Governor::new(&governor_conf))
             .wrap(cors)
             .wrap(Logger::new("%a \"%r\" %s %b %Dms"))
             .configure(routes::configure)
     })
+    .client_request_timeout(std::time::Duration::from_secs(30))
+    .keep_alive(std::time::Duration::from_secs(75))
     .bind(("127.0.0.1", port))?
     .run()
     .await

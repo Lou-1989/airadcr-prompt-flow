@@ -17,5 +17,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .route("/pending-report", web::delete().to(handlers::delete_pending_report))
         
         // API Keys management (admin only)
-        .route("/api-keys", web::post().to(handlers::create_api_key));
+        .route("/api-keys", web::post().to(handlers::create_api_key))
+        .route("/api-keys", web::get().to(handlers::list_api_keys))
+        .route("/api-keys/{prefix}", web::delete().to(handlers::revoke_api_key));
 }

@@ -124,6 +124,33 @@ pub fn validate_api_key(db: &Arc<Database>, api_key: &str) -> bool {
 }
 
 // ============================================================================
+// Validation Admin Key
+// ============================================================================
+
+/// Clé admin maître pour la création de nouvelles clés API
+/// En production, cette clé devrait être stockée de manière sécurisée
+const ADMIN_MASTER_KEY: &str = "airadcr_admin_master_9x7w5v3t1r8p6n4m2k0j";
+
+/// Valide une clé admin
+pub fn validate_admin_key(admin_key: &str) -> bool {
+    if admin_key.is_empty() {
+        return false;
+    }
+    
+    // Comparaison en temps constant pour éviter les timing attacks
+    use sha2::{Sha256, Digest};
+    let mut hasher1 = Sha256::new();
+    hasher1.update(admin_key.as_bytes());
+    let hash1 = hasher1.finalize();
+    
+    let mut hasher2 = Sha256::new();
+    hasher2.update(ADMIN_MASTER_KEY.as_bytes());
+    let hash2 = hasher2.finalize();
+    
+    hash1 == hash2
+}
+
+// ============================================================================
 // Tests unitaires
 // ============================================================================
 

@@ -9,7 +9,7 @@ use chrono::{Utc, Duration};
 use uuid::Uuid;
 
 use super::HttpServerState;
-use super::middleware::{validate_api_key, validate_patient_safe};
+use super::middleware::{validate_api_key, validate_admin_key, validate_patient_safe};
 
 // ============================================================================
 // Structures de données
@@ -80,6 +80,32 @@ pub struct ErrorResponse {
 #[derive(Deserialize)]
 pub struct TidQuery {
     pub tid: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct CreateApiKeyRequest {
+    pub name: String,
+    #[serde(default = "generate_random_key")]
+    pub key: String,
+}
+
+fn generate_random_key() -> String {
+    use rand::Rng;
+    let suffix: String = rand::thread_rng()
+        .sample_iter(&rand::distributions::Alphanumeric)
+        .take(24)
+        .map(char::from)
+        .collect();
+    format!("airadcr_{}", suffix.to_lowercase())
+}
+
+#[derive(Serialize)]
+pub struct CreateApiKeyResponse {
+    pub success: bool,
+    pub id: String,
+    pub key: String,
+    pub name: String,
+    pub message: String,
 }
 
 // ============================================================================
@@ -246,6 +272,87 @@ pub async fn delete_pending_report(
         }
         Err(e) => {
             eprintln!("❌ [HTTP] Erreur suppression: {}", e);
+            HttpResponse::InternalServerError().json(ErrorResponse {
+                error: format!("Database error: {}", e),
+                field: None,
+            })
+        }
+    }
+}
+
+/// POST /api-keys - Crée une nouvelle clé API (requiert authentification admin)
+pub async fn create_api_key(
+    req: HttpRequest,
+    body: web::Json<CreateApiKeyRequest>,
+    state: web::Data<HttpServerState>,
+) -> HttpResponse {
+    // 1. Validation clé Admin (X-Admin-Key header)
+    let admin_key = req
+        .headers()
+        .get("x-admin-key")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    
+    if !validate_admin_key(admin_key) {
+        println!("❌ [HTTP] Clé admin invalide pour création API key");
+        return HttpResponse::Unauthorized().json(ErrorResponse {
+            error: "Invalid or missing admin key".to_string(),
+            field: None,
+        });
+    }
+    
+    // 2. Validation du nom
+    if body.name.trim().is_empty() {
+        return HttpResponse::BadRequest().json(ErrorResponse {
+            error: "API key name cannot be empty".to_string(),
+            field: Some("name".to_string()),
+        });
+    }
+    
+    if body.name.len() > 100 {
+        return HttpResponse::BadRequest().json(ErrorResponse {
+            error: "API key name must be less than 100 characters".to_string(),
+            field: Some("name".to_string()),
+        });
+    }
+    
+    // 3. Générer ou utiliser la clé fournie
+    let api_key = if body.key.is_empty() {
+        generate_random_key()
+    } else {
+        body.key.clone()
+    };
+    
+    // 4. Calculer le hash SHA-256
+    use sha2::{Sha256, Digest};
+    let mut hasher = Sha256::new();
+    hasher.update(api_key.as_bytes());
+    let key_hash = hex::encode(hasher.finalize());
+    
+    // 5. Préfixe pour recherche rapide
+    let key_prefix = if api_key.len() >= 8 {
+        &api_key[..8]
+    } else {
+        &api_key
+    };
+    
+    // 6. Générer un ID unique
+    let id = Uuid::new_v4().to_string();
+    
+    // 7. Insérer en base
+    match state.db.add_api_key(&id, key_prefix, &key_hash, &body.name) {
+        Ok(_) => {
+            println!("✅ [HTTP] Nouvelle clé API créée: name={}, prefix={}", body.name, key_prefix);
+            HttpResponse::Created().json(CreateApiKeyResponse {
+                success: true,
+                id,
+                key: api_key,
+                name: body.name.clone(),
+                message: "API key created successfully. Store this key securely - it won't be shown again.".to_string(),
+            })
+        }
+        Err(e) => {
+            eprintln!("❌ [HTTP] Erreur création clé API: {}", e);
             HttpResponse::InternalServerError().json(ErrorResponse {
                 error: format!("Database error: {}", e),
                 field: None,

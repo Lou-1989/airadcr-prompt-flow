@@ -147,6 +147,36 @@ pub fn add_api_key(
     Ok(())
 }
 
+/// Liste toutes les clés API
+pub fn list_api_keys(conn: &Connection) -> SqlResult<Vec<(String, String, String, bool, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, name, key_prefix, is_active, created_at FROM api_keys ORDER BY created_at DESC"
+    )?;
+    
+    let keys = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, i32>(3)? == 1,
+            row.get::<_, String>(4)?,
+        ))
+    })?
+    .collect::<SqlResult<Vec<_>>>()?;
+    
+    Ok(keys)
+}
+
+/// Révoque une clé API (soft-delete: is_active = 0)
+pub fn revoke_api_key(conn: &Connection, key_prefix: &str) -> SqlResult<bool> {
+    let rows = conn.execute(
+        "UPDATE api_keys SET is_active = 0 WHERE key_prefix = ?1 AND is_active = 1",
+        [key_prefix],
+    )?;
+    
+    Ok(rows > 0)
+}
+
 // ============================================================================
 // Tests unitaires
 // ============================================================================

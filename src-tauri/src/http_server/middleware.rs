@@ -124,30 +124,75 @@ pub fn validate_api_key(db: &Arc<Database>, api_key: &str) -> bool {
 }
 
 // ============================================================================
-// Validation Admin Key
+// Validation Admin Key (Sécurisée via ENV ou fichier)
 // ============================================================================
 
-/// Clé admin maître pour la création de nouvelles clés API
-/// En production, cette clé devrait être stockée de manière sécurisée
-const ADMIN_MASTER_KEY: &str = "airadcr_admin_master_9x7w5v3t1r8p6n4m2k0j";
+use std::sync::OnceLock;
+use std::fs;
 
-/// Valide une clé admin
+/// Cache pour la clé admin hashée (initialisée une seule fois)
+static ADMIN_KEY_HASH: OnceLock<[u8; 32]> = OnceLock::new();
+
+/// Récupère le hash de la clé admin depuis ENV ou fichier
+fn get_admin_key_hash() -> &'static [u8; 32] {
+    ADMIN_KEY_HASH.get_or_init(|| {
+        // 1. Essayer la variable d'environnement AIRADCR_ADMIN_KEY
+        if let Ok(key) = std::env::var("AIRADCR_ADMIN_KEY") {
+            if !key.is_empty() {
+                println!("🔐 [Security] Clé admin chargée depuis AIRADCR_ADMIN_KEY");
+                let mut hasher = Sha256::new();
+                hasher.update(key.as_bytes());
+                return hasher.finalize().into();
+            }
+        }
+        
+        // 2. Essayer le fichier ~/.airadcr/admin.key
+        if let Some(home) = dirs::home_dir() {
+            let key_path = home.join(".airadcr").join("admin.key");
+            if let Ok(key) = fs::read_to_string(&key_path) {
+                let key = key.trim();
+                if !key.is_empty() {
+                    println!("🔐 [Security] Clé admin chargée depuis {:?}", key_path);
+                    let mut hasher = Sha256::new();
+                    hasher.update(key.as_bytes());
+                    return hasher.finalize().into();
+                }
+            }
+        }
+        
+        // 3. Fallback: clé par défaut (seulement pour dev, affiché avec warning)
+        eprintln!("⚠️ [Security] ATTENTION: Utilisation de la clé admin par défaut!");
+        eprintln!("⚠️ [Security] Définissez AIRADCR_ADMIN_KEY ou créez ~/.airadcr/admin.key");
+        let default_key = "airadcr_admin_master_9x7w5v3t1r8p6n4m2k0j";
+        let mut hasher = Sha256::new();
+        hasher.update(default_key.as_bytes());
+        hasher.finalize().into()
+    })
+}
+
+/// Valide une clé admin avec comparaison en temps constant
 pub fn validate_admin_key(admin_key: &str) -> bool {
     if admin_key.is_empty() {
         return false;
     }
     
-    // Comparaison en temps constant pour éviter les timing attacks
-    use sha2::{Sha256, Digest};
-    let mut hasher1 = Sha256::new();
-    hasher1.update(admin_key.as_bytes());
-    let hash1 = hasher1.finalize();
+    // Hash de la clé fournie
+    let mut hasher = Sha256::new();
+    hasher.update(admin_key.as_bytes());
+    let provided_hash: [u8; 32] = hasher.finalize().into();
     
-    let mut hasher2 = Sha256::new();
-    hasher2.update(ADMIN_MASTER_KEY.as_bytes());
-    let hash2 = hasher2.finalize();
-    
-    hash1 == hash2
+    // Comparaison en temps constant
+    let expected_hash = get_admin_key_hash();
+    constant_time_compare(&provided_hash, expected_hash)
+}
+
+/// Comparaison en temps constant pour éviter les timing attacks
+fn constant_time_compare(a: &[u8; 32], b: &[u8; 32]) -> bool {
+    let mut result = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        result |= x ^ y;
+    }
+    result == 0
 }
 
 // ============================================================================

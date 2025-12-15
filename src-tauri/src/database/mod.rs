@@ -127,10 +127,23 @@ impl Database {
     }
     
     /// Ajoute une clé API (pour l'administration)
-    #[allow(dead_code)]
     pub fn add_api_key(&self, id: &str, key_prefix: &str, key_hash: &str, name: &str) -> SqlResult<()> {
         self.with_connection(|conn| {
             queries::add_api_key(conn, id, key_prefix, key_hash, name)
+        })
+    }
+    
+    /// Liste toutes les clés API
+    pub fn list_api_keys(&self) -> SqlResult<Vec<(String, String, String, bool, String)>> {
+        self.with_connection(|conn| {
+            queries::list_api_keys(conn)
+        })
+    }
+    
+    /// Révoque une clé API (soft-delete)
+    pub fn revoke_api_key(&self, key_prefix: &str) -> SqlResult<bool> {
+        self.with_connection(|conn| {
+            queries::revoke_api_key(conn, key_prefix)
         })
     }
 }

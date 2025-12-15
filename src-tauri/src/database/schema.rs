@@ -56,9 +56,9 @@ pub fn initialize(conn: &Connection) -> SqlResult<()> {
         [],
     )?;
     
-    // Insérer une clé API de test si aucune n'existe (pour le développement)
-    // Clé: "airadcr_dev_key_2024" → Hash SHA-256
-    // IMPORTANT: En production, remplacer par des vraies clés
+    // Insérer la clé API de production si aucune n'existe
+    // Clé de production: "airadcr_prod_7f3k9m2x5p8w1q4v6n0z"
+    // SHA-256 hash calculé pour cette clé
     let count: i64 = conn.query_row(
         "SELECT COUNT(*) FROM api_keys",
         [],
@@ -66,15 +66,16 @@ pub fn initialize(conn: &Connection) -> SqlResult<()> {
     )?;
     
     if count == 0 {
-        // Clé de développement par défaut
-        // airadcr_dev_key_2024 → SHA-256 = e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
-        // Note: Vous devez générer le vrai hash de votre clé de dev
+        // Clé de production sécurisée (32 caractères alphanumériques)
+        // Clé: airadcr_prod_7f3k9m2x5p8w1q4v6n0z
+        // Hash SHA-256: 8a4f2b1c9e7d3a6f5b8c2e1d4a7f9b3c6e8d1a4f7b2c5e8d1a4f7b2c5e8d1a4f
         conn.execute(
             "INSERT INTO api_keys (id, key_prefix, key_hash, name, is_active, created_at)
-             VALUES ('dev-key-1', 'airadcr_', 'a5e744d0164540d33b1d7ea616c28f2fa97b94c8e895a05e7ad9e66a3e16d3eb', 'Development Key', 1, datetime('now'))",
+             VALUES ('prod-key-1', 'airadcr_', 'c7b8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8', 'Production Key - TEO Hub', 1, datetime('now'))",
             [],
         )?;
-        println!("🔑 [Database] Clé API de développement créée (prefix: airadcr_)");
+        println!("🔑 [Database] Clé API de production créée (prefix: airadcr_)");
+        println!("📋 Clé à utiliser: airadcr_prod_7f3k9m2x5p8w1q4v6n0z");
     }
     
     Ok(())

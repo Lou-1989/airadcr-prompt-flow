@@ -1,0 +1,136 @@
+// ============================================================================
+// AIRADCR Desktop - Module Base de Données SQLite
+// ============================================================================
+// Ce module gère le stockage local des rapports en attente et des clés API.
+// La base est stockée dans le répertoire AppData de l'application.
+// ============================================================================
+
+pub mod schema;
+pub mod queries;
+
+use rusqlite::{Connection, Result as SqlResult};
+use std::sync::Mutex;
+use std::path::PathBuf;
+
+/// Structure principale de la base de données thread-safe
+pub struct Database {
+    conn: Mutex<Connection>,
+}
+
+impl Database {
+    /// Crée ou ouvre la base de données
+    pub fn new(app_data_dir: PathBuf) -> SqlResult<Self> {
+        // Créer le répertoire si nécessaire
+        std::fs::create_dir_all(&app_data_dir).ok();
+        
+        let db_path = app_data_dir.join("pending_reports.db");
+        println!("📂 [Database] Chemin: {:?}", db_path);
+        
+        let conn = Connection::open(&db_path)?;
+        
+        // Initialiser le schéma
+        schema::initialize(&conn)?;
+        
+        println!("✅ [Database] Base initialisée avec succès");
+        
+        Ok(Self {
+            conn: Mutex::new(conn),
+        })
+    }
+    
+    /// Crée une base en mémoire (pour les tests)
+    #[allow(dead_code)]
+    pub fn new_in_memory() -> SqlResult<Self> {
+        let conn = Connection::open_in_memory()?;
+        schema::initialize(&conn)?;
+        
+        Ok(Self {
+            conn: Mutex::new(conn),
+        })
+    }
+    
+    /// Exécute une opération avec la connexion
+    pub fn with_connection<F, T>(&self, f: F) -> SqlResult<T>
+    where
+        F: FnOnce(&Connection) -> SqlResult<T>,
+    {
+        let conn = self.conn.lock().map_err(|_| {
+            rusqlite::Error::ExecuteReturnedResults
+        })?;
+        f(&conn)
+    }
+}
+
+// ============================================================================
+// Implémentation des méthodes de requête (délégation au module queries)
+// ============================================================================
+
+impl Database {
+    /// Insère un nouveau rapport en attente
+    pub fn insert_pending_report(
+        &self,
+        id: &str,
+        technical_id: &str,
+        structured_data: &str,
+        source_type: &str,
+        ai_modules: Option<&str>,
+        created_at: &str,
+        expires_at: &str,
+    ) -> SqlResult<()> {
+        self.with_connection(|conn| {
+            queries::insert_pending_report(
+                conn,
+                id,
+                technical_id,
+                structured_data,
+                source_type,
+                ai_modules,
+                created_at,
+                expires_at,
+            )
+        })
+    }
+    
+    /// Récupère un rapport par son technical_id
+    pub fn get_pending_report(&self, technical_id: &str) -> SqlResult<Option<queries::PendingReport>> {
+        self.with_connection(|conn| {
+            queries::get_pending_report_by_tid(conn, technical_id)
+        })
+    }
+    
+    /// Marque un rapport comme récupéré
+    pub fn mark_as_retrieved(&self, technical_id: &str) -> SqlResult<bool> {
+        self.with_connection(|conn| {
+            queries::mark_as_retrieved(conn, technical_id)
+        })
+    }
+    
+    /// Supprime un rapport
+    pub fn delete_pending_report(&self, technical_id: &str) -> SqlResult<bool> {
+        self.with_connection(|conn| {
+            queries::delete_pending_report(conn, technical_id)
+        })
+    }
+    
+    /// Nettoie les rapports expirés
+    pub fn cleanup_expired_reports(&self) -> SqlResult<usize> {
+        self.with_connection(|conn| {
+            queries::cleanup_expired_reports(conn)
+        })
+    }
+    
+    /// Valide une clé API
+    pub fn validate_api_key(&self, key_prefix: &str, key_hash: &str) -> SqlResult<bool> {
+        self.with_connection(|conn| {
+            queries::validate_api_key(conn, key_prefix, key_hash)
+        })
+    }
+    
+    /// Ajoute une clé API (pour l'administration)
+    #[allow(dead_code)]
+    pub fn add_api_key(&self, id: &str, key_prefix: &str, key_hash: &str, name: &str) -> SqlResult<()> {
+        self.with_connection(|conn| {
+            queries::add_api_key(conn, id, key_prefix, key_hash, name)
+        })
+    }
+}

@@ -1065,6 +1065,33 @@ fn main() {
     let system_tray = SystemTray::new().with_menu(tray_menu);
 
     let app = tauri::Builder::default()
+        // 🔒 Protection contre les instances multiples
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            println!("🔄 [Single Instance] Instance secondaire détectée");
+            println!("   Arguments: {:?}", argv);
+            
+            // Focus la fenêtre existante
+            if let Some(window) = app.get_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+                println!("✅ [Single Instance] Fenêtre principale focusée");
+            }
+            
+            // Si argv contient un tid, naviguer vers ce rapport
+            // ex: AIRADCR.exe --open-tid=ABC123
+            for arg in argv.iter() {
+                if arg.starts_with("--open-tid=") {
+                    let tid = arg.trim_start_matches("--open-tid=");
+                    println!("🎯 [Single Instance] Navigation vers tid: {}", tid);
+                    if let Some(window) = app.get_window("main") {
+                        let url = format!("https://airadcr.com/app?tid={}", tid);
+                        let _ = window.emit("airadcr:navigate_to_report", &url);
+                    }
+                    break;
+                }
+            }
+        }))
         .manage(AppState::default())
         .system_tray(system_tray)
         .on_system_tray_event(|app, event| match event {

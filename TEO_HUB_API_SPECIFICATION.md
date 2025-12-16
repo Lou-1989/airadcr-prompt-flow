@@ -731,6 +731,122 @@ class AiradcrDesktopClient:
             return response.status_code == 200
         except requests.exceptions.RequestException:
             return False
+    
+    def find_report(
+        self,
+        accession_number: Optional[str] = None,
+        patient_id: Optional[str] = None,
+        exam_uid: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Recherche un rapport par identifiants RIS (sans connaître le technical_id).
+        
+        Args:
+            accession_number: Numéro d'accession DICOM
+            patient_id: ID patient local/RIS
+            exam_uid: UID DICOM de l'examen
+            
+        Returns:
+            Données du rapport avec technical_id, ou None si non trouvé
+            
+        Example:
+            >>> result = client.find_report(accession_number="ACC2024001")
+            >>> if result:
+            ...     print(f"Technical ID: {result['data']['technical_id']}")
+        """
+        params = {}
+        if accession_number:
+            params["accession_number"] = accession_number
+        if patient_id:
+            params["patient_id"] = patient_id
+        if exam_uid:
+            params["exam_uid"] = exam_uid
+        
+        if not params:
+            logger.error("Au moins un identifiant requis pour find_report")
+            return None
+        
+        try:
+            response = self._session.get(
+                f"{self.base_url}/find-report",
+                params=params,
+                timeout=self.timeout
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                logger.info(f"Rapport trouvé: {data.get('data', {}).get('technical_id')}")
+                return data
+            elif response.status_code == 404:
+                logger.warning("Aucun rapport trouvé pour ces identifiants")
+                return None
+            else:
+                logger.error(f"Erreur {response.status_code}: {response.json().get('error')}")
+                return None
+                
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Erreur réseau find_report: {e}")
+            return None
+    
+    def open_report(
+        self,
+        technical_id: Optional[str] = None,
+        accession_number: Optional[str] = None,
+        patient_id: Optional[str] = None,
+        exam_uid: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Ouvre AIRADCR et navigue automatiquement vers un rapport spécifique.
+        
+        La fenêtre AIRADCR passe au premier plan automatiquement.
+        
+        Args:
+            technical_id: Technical ID direct (prioritaire)
+            accession_number: Numéro d'accession DICOM
+            patient_id: ID patient local/RIS
+            exam_uid: UID DICOM de l'examen
+            
+        Returns:
+            Dictionnaire avec success, message, technical_id, navigated_to
+            
+        Example:
+            >>> result = client.open_report(accession_number="ACC2024001")
+            >>> if result["success"]:
+            ...     print(f"Navigation vers: {result['navigated_to']}")
+        """
+        params = {}
+        if technical_id:
+            params["tid"] = technical_id
+        if accession_number:
+            params["accession_number"] = accession_number
+        if patient_id:
+            params["patient_id"] = patient_id
+        if exam_uid:
+            params["exam_uid"] = exam_uid
+        
+        if not params:
+            logger.error("Au moins un identifiant requis pour open_report")
+            return {"success": False, "error": "At least one identifier required"}
+        
+        try:
+            response = self._session.post(
+                f"{self.base_url}/open-report",
+                params=params,
+                timeout=self.timeout
+            )
+            
+            data = response.json()
+            
+            if response.status_code == 200:
+                logger.info(f"Navigation déclenchée: {data.get('navigated_to')}")
+                return data
+            else:
+                logger.error(f"Erreur open_report: {data.get('error')}")
+                return data
+                
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Erreur réseau open_report: {e}")
+            return {"success": False, "error": str(e)}
 
 
 # =============================================================================
@@ -1033,6 +1149,81 @@ namespace TeoHub.AiradcrIntegration
         public string Timestamp { get; set; } = "";
     }
 
+    /// <summary>
+    /// Réponse de recherche de rapport.
+    /// </summary>
+    public class FindReportResponse
+    {
+        [JsonPropertyName("success")]
+        public bool Success { get; set; }
+
+        [JsonPropertyName("data")]
+        public ReportData? Data { get; set; }
+
+        [JsonPropertyName("retrieval_url")]
+        public string RetrievalUrl { get; set; } = "";
+
+        [JsonPropertyName("error")]
+        public string Error { get; set; } = "";
+    }
+
+    /// <summary>
+    /// Données du rapport trouvé.
+    /// </summary>
+    public class ReportData
+    {
+        [JsonPropertyName("technical_id")]
+        public string TechnicalId { get; set; } = "";
+
+        [JsonPropertyName("patient_id")]
+        public string? PatientId { get; set; }
+
+        [JsonPropertyName("accession_number")]
+        public string? AccessionNumber { get; set; }
+
+        [JsonPropertyName("exam_uid")]
+        public string? ExamUid { get; set; }
+
+        [JsonPropertyName("structured")]
+        public StructuredReport? Structured { get; set; }
+
+        [JsonPropertyName("source_type")]
+        public string SourceType { get; set; } = "";
+
+        [JsonPropertyName("ai_modules")]
+        public string[]? AiModules { get; set; }
+
+        [JsonPropertyName("modality")]
+        public string? Modality { get; set; }
+
+        [JsonPropertyName("status")]
+        public string Status { get; set; } = "";
+
+        [JsonPropertyName("created_at")]
+        public string CreatedAt { get; set; } = "";
+    }
+
+    /// <summary>
+    /// Réponse d'ouverture de rapport.
+    /// </summary>
+    public class OpenReportResponse
+    {
+        [JsonPropertyName("success")]
+        public bool Success { get; set; }
+
+        [JsonPropertyName("message")]
+        public string Message { get; set; } = "";
+
+        [JsonPropertyName("technical_id")]
+        public string TechnicalId { get; set; } = "";
+
+        [JsonPropertyName("navigated_to")]
+        public string NavigatedTo { get; set; } = "";
+
+        [JsonPropertyName("error")]
+        public string Error { get; set; } = "";
+    }
+
     #endregion
 
     /// <summary>
@@ -1163,6 +1354,117 @@ namespace TeoHub.AiradcrIntegration
             };
 
             return await StoreReportAsync(request);
+        }
+
+        /// <summary>
+        /// Recherche un rapport par identifiants RIS (sans connaître le technical_id).
+        /// </summary>
+        /// <param name="accessionNumber">Numéro d'accession DICOM</param>
+        /// <param name="patientId">ID patient local/RIS</param>
+        /// <param name="examUid">UID DICOM de l'examen</param>
+        /// <returns>Données du rapport ou null si non trouvé</returns>
+        public async Task<FindReportResponse?> FindReportAsync(
+            string? accessionNumber = null,
+            string? patientId = null,
+            string? examUid = null)
+        {
+            var queryParams = new List<string>();
+            if (!string.IsNullOrEmpty(accessionNumber))
+                queryParams.Add($"accession_number={Uri.EscapeDataString(accessionNumber)}");
+            if (!string.IsNullOrEmpty(patientId))
+                queryParams.Add($"patient_id={Uri.EscapeDataString(patientId)}");
+            if (!string.IsNullOrEmpty(examUid))
+                queryParams.Add($"exam_uid={Uri.EscapeDataString(examUid)}");
+
+            if (queryParams.Count == 0)
+            {
+                Console.WriteLine("[AIRADCR] Erreur: Au moins un identifiant requis");
+                return new FindReportResponse { Success = false, Error = "At least one identifier required" };
+            }
+
+            var url = $"{_baseUrl}/find-report?{string.Join("&", queryParams)}";
+
+            try
+            {
+                var response = await _httpClient.GetAsync(url);
+                var responseJson = await response.Content.ReadAsStringAsync();
+
+                var result = JsonSerializer.Deserialize<FindReportResponse>(responseJson, _jsonOptions);
+
+                if (result?.Success == true)
+                {
+                    Console.WriteLine($"[AIRADCR] Rapport trouvé: {result.Data?.TechnicalId}");
+                }
+                else
+                {
+                    Console.WriteLine($"[AIRADCR] Rapport non trouvé: {result?.Error}");
+                }
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[AIRADCR] Erreur find_report: {ex.Message}");
+                return new FindReportResponse { Success = false, Error = ex.Message };
+            }
+        }
+
+        /// <summary>
+        /// Ouvre AIRADCR et navigue automatiquement vers un rapport spécifique.
+        /// </summary>
+        /// <param name="technicalId">Technical ID direct (prioritaire)</param>
+        /// <param name="accessionNumber">Numéro d'accession DICOM</param>
+        /// <param name="patientId">ID patient local/RIS</param>
+        /// <param name="examUid">UID DICOM de l'examen</param>
+        /// <returns>Résultat de la navigation</returns>
+        public async Task<OpenReportResponse> OpenReportAsync(
+            string? technicalId = null,
+            string? accessionNumber = null,
+            string? patientId = null,
+            string? examUid = null)
+        {
+            var queryParams = new List<string>();
+            if (!string.IsNullOrEmpty(technicalId))
+                queryParams.Add($"tid={Uri.EscapeDataString(technicalId)}");
+            if (!string.IsNullOrEmpty(accessionNumber))
+                queryParams.Add($"accession_number={Uri.EscapeDataString(accessionNumber)}");
+            if (!string.IsNullOrEmpty(patientId))
+                queryParams.Add($"patient_id={Uri.EscapeDataString(patientId)}");
+            if (!string.IsNullOrEmpty(examUid))
+                queryParams.Add($"exam_uid={Uri.EscapeDataString(examUid)}");
+
+            if (queryParams.Count == 0)
+            {
+                Console.WriteLine("[AIRADCR] Erreur: Au moins un identifiant requis");
+                return new OpenReportResponse { Success = false, Error = "At least one identifier required" };
+            }
+
+            var url = $"{_baseUrl}/open-report?{string.Join("&", queryParams)}";
+
+            try
+            {
+                var response = await _httpClient.PostAsync(url, null);
+                var responseJson = await response.Content.ReadAsStringAsync();
+
+                var result = JsonSerializer.Deserialize<OpenReportResponse>(responseJson, _jsonOptions)
+                    ?? new OpenReportResponse { Success = false, Error = "Désérialisation échouée" };
+
+                if (result.Success)
+                {
+                    Console.WriteLine($"[AIRADCR] Navigation déclenchée: {result.NavigatedTo}");
+                }
+                else
+                {
+                    Console.WriteLine($"[AIRADCR] Erreur open_report: {result.Error}");
+                }
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[AIRADCR] Erreur open_report: {ex.Message}");
+                return new OpenReportResponse { Success = false, Error = ex.Message };
+            }
         }
 
         public void Dispose()

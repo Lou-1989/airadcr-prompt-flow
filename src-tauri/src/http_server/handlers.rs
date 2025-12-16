@@ -786,12 +786,14 @@ pub async fn open_report(
         }
     } else {
         eprintln!("❌ [HTTP] AppHandle non disponible (app pas encore démarrée)");
-        HttpResponse::ServiceUnavailable().json(OpenReportResponse {
-            success: false,
-            message: None,
-            technical_id: Some(tid),
-            navigated_to: None,
-            error: Some("Application not yet ready. Please try again in a moment.".to_string()),
-        })
+        HttpResponse::ServiceUnavailable()
+            .insert_header(("Retry-After", "2"))
+            .json(OpenReportResponse {
+                success: false,
+                message: None,
+                technical_id: Some(tid),
+                navigated_to: None,
+                error: Some("Application not yet ready. Please try again in a moment.".to_string()),
+            })
     }
 }

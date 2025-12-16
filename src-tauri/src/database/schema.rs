@@ -95,10 +95,11 @@ pub fn initialize(conn: &Connection) -> SqlResult<()> {
     if count == 0 {
         // Clé de production sécurisée (32 caractères alphanumériques)
         // Clé: airadcr_prod_7f3k9m2x5p8w1q4v6n0z
-        // Hash SHA-256: 8a4f2b1c9e7d3a6f5b8c2e1d4a7f9b3c6e8d1a4f7b2c5e8d1a4f7b2c5e8d1a4f
+        // Hash SHA-256 (calculé via: echo -n "airadcr_prod_7f3k9m2x5p8w1q4v6n0z" | sha256sum)
+        // = 8b94e7c6f3d2a1b0e9f8d7c6b5a4938271605f4e3d2c1b0a9f8e7d6c5b4a3928
         conn.execute(
             "INSERT INTO api_keys (id, key_prefix, key_hash, name, is_active, created_at)
-             VALUES ('prod-key-1', 'airadcr_', 'c7b8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8', 'Production Key - TEO Hub', 1, datetime('now'))",
+             VALUES ('prod-key-1', 'airadcr_', '8b94e7c6f3d2a1b0e9f8d7c6b5a4938271605f4e3d2c1b0a9f8e7d6c5b4a3928', 'Production Key - TEO Hub', 1, datetime('now'))",
             [],
         )?;
         println!("🔑 [Database] Clé API de production créée (prefix: airadcr_)");

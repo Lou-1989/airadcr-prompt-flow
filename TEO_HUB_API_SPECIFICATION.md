@@ -323,6 +323,145 @@ DELETE http://localhost:8741/pending-report?tid=TEO_2024_12345
 
 ---
 
+### 4.5 GET /find-report 🔍 (Recherche RIS)
+
+Recherche un rapport par identifiants RIS (sans connaître le `technical_id`).
+
+> 💡 **Cas d'usage** : Le RIS possède l'`accession_number` mais pas le `technical_id` généré par TÉO Hub.
+
+**Requête :**
+```http
+GET http://localhost:8741/find-report?accession_number=ACC2024001
+```
+
+**Paramètres de requête (au moins un requis) :**
+
+| Paramètre | Type | Description |
+|-----------|------|-------------|
+| `accession_number` | string | Numéro d'accession DICOM |
+| `patient_id` | string | ID patient local/RIS |
+| `exam_uid` | string | UID DICOM de l'examen |
+
+**Exemples de recherche :**
+```http
+# Par accession_number seul
+GET /find-report?accession_number=ACC2024001
+
+# Par patient_id seul
+GET /find-report?patient_id=PAT123456
+
+# Par exam_uid seul
+GET /find-report?exam_uid=1.2.840.113619.2.XXX.YYY.ZZZ
+
+# Combinaison (plus précise)
+GET /find-report?patient_id=PAT123456&accession_number=ACC2024001
+```
+
+**Réponse 200 (Succès) :**
+```json
+{
+  "success": true,
+  "data": {
+    "technical_id": "TEO_2024_12345",
+    "patient_id": "PAT123456",
+    "exam_uid": "1.2.840.113619.2.XXX.YYY.ZZZ",
+    "accession_number": "ACC2024001",
+    "study_instance_uid": "1.2.840.10008.5.1.4.1.1.2.XXX",
+    "structured": {
+      "title": "IRM Cérébrale",
+      "indication": "Céphalées chroniques",
+      "technique": "IRM 3T avec injection",
+      "results": "Analyse IA TÉO Hub...",
+      "conclusion": ""
+    },
+    "source_type": "teo_hub",
+    "ai_modules": ["brain_volumetry", "lesion_detection"],
+    "modality": "MR",
+    "metadata": {
+      "teo_version": "2.1.0",
+      "confidence_score": 0.94
+    },
+    "status": "pending",
+    "created_at": "2024-12-16T10:30:00Z"
+  },
+  "retrieval_url": "http://localhost:8741/pending-report?tid=TEO_2024_12345"
+}
+```
+
+**Réponses d'erreur :**
+
+| Code | Description | Corps |
+|------|-------------|-------|
+| 400 | Aucun identifiant fourni | `{"success": false, "error": "At least one identifier required: accession_number, patient_id, or exam_uid"}` |
+| 404 | Rapport non trouvé | `{"success": false, "error": "No report found matching the provided identifiers"}` |
+
+---
+
+### 4.6 POST /open-report 🚀 (Ouverture Contextuelle)
+
+Ouvre AIRADCR et navigue automatiquement vers un rapport spécifique.
+
+> 💡 **Cas d'usage** : Le RIS veut ouvrir directement AIRADCR sur un patient spécifique sans que l'utilisateur ait à chercher.
+
+**Requête (par technical_id) :**
+```http
+POST http://localhost:8741/open-report?tid=TEO_2024_12345
+```
+
+**Requête (par identifiants RIS - recherche automatique) :**
+```http
+POST http://localhost:8741/open-report?accession_number=ACC2024001
+```
+
+**Paramètres de requête (au moins un requis) :**
+
+| Paramètre | Type | Description |
+|-----------|------|-------------|
+| `tid` | string | `technical_id` direct (prioritaire) |
+| `accession_number` | string | Numéro d'accession DICOM |
+| `patient_id` | string | ID patient local/RIS |
+| `exam_uid` | string | UID DICOM de l'examen |
+
+**Exemples d'appel :**
+```http
+# Par technical_id (le plus direct)
+POST /open-report?tid=TEO_2024_12345
+
+# Par accession_number (recherche automatique)
+POST /open-report?accession_number=ACC2024001
+
+# Combinaison d'identifiants
+POST /open-report?patient_id=PAT123456&accession_number=ACC2024001
+```
+
+**Comportement :**
+
+1. Si `tid` fourni → utilisation directe
+2. Sinon → recherche dans la base par identifiants RIS
+3. Émission d'un événement Tauri `airadcr:navigate_to_report`
+4. L'iframe AIRADCR navigue vers `https://airadcr.com/app?tid=XXX`
+5. La fenêtre AIRADCR passe au premier plan
+
+**Réponse 200 (Succès) :**
+```json
+{
+  "success": true,
+  "message": "Navigation triggered successfully",
+  "technical_id": "TEO_2024_12345",
+  "navigated_to": "https://airadcr.com/app?tid=TEO_2024_12345"
+}
+```
+
+**Réponses d'erreur :**
+
+| Code | Description | Corps |
+|------|-------------|-------|
+| 400 | Aucun identifiant fourni | `{"success": false, "error": "At least one identifier required: tid, accession_number, patient_id, or exam_uid"}` |
+| 404 | Rapport non trouvé | `{"success": false, "error": "No report found matching the provided identifiers"}` |
+| 500 | Erreur de navigation | `{"success": false, "error": "Failed to trigger navigation event"}` |
+
+---
+
 ## 5. Exemples de Code Python
 
 ### 5.1 Client Python Complet

@@ -6,14 +6,26 @@ use rusqlite::{Connection, Result as SqlResult};
 
 /// Initialise le schéma de la base de données
 pub fn initialize(conn: &Connection) -> SqlResult<()> {
-    // Table des rapports en attente
+    // Table des rapports en attente - AVEC identifiants patients (LOCAL UNIQUEMENT)
     conn.execute(
         "CREATE TABLE IF NOT EXISTS pending_reports (
             id TEXT PRIMARY KEY,
             technical_id TEXT UNIQUE NOT NULL,
+            
+            -- Identifiants patients (ACCEPTÉS EN LOCAL car données ne quittent pas la machine)
+            patient_id TEXT,
+            exam_uid TEXT,
+            accession_number TEXT,
+            study_instance_uid TEXT,
+            
+            -- Données structurées du rapport
             structured_data TEXT NOT NULL,
             source_type TEXT DEFAULT 'tauri_local',
             ai_modules TEXT,
+            modality TEXT,
+            metadata TEXT,
+            
+            -- Statut et timing
             status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'retrieved', 'expired')),
             created_at TEXT NOT NULL,
             expires_at TEXT NOT NULL,
@@ -38,6 +50,11 @@ pub fn initialize(conn: &Connection) -> SqlResult<()> {
     // Index pour optimiser les requêtes
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_pending_technical_id ON pending_reports(technical_id)",
+        [],
+    )?;
+    
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pending_patient_id ON pending_reports(patient_id)",
         [],
     )?;
     

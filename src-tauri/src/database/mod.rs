@@ -66,14 +66,20 @@ impl Database {
 // ============================================================================
 
 impl Database {
-    /// Insère un nouveau rapport en attente
+    /// Insère un nouveau rapport en attente (avec identifiants patients pour LOCAL)
     pub fn insert_pending_report(
         &self,
         id: &str,
         technical_id: &str,
+        patient_id: Option<&str>,
+        exam_uid: Option<&str>,
+        accession_number: Option<&str>,
+        study_instance_uid: Option<&str>,
         structured_data: &str,
         source_type: &str,
         ai_modules: Option<&str>,
+        modality: Option<&str>,
+        metadata: Option<&str>,
         created_at: &str,
         expires_at: &str,
     ) -> SqlResult<()> {
@@ -82,9 +88,15 @@ impl Database {
                 conn,
                 id,
                 technical_id,
+                patient_id,
+                exam_uid,
+                accession_number,
+                study_instance_uid,
                 structured_data,
                 source_type,
                 ai_modules,
+                modality,
+                metadata,
                 created_at,
                 expires_at,
             )

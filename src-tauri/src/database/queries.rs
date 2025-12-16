@@ -14,9 +14,18 @@ use chrono::Utc;
 pub struct PendingReport {
     pub id: String,
     pub technical_id: String,
+    // Identifiants patients (LOCAL UNIQUEMENT)
+    pub patient_id: Option<String>,
+    pub exam_uid: Option<String>,
+    pub accession_number: Option<String>,
+    pub study_instance_uid: Option<String>,
+    // Données structurées
     pub structured_data: String,
     pub source_type: String,
     pub ai_modules: Option<String>,
+    pub modality: Option<String>,
+    pub metadata: Option<String>,
+    // Statut
     pub status: String,
     pub created_at: String,
     pub expires_at: String,
@@ -27,23 +36,31 @@ pub struct PendingReport {
 // Opérations CRUD sur les rapports
 // ============================================================================
 
-/// Insère un nouveau rapport en attente
+/// Insère un nouveau rapport en attente (avec identifiants patients pour LOCAL)
 pub fn insert_pending_report(
     conn: &Connection,
     id: &str,
     technical_id: &str,
+    patient_id: Option<&str>,
+    exam_uid: Option<&str>,
+    accession_number: Option<&str>,
+    study_instance_uid: Option<&str>,
     structured_data: &str,
     source_type: &str,
     ai_modules: Option<&str>,
+    modality: Option<&str>,
+    metadata: Option<&str>,
     created_at: &str,
     expires_at: &str,
 ) -> SqlResult<()> {
     // Utiliser INSERT OR REPLACE pour écraser un rapport existant avec le même technical_id
     conn.execute(
         "INSERT OR REPLACE INTO pending_reports 
-         (id, technical_id, structured_data, source_type, ai_modules, status, created_at, expires_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, 'pending', ?6, ?7)",
-        params![id, technical_id, structured_data, source_type, ai_modules, created_at, expires_at],
+         (id, technical_id, patient_id, exam_uid, accession_number, study_instance_uid,
+          structured_data, source_type, ai_modules, modality, metadata, status, created_at, expires_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 'pending', ?12, ?13)",
+        params![id, technical_id, patient_id, exam_uid, accession_number, study_instance_uid,
+                structured_data, source_type, ai_modules, modality, metadata, created_at, expires_at],
     )?;
     
     Ok(())
@@ -52,7 +69,8 @@ pub fn insert_pending_report(
 /// Récupère un rapport par son technical_id (uniquement si non expiré)
 pub fn get_pending_report_by_tid(conn: &Connection, technical_id: &str) -> SqlResult<Option<PendingReport>> {
     let mut stmt = conn.prepare(
-        "SELECT id, technical_id, structured_data, source_type, ai_modules, status, created_at, expires_at, retrieved_at
+        "SELECT id, technical_id, patient_id, exam_uid, accession_number, study_instance_uid,
+                structured_data, source_type, ai_modules, modality, metadata, status, created_at, expires_at, retrieved_at
          FROM pending_reports
          WHERE technical_id = ?1 AND status != 'expired' AND expires_at > datetime('now')"
     )?;
@@ -61,13 +79,19 @@ pub fn get_pending_report_by_tid(conn: &Connection, technical_id: &str) -> SqlRe
         Ok(PendingReport {
             id: row.get(0)?,
             technical_id: row.get(1)?,
-            structured_data: row.get(2)?,
-            source_type: row.get(3)?,
-            ai_modules: row.get(4)?,
-            status: row.get(5)?,
-            created_at: row.get(6)?,
-            expires_at: row.get(7)?,
-            retrieved_at: row.get(8)?,
+            patient_id: row.get(2)?,
+            exam_uid: row.get(3)?,
+            accession_number: row.get(4)?,
+            study_instance_uid: row.get(5)?,
+            structured_data: row.get(6)?,
+            source_type: row.get(7)?,
+            ai_modules: row.get(8)?,
+            modality: row.get(9)?,
+            metadata: row.get(10)?,
+            status: row.get(11)?,
+            created_at: row.get(12)?,
+            expires_at: row.get(13)?,
+            retrieved_at: row.get(14)?,
         })
     });
     
@@ -193,18 +217,24 @@ mod tests {
     }
     
     #[test]
-    fn test_insert_and_get_report() {
+    fn test_insert_and_get_report_with_patient_ids() {
         let conn = setup_test_db();
         
         insert_pending_report(
             &conn,
             "test-id-1",
             "TEST_001",
+            Some("PAT123456"),           // patient_id - ACCEPTÉ EN LOCAL
+            Some("1.2.3.4.5.6.7.8.9"),    // exam_uid
+            Some("ACC2024001"),           // accession_number
+            Some("1.2.840.xxx"),          // study_instance_uid
             r#"{"title": "Test IRM"}"#,
-            "test",
+            "ris_local",
             Some(r#"["module1"]"#),
+            Some("MR"),
+            Some(r#"{"priority": "routine"}"#),
             "2025-12-15T10:00:00Z",
-            "2099-12-31T23:59:59Z", // Loin dans le futur pour ne pas expirer
+            "2099-12-31T23:59:59Z",
         ).unwrap();
         
         let result = get_pending_report_by_tid(&conn, "TEST_001").unwrap();
@@ -212,7 +242,11 @@ mod tests {
         
         let report = result.unwrap();
         assert_eq!(report.technical_id, "TEST_001");
-        assert_eq!(report.source_type, "test");
+        assert_eq!(report.patient_id, Some("PAT123456".to_string()));
+        assert_eq!(report.exam_uid, Some("1.2.3.4.5.6.7.8.9".to_string()));
+        assert_eq!(report.accession_number, Some("ACC2024001".to_string()));
+        assert_eq!(report.source_type, "ris_local");
+        assert_eq!(report.modality, Some("MR".to_string()));
     }
     
     #[test]
@@ -223,9 +257,10 @@ mod tests {
             &conn,
             "test-id-2",
             "TEST_002",
+            None, None, None, None,  // Pas d'identifiants patients
             r#"{"title": "Test"}"#,
             "test",
-            None,
+            None, None, None,
             "2025-12-15T10:00:00Z",
             "2099-12-31T23:59:59Z",
         ).unwrap();
@@ -245,11 +280,13 @@ mod tests {
             &conn,
             "test-id-3",
             "TEST_003",
+            Some("PAT999"),
+            None, None, None,
             r#"{"title": "Expired"}"#,
             "test",
-            None,
+            None, None, None,
             "2020-01-01T10:00:00Z",
-            "2020-01-02T10:00:00Z", // Expiré dans le passé
+            "2020-01-02T10:00:00Z",
         ).unwrap();
         
         let result = get_pending_report_by_tid(&conn, "TEST_003").unwrap();

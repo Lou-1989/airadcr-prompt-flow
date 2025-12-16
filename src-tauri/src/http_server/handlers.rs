@@ -119,11 +119,12 @@ pub struct FindReportQuery {
 #[derive(Serialize)]
 pub struct FindReportResponse {
     pub success: bool,
-    pub found: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<ReportData>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub message: Option<String>,
+    pub retrieval_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -137,11 +138,14 @@ pub struct OpenReportQuery {
 #[derive(Serialize)]
 pub struct OpenReportResponse {
     pub success: bool,
-    pub navigated: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub technical_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub message: Option<String>,
+    pub navigated_to: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -645,9 +649,9 @@ pub async fn find_report(
                 .and_then(|s| serde_json::from_str(s).ok());
             
             println!("✅ [HTTP] Rapport trouvé: tid={}", report.technical_id);
+            let tid = report.technical_id.clone();
             HttpResponse::Ok().json(FindReportResponse {
                 success: true,
-                found: true,
                 data: Some(ReportData {
                     technical_id: report.technical_id,
                     patient_id: report.patient_id,
@@ -662,16 +666,17 @@ pub async fn find_report(
                     status: report.status,
                     created_at: report.created_at,
                 }),
-                message: None,
+                retrieval_url: Some(format!("http://localhost:8741/pending-report?tid={}", tid)),
+                error: None,
             })
         }
         Ok(None) => {
             println!("⚠️ [HTTP] Aucun rapport trouvé pour ces identifiants");
             HttpResponse::NotFound().json(FindReportResponse {
-                success: true,
-                found: false,
+                success: false,
                 data: None,
-                message: Some("No report found with these identifiers".to_string()),
+                retrieval_url: None,
+                error: Some("No report found matching the provided identifiers".to_string()),
             })
         }
         Err(e) => {
@@ -730,9 +735,10 @@ pub async fn open_report(
         None => {
             return HttpResponse::BadRequest().json(OpenReportResponse {
                 success: false,
-                navigated: false,
+                message: None,
                 technical_id: None,
-                message: Some("No identifier provided. Use 'tid' or RIS identifiers (accession_number, patient_id, exam_uid)".to_string()),
+                navigated_to: None,
+                error: Some("At least one identifier required: tid, accession_number, patient_id, or exam_uid".to_string()),
             });
         }
     };
@@ -751,18 +757,20 @@ pub async fn open_report(
                     
                     HttpResponse::Ok().json(OpenReportResponse {
                         success: true,
-                        navigated: true,
-                        technical_id: Some(tid),
                         message: Some("Navigation triggered successfully".to_string()),
+                        technical_id: Some(tid.clone()),
+                        navigated_to: Some(format!("https://airadcr.com/app?tid={}", tid)),
+                        error: None,
                     })
                 }
                 Err(e) => {
                     eprintln!("❌ [HTTP] Erreur émission événement: {}", e);
                     HttpResponse::InternalServerError().json(OpenReportResponse {
                         success: false,
-                        navigated: false,
+                        message: None,
                         technical_id: Some(tid),
-                        message: Some(format!("Failed to emit navigation event: {}", e)),
+                        navigated_to: None,
+                        error: Some(format!("Failed to trigger navigation event: {}", e)),
                     })
                 }
             }
@@ -770,18 +778,20 @@ pub async fn open_report(
             eprintln!("❌ [HTTP] Fenêtre main non trouvée");
             HttpResponse::InternalServerError().json(OpenReportResponse {
                 success: false,
-                navigated: false,
+                message: None,
                 technical_id: Some(tid),
-                message: Some("Main window not found".to_string()),
+                navigated_to: None,
+                error: Some("Main window not found".to_string()),
             })
         }
     } else {
         eprintln!("❌ [HTTP] AppHandle non disponible (app pas encore démarrée)");
         HttpResponse::ServiceUnavailable().json(OpenReportResponse {
             success: false,
-            navigated: false,
+            message: None,
             technical_id: Some(tid),
-            message: Some("Application not yet ready. Please try again in a moment.".to_string()),
+            navigated_to: None,
+            error: Some("Application not yet ready. Please try again in a moment.".to_string()),
         })
     }
 }

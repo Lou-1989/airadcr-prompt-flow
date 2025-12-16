@@ -7,9 +7,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use chrono::{Utc, Duration};
 use uuid::Uuid;
+use tauri::Manager;
 
 use super::HttpServerState;
 use super::middleware::{validate_api_key, validate_admin_key};
+use crate::APP_HANDLE;
 
 // ============================================================================
 // Structures de données
@@ -120,6 +122,24 @@ pub struct FindReportResponse {
     pub found: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<ReportData>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct OpenReportQuery {
+    pub tid: Option<String>,
+    pub accession_number: Option<String>,
+    pub patient_id: Option<String>,
+    pub exam_uid: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct OpenReportResponse {
+    pub success: bool,
+    pub navigated: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub technical_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
 }
@@ -661,5 +681,107 @@ pub async fn find_report(
                 field: None,
             })
         }
+    }
+}
+
+/// POST /open-report - Ouvre un rapport dans l'iframe AIRADCR (navigation depuis RIS)
+/// Recherche par tid OU par identifiants RIS (accession_number, patient_id, exam_uid)
+pub async fn open_report(
+    query: web::Query<OpenReportQuery>,
+    state: web::Data<HttpServerState>,
+) -> HttpResponse {
+    // Déterminer le technical_id à utiliser
+    let technical_id: Option<String> = if let Some(tid) = &query.tid {
+        if !tid.is_empty() {
+            Some(tid.clone())
+        } else {
+            None
+        }
+    } else {
+        // Rechercher par identifiants RIS
+        let has_accession = query.accession_number.as_ref().map_or(false, |s| !s.is_empty());
+        let has_patient = query.patient_id.as_ref().map_or(false, |s| !s.is_empty());
+        let has_exam = query.exam_uid.as_ref().map_or(false, |s| !s.is_empty());
+        
+        if has_accession || has_patient || has_exam {
+            match state.db.find_pending_report_by_identifiers(
+                query.patient_id.as_deref(),
+                query.accession_number.as_deref(),
+                query.exam_uid.as_deref(),
+            ) {
+                Ok(Some(report)) => Some(report.technical_id),
+                Ok(None) => None,
+                Err(e) => {
+                    eprintln!("❌ [HTTP] Erreur recherche pour open-report: {}", e);
+                    return HttpResponse::InternalServerError().json(ErrorResponse {
+                        error: format!("Database error: {}", e),
+                        field: None,
+                    });
+                }
+            }
+        } else {
+            None
+        }
+    };
+    
+    // Vérifier qu'on a un technical_id
+    let tid = match technical_id {
+        Some(tid) => tid,
+        None => {
+            return HttpResponse::BadRequest().json(OpenReportResponse {
+                success: false,
+                navigated: false,
+                technical_id: None,
+                message: Some("No identifier provided. Use 'tid' or RIS identifiers (accession_number, patient_id, exam_uid)".to_string()),
+            });
+        }
+    };
+    
+    // Émettre l'événement Tauri pour naviguer vers le rapport
+    if let Some(app_handle) = APP_HANDLE.get() {
+        if let Some(window) = app_handle.get_window("main") {
+            // Émettre l'événement avec le tid
+            match window.emit("airadcr:navigate_to_report", &tid) {
+                Ok(_) => {
+                    println!("✅ [HTTP] Navigation émise: tid={}", tid);
+                    
+                    // Afficher et focus la fenêtre
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                    
+                    HttpResponse::Ok().json(OpenReportResponse {
+                        success: true,
+                        navigated: true,
+                        technical_id: Some(tid),
+                        message: Some("Navigation triggered successfully".to_string()),
+                    })
+                }
+                Err(e) => {
+                    eprintln!("❌ [HTTP] Erreur émission événement: {}", e);
+                    HttpResponse::InternalServerError().json(OpenReportResponse {
+                        success: false,
+                        navigated: false,
+                        technical_id: Some(tid),
+                        message: Some(format!("Failed to emit navigation event: {}", e)),
+                    })
+                }
+            }
+        } else {
+            eprintln!("❌ [HTTP] Fenêtre main non trouvée");
+            HttpResponse::InternalServerError().json(OpenReportResponse {
+                success: false,
+                navigated: false,
+                technical_id: Some(tid),
+                message: Some("Main window not found".to_string()),
+            })
+        }
+    } else {
+        eprintln!("❌ [HTTP] AppHandle non disponible (app pas encore démarrée)");
+        HttpResponse::ServiceUnavailable().json(OpenReportResponse {
+            success: false,
+            navigated: false,
+            technical_id: Some(tid),
+            message: Some("Application not yet ready. Please try again in a moment.".to_string()),
+        })
     }
 }

@@ -323,13 +323,122 @@ export function useLocalDesktopReport(technicalId: string | null) {
 
   return { report, loading, error, isDesktopAvailable };
 }
+
+/**
+ * Hook pour rechercher un rapport par identifiants RIS
+ */
+export function useFindReport() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const findReport = async (params: {
+    accession_number?: string;
+    patient_id?: string;
+    exam_uid?: string;
+  }): Promise<LocalReport | null> => {
+    const queryParams = new URLSearchParams();
+    if (params.accession_number) queryParams.set('accession_number', params.accession_number);
+    if (params.patient_id) queryParams.set('patient_id', params.patient_id);
+    if (params.exam_uid) queryParams.set('exam_uid', params.exam_uid);
+
+    if (!queryParams.toString()) {
+      setError('Au moins un identifiant requis');
+      return null;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(
+        `${TAURI_LOCAL_URL}/find-report?${queryParams}`,
+        { signal: AbortSignal.timeout(5000) }
+      );
+
+      const data = await response.json();
+
+      if (response.ok && data.success && data.data) {
+        return data.data;
+      } else if (response.status === 404) {
+        setError('Aucun rapport trouvé');
+        return null;
+      } else {
+        setError(data.error || 'Erreur de recherche');
+        return null;
+      }
+    } catch (err) {
+      setError('Impossible de contacter le desktop');
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return { findReport, loading, error };
+}
+
+/**
+ * Hook pour ouvrir un rapport dans l'interface AIRADCR
+ */
+export function useOpenReport() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const openReport = async (params: {
+    tid?: string;
+    accession_number?: string;
+    patient_id?: string;
+    exam_uid?: string;
+  }): Promise<{ success: boolean; technical_id?: string; navigated_to?: string }> => {
+    const queryParams = new URLSearchParams();
+    if (params.tid) queryParams.set('tid', params.tid);
+    if (params.accession_number) queryParams.set('accession_number', params.accession_number);
+    if (params.patient_id) queryParams.set('patient_id', params.patient_id);
+    if (params.exam_uid) queryParams.set('exam_uid', params.exam_uid);
+
+    if (!queryParams.toString()) {
+      setError('Au moins un identifiant requis');
+      return { success: false };
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(
+        `${TAURI_LOCAL_URL}/open-report?${queryParams}`,
+        { method: 'POST', signal: AbortSignal.timeout(5000) }
+      );
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        return {
+          success: true,
+          technical_id: data.technical_id,
+          navigated_to: data.navigated_to
+        };
+      } else {
+        setError(data.error || 'Erreur de navigation');
+        return { success: false };
+      }
+    } catch (err) {
+      setError('Impossible de contacter le desktop');
+      return { success: false };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return { openReport, loading, error };
+}
 ```
 
 ### Utilisation dans un composant
 
 ```tsx
 // components/DictationInterface.tsx
-import { useLocalDesktopReport } from '@/hooks/useLocalDesktopReport';
+import { useLocalDesktopReport, useFindReport, useOpenReport } from '@/hooks/useLocalDesktopReport';
 import { useSearchParams } from 'react-router-dom';
 
 export function DictationInterface() {
@@ -369,6 +478,75 @@ export function DictationInterface() {
       
       {/* Formulaire de dictée */}
       {/* ... */}
+    </div>
+  );
+}
+```
+
+### Composant de recherche RIS
+
+```tsx
+// components/RISReportSearch.tsx
+import { useFindReport, useOpenReport } from '@/hooks/useLocalDesktopReport';
+import { useState } from 'react';
+
+export function RISReportSearch() {
+  const [accessionNumber, setAccessionNumber] = useState('');
+  const [foundReport, setFoundReport] = useState(null);
+  
+  const { findReport, loading: findLoading, error: findError } = useFindReport();
+  const { openReport, loading: openLoading, error: openError } = useOpenReport();
+
+  const handleSearch = async () => {
+    const report = await findReport({ accession_number: accessionNumber });
+    setFoundReport(report);
+  };
+
+  const handleOpen = async () => {
+    if (foundReport?.technical_id) {
+      const result = await openReport({ tid: foundReport.technical_id });
+      if (result.success) {
+        console.log('Navigation vers:', result.navigated_to);
+      }
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2">
+        <Input
+          placeholder="Numéro d'accession"
+          value={accessionNumber}
+          onChange={(e) => setAccessionNumber(e.target.value)}
+        />
+        <Button onClick={handleSearch} disabled={findLoading}>
+          {findLoading ? 'Recherche...' : 'Rechercher'}
+        </Button>
+      </div>
+
+      {findError && <Alert variant="destructive">{findError}</Alert>}
+      {openError && <Alert variant="destructive">{openError}</Alert>}
+
+      {foundReport && (
+        <Card>
+          <CardHeader>
+            <CardTitle>{foundReport.structured?.title}</CardTitle>
+            <CardDescription>
+              Patient: {foundReport.patient_id} | Accession: {foundReport.accession_number}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">
+              {foundReport.structured?.indication}
+            </p>
+          </CardContent>
+          <CardFooter>
+            <Button onClick={handleOpen} disabled={openLoading}>
+              {openLoading ? 'Ouverture...' : 'Ouvrir dans AIRADCR'}
+            </Button>
+          </CardFooter>
+        </Card>
+      )}
     </div>
   );
 }

@@ -152,7 +152,171 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DeleteResponse'
+              $ref: '#/components/schemas/DeleteResponse'
+
+  /find-report:
+    get:
+      summary: Recherche un rapport par identifiants RIS
+      description: |
+        Permet au RIS de trouver un rapport en utilisant ses propres identifiants
+        (accession_number, patient_id, exam_uid) sans connaître le technical_id
+        généré par TÉO Hub.
+        
+        **Cas d'usage** : Le RIS possède l'accession_number mais pas le technical_id.
+      operationId: findReport
+      tags:
+        - RIS Integration
+      parameters:
+        - name: accession_number
+          in: query
+          required: false
+          description: Numéro d'accession DICOM
+          schema:
+            type: string
+          example: "ACC2024001"
+        - name: patient_id
+          in: query
+          required: false
+          description: ID patient local/RIS
+          schema:
+            type: string
+          example: "PAT123456"
+        - name: exam_uid
+          in: query
+          required: false
+          description: UID DICOM de l'examen
+          schema:
+            type: string
+          example: "1.2.840.113619.2.XXX.YYY.ZZZ"
+      responses:
+        '200':
+          description: Rapport trouvé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FindReportResponse'
+              example:
+                success: true
+                data:
+                  technical_id: "TEO_2024_12345"
+                  patient_id: "PAT123456"
+                  accession_number: "ACC2024001"
+                  exam_uid: "1.2.840.113619.2.XXX.YYY.ZZZ"
+                  structured:
+                    title: "IRM Cérébrale"
+                    indication: "Céphalées chroniques"
+                    technique: "IRM 3T avec injection"
+                    results: "Analyse IA TÉO Hub..."
+                    conclusion: ""
+                  source_type: "teo_hub"
+                  ai_modules: ["brain_volumetry", "lesion_detection"]
+                  modality: "MR"
+                  status: "pending"
+                  created_at: "2024-12-16T10:30:00Z"
+                retrieval_url: "http://localhost:8741/pending-report?tid=TEO_2024_12345"
+        '400':
+          description: Aucun identifiant fourni
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error: "At least one identifier required: accession_number, patient_id, or exam_uid"
+        '404':
+          description: Rapport non trouvé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error: "No report found matching the provided identifiers"
+
+  /open-report:
+    post:
+      summary: Ouvre AIRADCR sur un rapport spécifique
+      description: |
+        Déclenche la navigation automatique de l'iframe AIRADCR vers un rapport.
+        La fenêtre AIRADCR passe au premier plan automatiquement.
+        
+        **Comportement** :
+        1. Si `tid` fourni → utilisation directe
+        2. Sinon → recherche dans la base par identifiants RIS
+        3. Émission d'un événement Tauri `airadcr:navigate_to_report`
+        4. L'iframe navigue vers `https://airadcr.com/app?tid=XXX`
+        5. La fenêtre passe au premier plan
+      operationId: openReport
+      tags:
+        - RIS Integration
+      parameters:
+        - name: tid
+          in: query
+          required: false
+          description: Technical ID direct (prioritaire)
+          schema:
+            type: string
+          example: "TEO_2024_12345"
+        - name: accession_number
+          in: query
+          required: false
+          description: Numéro d'accession DICOM
+          schema:
+            type: string
+          example: "ACC2024001"
+        - name: patient_id
+          in: query
+          required: false
+          description: ID patient local/RIS
+          schema:
+            type: string
+          example: "PAT123456"
+        - name: exam_uid
+          in: query
+          required: false
+          description: UID DICOM de l'examen
+          schema:
+            type: string
+          example: "1.2.840.113619.2.XXX.YYY.ZZZ"
+      responses:
+        '200':
+          description: Navigation déclenchée avec succès
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenReportResponse'
+              example:
+                success: true
+                message: "Navigation triggered successfully"
+                technical_id: "TEO_2024_12345"
+                navigated_to: "https://airadcr.com/app?tid=TEO_2024_12345"
+        '400':
+          description: Aucun identifiant fourni
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error: "At least one identifier required: tid, accession_number, patient_id, or exam_uid"
+        '404':
+          description: Rapport non trouvé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error: "No report found matching the provided identifiers"
+        '500':
+          description: Erreur de navigation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error: "Failed to trigger navigation event"
 
 components:
   securitySchemes:
@@ -273,14 +437,84 @@ components:
     ErrorResponse:
       type: object
       properties:
+        success:
+          type: boolean
+          example: false
         error:
           type: string
         field:
           type: string
           nullable: true
 
+    FindReportResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          nullable: true
+          properties:
+            technical_id:
+              type: string
+            patient_id:
+              type: string
+            accession_number:
+              type: string
+            exam_uid:
+              type: string
+            study_instance_uid:
+              type: string
+            structured:
+              type: object
+              properties:
+                title:
+                  type: string
+                indication:
+                  type: string
+                technique:
+                  type: string
+                results:
+                  type: string
+                conclusion:
+                  type: string
+            source_type:
+              type: string
+            ai_modules:
+              type: array
+              items:
+                type: string
+            modality:
+              type: string
+            metadata:
+              type: object
+            status:
+              type: string
+              enum: [pending, retrieved]
+            created_at:
+              type: string
+              format: date-time
+        retrieval_url:
+          type: string
+          format: uri
+
+    OpenReportResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        technical_id:
+          type: string
+        navigated_to:
+          type: string
+          format: uri
+
 tags:
   - name: Health
     description: Vérification de l'état du serveur
   - name: Pending Reports
     description: Gestion des rapports radiologiques en attente
+  - name: RIS Integration
+    description: Endpoints pour l'intégration avec les systèmes RIS/PACS

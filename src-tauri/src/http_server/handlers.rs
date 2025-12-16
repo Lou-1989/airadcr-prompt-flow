@@ -9,7 +9,7 @@ use chrono::{Utc, Duration};
 use uuid::Uuid;
 
 use super::HttpServerState;
-use super::middleware::{validate_api_key, validate_admin_key, validate_patient_safe};
+use super::middleware::{validate_api_key, validate_admin_key};
 
 // ============================================================================
 // Structures de données
@@ -18,10 +18,18 @@ use super::middleware::{validate_api_key, validate_admin_key, validate_patient_s
 #[derive(Deserialize)]
 pub struct StorePendingReportRequest {
     pub technical_id: String,
+    // Identifiants patients - ACCEPTÉS EN LOCAL (données ne quittent pas la machine)
+    pub patient_id: Option<String>,
+    pub exam_uid: Option<String>,
+    pub accession_number: Option<String>,
+    pub study_instance_uid: Option<String>,
+    // Données structurées
     pub structured: Value,
     #[serde(default = "default_source_type")]
     pub source_type: String,
     pub ai_modules: Option<Vec<String>>,
+    pub modality: Option<String>,
+    pub metadata: Option<Value>,
     #[serde(default = "default_expires_hours")]
     pub expires_in_hours: i64,
 }
@@ -58,9 +66,26 @@ pub struct GetReportResponse {
 
 #[derive(Serialize)]
 pub struct ReportData {
+    pub technical_id: String,
+    // Identifiants patients (LOCAL UNIQUEMENT)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub patient_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exam_uid: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub accession_number: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub study_instance_uid: Option<String>,
+    // Données structurées
     pub structured: Value,
     pub source_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub ai_modules: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub modality: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<Value>,
+    pub status: String,
     pub created_at: String,
 }
 
@@ -192,7 +217,7 @@ pub async fn health_check() -> HttpResponse {
     })
 }
 
-/// POST /pending-report - Stocke un rapport en attente
+/// POST /pending-report - Stocke un rapport en attente (avec identifiants patients LOCAL)
 pub async fn store_pending_report(
     req: HttpRequest,
     body: web::Json<StorePendingReportRequest>,
@@ -222,14 +247,10 @@ pub async fn store_pending_report(
         });
     }
     
-    // 3. Validation Patient-Safe
-    if let Err((field, message)) = validate_patient_safe(&body.structured) {
-        println!("❌ [HTTP] Patient-Safe violation: {} ({})", message, field);
-        return HttpResponse::BadRequest().json(ErrorResponse {
-            error: format!("Patient-Safe violation: {}", message),
-            field: Some(field),
-        });
-    }
+    // 3. NOTE: Patient-Safe validation désactivée pour le serveur LOCAL
+    // En local, les identifiants patients sont autorisés car les données
+    // ne quittent jamais la machine de l'utilisateur.
+    // La validation Patient-Safe reste active pour le cloud (Supabase).
     
     // 4. Préparer les données
     let id = Uuid::new_v4().to_string();
@@ -240,19 +261,29 @@ pub async fn store_pending_report(
     let ai_modules_json = body.ai_modules
         .as_ref()
         .map(|m| serde_json::to_string(m).unwrap_or_default());
+    let metadata_json = body.metadata
+        .as_ref()
+        .map(|m| serde_json::to_string(m).unwrap_or_default());
     
-    // 5. Insérer en base
+    // 5. Insérer en base avec identifiants patients
     match state.db.insert_pending_report(
         &id,
         &body.technical_id,
+        body.patient_id.as_deref(),
+        body.exam_uid.as_deref(),
+        body.accession_number.as_deref(),
+        body.study_instance_uid.as_deref(),
         &structured_json,
         &body.source_type,
         ai_modules_json.as_deref(),
+        body.modality.as_deref(),
+        metadata_json.as_deref(),
         &now.to_rfc3339(),
         &expires_at.to_rfc3339(),
     ) {
         Ok(_) => {
-            println!("✅ [HTTP] Rapport stocké: tid={}", body.technical_id);
+            println!("✅ [HTTP] Rapport stocké: tid={}, patient_id={:?}", 
+                     body.technical_id, body.patient_id);
             HttpResponse::Ok().json(StoreSuccessResponse {
                 success: true,
                 technical_id: body.technical_id.clone(),
@@ -270,7 +301,7 @@ pub async fn store_pending_report(
     }
 }
 
-/// GET /pending-report?tid=XXX - Récupère un rapport en attente
+/// GET /pending-report?tid=XXX - Récupère un rapport en attente (avec identifiants patients)
 pub async fn get_pending_report(
     query: web::Query<TidQuery>,
     state: web::Data<HttpServerState>,
@@ -293,17 +324,28 @@ pub async fn get_pending_report(
             let ai_modules: Option<Vec<String>> = report.ai_modules
                 .as_ref()
                 .and_then(|s| serde_json::from_str(s).ok());
+            let metadata: Option<Value> = report.metadata
+                .as_ref()
+                .and_then(|s| serde_json::from_str(s).ok());
             
             // Marquer comme récupéré
             let _ = state.db.mark_as_retrieved(tid);
             
-            println!("✅ [HTTP] Rapport récupéré: tid={}", tid);
+            println!("✅ [HTTP] Rapport récupéré: tid={}, patient_id={:?}", tid, report.patient_id);
             HttpResponse::Ok().json(GetReportResponse {
                 success: true,
                 data: Some(ReportData {
+                    technical_id: report.technical_id,
+                    patient_id: report.patient_id,
+                    exam_uid: report.exam_uid,
+                    accession_number: report.accession_number,
+                    study_instance_uid: report.study_instance_uid,
                     structured,
                     source_type: report.source_type,
                     ai_modules,
+                    modality: report.modality,
+                    metadata,
+                    status: report.status,
                     created_at: report.created_at,
                 }),
                 error: None,

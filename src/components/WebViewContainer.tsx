@@ -4,8 +4,9 @@ import { SECURITY_CONFIG, validateAirADCRUrl } from '@/security/SecurityConfig';
 import { useSecureMessaging } from '@/hooks/useSecureMessaging';
 import { useInjectionContext } from '@/contexts/InjectionContext';
 import { useInteractionMode } from '@/hooks/useInteractionMode';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { logger } from '@/utils/logger';
+import { listen } from '@tauri-apps/api/event';
 
 interface WebViewContainerProps {
   className?: string;
@@ -14,6 +15,8 @@ interface WebViewContainerProps {
 export const WebViewContainer = ({ className }: WebViewContainerProps) => {
   const [isSecureUrl, setIsSecureUrl] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  const [currentUrl, setCurrentUrl] = useState(PRODUCTION_CONFIG.AIRADCR_URL);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   const { sendSecureMessage } = useSecureMessaging();
   const { isInjecting } = useInjectionContext();
   const { isInteractionMode } = useInteractionMode(isInjecting);
@@ -26,6 +29,40 @@ export const WebViewContainer = ({ className }: WebViewContainerProps) => {
     if (!isValid) {
       logger.error('[Sécurité] URL AirADCR non autorisée:', PRODUCTION_CONFIG.AIRADCR_URL);
     }
+  }, []);
+  
+  // Écouter les événements de navigation depuis le serveur HTTP (RIS)
+  useEffect(() => {
+    const setupNavigationListener = async () => {
+      try {
+        const unlisten = await listen<string>('airadcr:navigate_to_report', (event) => {
+          const tid = event.payload;
+          logger.debug('[Navigation] Événement reçu: tid=' + tid);
+          
+          // Construire l'URL avec le tid
+          const newUrl = `${PRODUCTION_CONFIG.AIRADCR_URL}?tid=${encodeURIComponent(tid)}`;
+          
+          // Valider l'URL avant navigation
+          if (validateAirADCRUrl(newUrl)) {
+            logger.debug('[Navigation] Changement URL vers:', newUrl);
+            setCurrentUrl(newUrl);
+          } else {
+            logger.error('[Navigation] URL non autorisée:', newUrl);
+          }
+        });
+        
+        return unlisten;
+      } catch (error) {
+        logger.error('[Navigation] Erreur setup listener:', error);
+        return () => {};
+      }
+    };
+    
+    const unlistenPromise = setupNavigationListener();
+    
+    return () => {
+      unlistenPromise.then(unlisten => unlisten());
+    };
   }, []);
   
   // Gestion des erreurs de chargement
@@ -93,7 +130,8 @@ export const WebViewContainer = ({ className }: WebViewContainerProps) => {
       {/* Bannière mode interaction - MASQUÉE pour interface commerciale 100% invisible */}
       
       <iframe
-        src={PRODUCTION_CONFIG.AIRADCR_URL}
+        ref={iframeRef}
+        src={currentUrl}
         className="w-full h-full border-0"
         title="AirADCR"
         allow={SECURITY_CONFIG.IFRAME_SECURITY.allow}

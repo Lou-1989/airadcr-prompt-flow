@@ -3,8 +3,8 @@
     windows_subsystem = "windows"
 )]
 
-use std::sync::{Mutex, Arc};
-use tauri::{CustomMenuItem, Manager, State, SystemTray, SystemTrayEvent, SystemTrayMenu, WindowEvent, GlobalShortcutManager};
+use std::sync::{Mutex, Arc, OnceLock};
+use tauri::{CustomMenuItem, Manager, State, SystemTray, SystemTrayEvent, SystemTrayMenu, WindowEvent, GlobalShortcutManager, AppHandle};
 use serde::{Deserialize, Serialize};
 use enigo::{Enigo, Button, Key, Settings, Direction, Coordinate, Mouse, Keyboard};
 use arboard::Clipboard;
@@ -15,6 +15,9 @@ use log::info;
 use std::fs::{OpenOptions, create_dir_all};
 use std::io::Write;
 extern crate chrono;
+
+// 🌐 Global AppHandle pour communication HTTP → Tauri
+pub static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 
 // 🌐 Modules serveur HTTP et base de données
 mod http_server;
@@ -1159,6 +1162,10 @@ fn main() {
         .setup(|app| {
             println!("🔧 [DEBUG] .setup() appelé - enregistrement raccourcis SpeechMike");
             register_global_shortcuts(app.handle());
+            
+            // 🌐 Stocker l'AppHandle pour le serveur HTTP
+            let _ = APP_HANDLE.set(app.handle());
+            println!("✅ [Global] AppHandle stocké pour communication HTTP → Tauri");
             
             // 🎯 Assertion Always-on-top après stabilisation WebView2
             if let Some(window) = app.get_window("main") {

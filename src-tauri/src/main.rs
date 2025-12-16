@@ -962,13 +962,14 @@ fn process_initial_deep_link(app: &tauri::App) {
             if let Some(tid) = extract_tid_from_deep_link(arg) {
                 println!("🔗 [Deep Link] Premier lancement avec tid: {}", tid);
                 if let Some(window) = app.get_window("main") {
-                    let url = format!("https://airadcr.com/app?tid={}", tid);
                     // Délai pour laisser le temps à la fenêtre de se charger
                     let window_clone = window.clone();
+                    let tid_clone = tid.clone();
                     thread::spawn(move || {
                         thread::sleep(Duration::from_millis(1500));
-                        let _ = window_clone.emit("airadcr:navigate_to_report", &url);
-                        println!("✅ [Deep Link] Navigation émise vers {}", url);
+                        // CORRECTION: Émettre uniquement le tid, pas l'URL complète
+                        let _ = window_clone.emit("airadcr:navigate_to_report", &tid_clone);
+                        println!("✅ [Deep Link] Navigation émise vers tid={}", tid_clone);
                     });
                 }
                 return;
@@ -979,12 +980,13 @@ fn process_initial_deep_link(app: &tauri::App) {
             let tid = arg.trim_start_matches("--open-tid=");
             println!("🎯 [CLI] Premier lancement avec tid: {}", tid);
             if let Some(window) = app.get_window("main") {
-                let url = format!("https://airadcr.com/app?tid={}", tid);
                 let window_clone = window.clone();
+                let tid_string = tid.to_string();
                 thread::spawn(move || {
                     thread::sleep(Duration::from_millis(1500));
-                    let _ = window_clone.emit("airadcr:navigate_to_report", &url);
-                    println!("✅ [CLI] Navigation émise vers {}", url);
+                    // CORRECTION: Émettre uniquement le tid, pas l'URL complète
+                    let _ = window_clone.emit("airadcr:navigate_to_report", &tid_string);
+                    println!("✅ [CLI] Navigation émise vers tid={}", tid_string);
                 });
             }
             return;
@@ -992,86 +994,11 @@ fn process_initial_deep_link(app: &tauri::App) {
     }
 }
 
-/*
-fn get_lock_file_path() -> PathBuf {
-    let mut path = std::env::temp_dir();
-    path.push("airadcr-desktop.lock");
-    path
-}
-
-fn is_already_running() -> bool {
-    let lock_path = get_lock_file_path();
-    if !lock_path.exists() {
-        return false;
-    }
-
-    // Vérifier si le PID contenu dans le lock file est encore actif
-    match fs::read_to_string(&lock_path) {
-        Ok(content) => {
-            let pid_str = content.trim();
-            if let Ok(pid_u32) = pid_str.parse::<u32>() {
-                // Utiliser sysinfo pour vérifier si le processus existe encore
-                #[allow(unused_imports)]
-                use sysinfo::{Pid, System, SystemExt};
-                let mut sys = System::new();
-                sys.refresh_processes();
-                let pid = Pid::from_u32(pid_u32);
-                if sys.process(pid).is_some() {
-                    // Une instance est active
-                    return true;
-                } else {
-                    // Verrou orphelin → suppression et continuer
-                    let _ = fs::remove_file(&lock_path);
-                    println!("🔓 Verrou orphelin détecté (PID {}), suppression du lock file", pid_u32);
-                    return false;
-                }
-            }
-        }
-        Err(e) => {
-            eprintln!("⚠️ Impossible de lire le lock file: {}", e);
-        }
-    }
-
-    // Par défaut, considérer que le lock est invalide et le supprimer
-    let _ = fs::remove_file(&lock_path);
-    println!("🔓 Lock file corrompu supprimé");
-    false
-}
-*/
-
-/*
-fn create_lock_file() -> std::io::Result<()> {
-    let lock_path = get_lock_file_path();
-    fs::write(lock_path, std::process::id().to_string())
-}
-
-fn remove_lock_file() {
-    let lock_path = get_lock_file_path();
-    let _ = fs::remove_file(lock_path);
-}
-*/
-
 fn main() {
     // 🆕 Initialiser le système de logging
     env_logger::Builder::from_default_env()
         .filter_level(log::LevelFilter::Debug)
         .init();
-    
-    // 🔒 SINGLE INSTANCE TEMPORAIREMENT DÉSACTIVÉ POUR DEBUG
-    /*
-    // 🔒 Vérifier si une instance est déjà en cours d'exécution
-    if is_already_running() {
-        eprintln!("⚠️ AIRADCR est déjà en cours d'exécution. Une seule instance est autorisée.");
-        std::process::exit(1);
-    }
-    
-    // 🔒 Créer le fichier de verrouillage
-    if let Err(e) = create_lock_file() {
-        eprintln!("❌ Erreur lors de la création du fichier de verrouillage: {}", e);
-    } else {
-        println!("🔒 Fichier de verrouillage créé: {:?}", get_lock_file_path());
-    }
-    */
     
     info!("🚀 Démarrage de AIRADCR Desktop v1.0.0");
     
@@ -1161,8 +1088,8 @@ fn main() {
                     if let Some(tid) = extract_tid_from_deep_link(arg) {
                         println!("🔗 [Deep Link] Navigation vers tid: {}", tid);
                         if let Some(window) = app.get_window("main") {
-                            let url = format!("https://airadcr.com/app?tid={}", tid);
-                            let _ = window.emit("airadcr:navigate_to_report", &url);
+                            // CORRECTION: Émettre uniquement le tid
+                            let _ = window.emit("airadcr:navigate_to_report", &tid);
                         }
                     }
                     break;
@@ -1172,8 +1099,8 @@ fn main() {
                     let tid = arg.trim_start_matches("--open-tid=");
                     println!("🎯 [CLI] Navigation vers tid: {}", tid);
                     if let Some(window) = app.get_window("main") {
-                        let url = format!("https://airadcr.com/app?tid={}", tid);
-                        let _ = window.emit("airadcr:navigate_to_report", &url);
+                        // CORRECTION: Émettre uniquement le tid
+                        let _ = window.emit("airadcr:navigate_to_report", tid);
                     }
                     break;
                 }
@@ -1196,10 +1123,6 @@ fn main() {
             }
             SystemTrayEvent::MenuItemClick { id, .. } => match id.as_str() {
                 "quit" => {
-                    // 🔒 DÉSACTIVÉ TEMPORAIREMENT
-                    // remove_lock_file();
-                    // println!("🔓 Fichier de verrouillage supprimé (quit)");
-                    // Graceful shutdown instead of brutal exit
                     app.exit(0);
                 }
                 "show" => {

@@ -64,6 +64,16 @@ pub fn initialize(conn: &Connection) -> SqlResult<()> {
     )?;
     
     conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pending_accession ON pending_reports(accession_number)",
+        [],
+    )?;
+    
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pending_exam_uid ON pending_reports(exam_uid)",
+        [],
+    )?;
+    
+    conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_pending_status ON pending_reports(status)",
         [],
     )?;

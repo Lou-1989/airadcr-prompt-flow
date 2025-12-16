@@ -16,6 +16,9 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .route("/pending-report", web::get().to(handlers::get_pending_report))
         .route("/pending-report", web::delete().to(handlers::delete_pending_report))
         
+        // RIS search endpoint (search by patient identifiers)
+        .route("/find-report", web::get().to(handlers::find_report))
+        
         // API Keys management (admin only)
         .route("/api-keys", web::post().to(handlers::create_api_key))
         .route("/api-keys", web::get().to(handlers::list_api_keys))

@@ -166,30 +166,35 @@ GET http://localhost:8741/find-report?exam_uid=1.2.3.4.5.6.7.8.9
 ```json
 {
   "success": true,
-  "found": true,
   "data": {
     "technical_id": "EXAM_2024_001",
     "patient_id": "PAT123456",
+    "exam_uid": "1.2.3.4.5.6.7.8.9",
     "accession_number": "ACC2024001",
+    "study_instance_uid": "1.2.840.10008.xxx",
     "structured": {
       "title": "IRM Cérébrale",
       "indication": "Céphalées",
-      "results": "Analyse IA: Normal..."
+      "technique": "IRM 3T avec injection",
+      "results": "Analyse IA: Normal...",
+      "conclusion": ""
     },
+    "source_type": "ris_local",
+    "ai_modules": ["nodule_detection", "volumetry"],
+    "modality": "MR",
     "status": "pending",
     "created_at": "2024-12-16T10:00:00Z"
-  }
+  },
+  "retrieval_url": "http://localhost:8741/pending-report?tid=EXAM_2024_001"
 }
 ```
 
-**Réponse non trouvé (404):**
-```json
-{
-  "success": true,
-  "found": false,
-  "message": "No report found with these identifiers"
-}
-```
+**Réponses d'erreur :**
+
+| Code | Description | Corps |
+|------|-------------|-------|
+| 400 | Aucun identifiant fourni | `{"success": false, "error": "At least one identifier required: accession_number, patient_id, or exam_uid"}` |
+| 404 | Rapport non trouvé | `{"success": false, "error": "No report found matching the provided identifiers"}` |
 
 ### 6. 🚀 Ouvrir un rapport dans AIRADCR (RIS → Navigation) (NEW)
 
@@ -215,20 +220,19 @@ POST http://localhost:8741/open-report?patient_id=PAT123&accession_number=ACC202
 ```json
 {
   "success": true,
-  "navigated": true,
+  "message": "Navigation triggered successfully",
   "technical_id": "EXAM_2024_001",
-  "message": "Navigation triggered successfully"
+  "navigated_to": "https://airadcr.com/app?tid=EXAM_2024_001"
 }
 ```
 
-**Réponse erreur (400):**
-```json
-{
-  "success": false,
-  "navigated": false,
-  "message": "No identifier provided. Use 'tid' or RIS identifiers"
-}
-```
+**Réponses d'erreur :**
+
+| Code | Description | Corps |
+|------|-------------|-------|
+| 400 | Aucun identifiant fourni | `{"success": false, "error": "At least one identifier required: tid, accession_number, patient_id, or exam_uid"}` |
+| 404 | Rapport non trouvé | `{"success": false, "error": "No report found matching the provided identifiers"}` |
+| 500 | Erreur de navigation | `{"success": false, "error": "Failed to trigger navigation event"}` |
 
 ---
 
@@ -764,9 +768,9 @@ curl -X POST "http://localhost:8741/open-report?accession_number=ACC2024001"
 # Réponse
 {
   "success": true,
-  "navigated": true,
+  "message": "Navigation triggered successfully",
   "technical_id": "TEO_ACC2024001_MR",
-  "message": "Navigation triggered successfully"
+  "navigated_to": "https://airadcr.com/app?tid=TEO_ACC2024001_MR"
 }
 ```
 

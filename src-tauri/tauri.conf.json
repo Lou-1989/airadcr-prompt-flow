@@ -77,6 +77,9 @@
         "digestAlgorithm": "sha256",
         "timestampUrl": "",
         "tsp": false,
+        "webviewInstallMode": {
+          "type": "downloadBootstrapper"
+        },
         "wix": {
           "language": "fr-FR",
           "fragmentPaths": [],
@@ -128,6 +131,17 @@
         },
         "background": null
       }
+    },
+    "cli": {
+      "description": "AIRADCR Desktop - Application de dictée radiologique",
+      "args": [
+        {
+          "name": "url",
+          "index": 1,
+          "takesValue": true,
+          "description": "URL airadcr:// à ouvrir"
+        }
+      ]
     },
     "security": {
       "csp": "default-src 'self' tauri://localhost https://tauri.localhost; connect-src 'self' https://airadcr.com tauri://localhost https://tauri.localhost; frame-src https://airadcr.com; child-src https://airadcr.com; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:"

@@ -915,7 +915,83 @@ async fn open_log_folder() -> Result<(), String> {
     Ok(())
 }
 
-// 🔒 SYSTÈME DE LOCK FILE NATIF POUR SINGLE INSTANCE - DÉSACTIVÉ TEMPORAIREMENT
+// 🔗 EXTRACTION DU TID DEPUIS UNE DEEP LINK
+// Formats supportés:
+//   - airadcr://open?tid=ABC123
+//   - airadcr://open/ABC123
+//   - airadcr://ABC123
+fn extract_tid_from_deep_link(url: &str) -> Option<String> {
+    // Retirer le préfixe airadcr://
+    let path = url.strip_prefix("airadcr://")?;
+    
+    // Format: airadcr://open?tid=ABC123
+    if path.contains("tid=") {
+        let tid = path.split("tid=").nth(1)?;
+        let tid = tid.split('&').next()?; // Au cas où il y a d'autres params
+        if !tid.is_empty() {
+            return Some(tid.to_string());
+        }
+    }
+    
+    // Format: airadcr://open/ABC123
+    if path.starts_with("open/") {
+        let tid = path.strip_prefix("open/")?;
+        if !tid.is_empty() {
+            return Some(tid.to_string());
+        }
+    }
+    
+    // Format: airadcr://ABC123 (direct)
+    let tid = path.trim_start_matches("open").trim_start_matches('/').trim_start_matches('?');
+    if !tid.is_empty() && !tid.contains('/') {
+        return Some(tid.to_string());
+    }
+    
+    None
+}
+
+// 🔗 TRAITEMENT DES DEEP LINKS AU PREMIER LANCEMENT
+fn process_initial_deep_link(app: &tauri::App) {
+    // Récupérer les arguments de ligne de commande
+    let args: Vec<String> = std::env::args().collect();
+    println!("🔗 [Deep Link] Arguments de démarrage: {:?}", args);
+    
+    for arg in args.iter().skip(1) { // Skip le nom de l'exe
+        // Deep Link: airadcr://...
+        if arg.starts_with("airadcr://") {
+            if let Some(tid) = extract_tid_from_deep_link(arg) {
+                println!("🔗 [Deep Link] Premier lancement avec tid: {}", tid);
+                if let Some(window) = app.get_window("main") {
+                    let url = format!("https://airadcr.com/app?tid={}", tid);
+                    // Délai pour laisser le temps à la fenêtre de se charger
+                    let window_clone = window.clone();
+                    thread::spawn(move || {
+                        thread::sleep(Duration::from_millis(1500));
+                        let _ = window_clone.emit("airadcr:navigate_to_report", &url);
+                        println!("✅ [Deep Link] Navigation émise vers {}", url);
+                    });
+                }
+                return;
+            }
+        }
+        // CLI: --open-tid=...
+        if arg.starts_with("--open-tid=") {
+            let tid = arg.trim_start_matches("--open-tid=");
+            println!("🎯 [CLI] Premier lancement avec tid: {}", tid);
+            if let Some(window) = app.get_window("main") {
+                let url = format!("https://airadcr.com/app?tid={}", tid);
+                let window_clone = window.clone();
+                thread::spawn(move || {
+                    thread::sleep(Duration::from_millis(1500));
+                    let _ = window_clone.emit("airadcr:navigate_to_report", &url);
+                    println!("✅ [CLI] Navigation émise vers {}", url);
+                });
+            }
+            return;
+        }
+    }
+}
+
 /*
 fn get_lock_file_path() -> PathBuf {
     let mut path = std::env::temp_dir();
@@ -1065,7 +1141,7 @@ fn main() {
     let system_tray = SystemTray::new().with_menu(tray_menu);
 
     let app = tauri::Builder::default()
-        // 🔒 Protection contre les instances multiples
+        // 🔒 Protection contre les instances multiples + Deep Links
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             println!("🔄 [Single Instance] Instance secondaire détectée");
             println!("   Arguments: {:?}", argv);
@@ -1078,12 +1154,23 @@ fn main() {
                 println!("✅ [Single Instance] Fenêtre principale focusée");
             }
             
-            // Si argv contient un tid, naviguer vers ce rapport
-            // ex: AIRADCR.exe --open-tid=ABC123
+            // Traiter les arguments pour deep links et --open-tid
             for arg in argv.iter() {
+                // 🔗 Deep Link: airadcr://open?tid=ABC123
+                if arg.starts_with("airadcr://") {
+                    if let Some(tid) = extract_tid_from_deep_link(arg) {
+                        println!("🔗 [Deep Link] Navigation vers tid: {}", tid);
+                        if let Some(window) = app.get_window("main") {
+                            let url = format!("https://airadcr.com/app?tid={}", tid);
+                            let _ = window.emit("airadcr:navigate_to_report", &url);
+                        }
+                    }
+                    break;
+                }
+                // 🎯 Argument classique: --open-tid=ABC123
                 if arg.starts_with("--open-tid=") {
                     let tid = arg.trim_start_matches("--open-tid=");
-                    println!("🎯 [Single Instance] Navigation vers tid: {}", tid);
+                    println!("🎯 [CLI] Navigation vers tid: {}", tid);
                     if let Some(window) = app.get_window("main") {
                         let url = format!("https://airadcr.com/app?tid={}", tid);
                         let _ = window.emit("airadcr:navigate_to_report", &url);
@@ -1193,6 +1280,9 @@ fn main() {
             // 🌐 Stocker l'AppHandle pour le serveur HTTP
             let _ = APP_HANDLE.set(app.handle());
             println!("✅ [Global] AppHandle stocké pour communication HTTP → Tauri");
+            
+            // 🔗 Traiter les deep links au premier lancement
+            process_initial_deep_link(app);
             
             // 🎯 Assertion Always-on-top après stabilisation WebView2
             if let Some(window) = app.get_window("main") {

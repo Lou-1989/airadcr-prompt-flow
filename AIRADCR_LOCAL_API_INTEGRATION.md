@@ -145,6 +145,91 @@ Response 200:
 }
 ```
 
+### 5. 🔍 Rechercher un rapport par identifiants RIS (NEW)
+
+Le RIS peut rechercher un rapport sans connaître le `technical_id`, en utilisant ses propres identifiants.
+
+```http
+GET http://localhost:8741/find-report?accession_number=ACC2024001
+
+# Ou combinaison d'identifiants
+GET http://localhost:8741/find-report?patient_id=PAT123&accession_number=ACC2024001
+GET http://localhost:8741/find-report?exam_uid=1.2.3.4.5.6.7.8.9
+```
+
+**Paramètres de recherche** (au moins un requis) :
+- `accession_number` - Numéro d'accession DICOM
+- `patient_id` - ID patient RIS
+- `exam_uid` - UID DICOM de l'examen
+
+**Réponse succès (200):**
+```json
+{
+  "success": true,
+  "found": true,
+  "data": {
+    "technical_id": "EXAM_2024_001",
+    "patient_id": "PAT123456",
+    "accession_number": "ACC2024001",
+    "structured": {
+      "title": "IRM Cérébrale",
+      "indication": "Céphalées",
+      "results": "Analyse IA: Normal..."
+    },
+    "status": "pending",
+    "created_at": "2024-12-16T10:00:00Z"
+  }
+}
+```
+
+**Réponse non trouvé (404):**
+```json
+{
+  "success": true,
+  "found": false,
+  "message": "No report found with these identifiers"
+}
+```
+
+### 6. 🚀 Ouvrir un rapport dans AIRADCR (RIS → Navigation) (NEW)
+
+Le RIS peut déclencher l'ouverture d'un rapport directement dans l'interface AIRADCR.
+
+```http
+# Par technical_id direct
+POST http://localhost:8741/open-report?tid=EXAM_2024_001
+
+# Ou par identifiants RIS (recherche automatique)
+POST http://localhost:8741/open-report?accession_number=ACC2024001
+POST http://localhost:8741/open-report?patient_id=PAT123&accession_number=ACC2024001
+```
+
+**Comportement** :
+1. Si `tid` fourni : utilise directement ce technical_id
+2. Sinon : recherche par identifiants RIS (accession_number, patient_id, exam_uid)
+3. Émet un événement Tauri vers le frontend
+4. L'iframe navigue vers `https://airadcr.com/app?tid=XXX`
+5. La fenêtre AIRADCR s'affiche et prend le focus
+
+**Réponse succès (200):**
+```json
+{
+  "success": true,
+  "navigated": true,
+  "technical_id": "EXAM_2024_001",
+  "message": "Navigation triggered successfully"
+}
+```
+
+**Réponse erreur (400):**
+```json
+{
+  "success": false,
+  "navigated": false,
+  "message": "No identifier provided. Use 'tid' or RIS identifiers"
+}
+```
+
 ---
 
 ## 💻 Intégration TypeScript (airadcr.com)
@@ -410,6 +495,151 @@ CREATE TABLE pending_reports (
 -- Index pour recherche rapide
 CREATE INDEX idx_pending_patient_id ON pending_reports(patient_id);
 CREATE INDEX idx_pending_technical_id ON pending_reports(technical_id);
+CREATE INDEX idx_pending_accession ON pending_reports(accession_number);
+CREATE INDEX idx_pending_exam_uid ON pending_reports(exam_uid);
+```
+
+---
+
+## 🔄 Workflow Complet RIS ↔ TÉO Hub ↔ AIRADCR
+
+### Architecture des acteurs
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────────────┐
+│      RIS        │     │    TÉO Hub      │     │   AIRADCR Desktop       │
+│  (Xplore, etc.) │     │   (AI Server)   │     │   (Tauri + localhost)   │
+└────────┬────────┘     └────────┬────────┘     └────────────┬────────────┘
+         │                       │                           │
+         │  1. Envoie DICOM      │                           │
+         │ ─────────────────────▶│                           │
+         │                       │                           │
+         │                       │  2. POST /pending-report  │
+         │                       │ ─────────────────────────▶│
+         │                       │                           │ SQLite
+         │                       │  3. Retourne technical_id │
+         │                       │ ◀─────────────────────────│
+         │                       │                           │
+         │  4. Notifie RIS       │                           │
+         │ ◀─────────────────────│                           │
+         │  (accession + tid)    │                           │
+         │                       │                           │
+         │  5. Bouton "Ouvrir"   │                           │
+         │ ─────────────────────────────────────────────────▶│
+         │  POST /open-report?accession_number=XXX           │
+         │                       │                           │
+         │                       │           6. Navigation   │
+         │                       │              iframe       │
+         │                       │              airadcr.com  │
+         │                       │              ?tid=XXX     │
+         │                       │                           │
+         │  7. GET /pending-report?tid=XXX                   │
+         │                       │ ◀─────────────────────────│
+         │                       │                           │
+         │  8. Formulaire pré-rempli avec données patient    │
+         │                       │                           │
+         │  9. Radiologiste dicte → Injection dans RIS       │
+         │ ◀─────────────────────────────────────────────────│
+```
+
+### Étapes détaillées
+
+#### Étape 1-3 : TÉO Hub analyse et stocke
+
+TÉO Hub reçoit les images DICOM, effectue l'analyse IA, et envoie le rapport pré-rempli à AIRADCR Desktop :
+
+```bash
+# TÉO Hub → AIRADCR Desktop
+curl -X POST http://localhost:8741/pending-report \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: airadcr_prod_7f3k9m2x5p8w1q4v6n0z" \
+  -d '{
+    "technical_id": "TEO_ACC2024001_MR",
+    "patient_id": "PAT123456",
+    "accession_number": "ACC2024001",
+    "exam_uid": "1.2.3.4.5.6.7.8.9",
+    "structured": {
+      "title": "IRM Cérébrale",
+      "indication": "Céphalées chroniques",
+      "technique": "IRM 3T séquences T1, T2, FLAIR, diffusion",
+      "results": "VOLUMÉTRIE HIPPOCAMPIQUE:\n- Hippocampe droit: 3.2 cm³ (normal)\n- Hippocampe gauche: 3.1 cm³ (normal)\n\nANALYSE LÉSIONNELLE:\n- Aucune lésion focale détectée",
+      "conclusion": ""
+    },
+    "source_type": "teo_hub",
+    "ai_modules": ["hippocampal_volumetry", "lesion_detection"],
+    "modality": "MR"
+  }'
+```
+
+#### Étape 4 : TÉO Hub notifie le RIS
+
+TÉO Hub informe le RIS que le rapport est prêt (via HL7, API, ou webhook selon intégration).
+
+#### Étape 5-6 : RIS ouvre AIRADCR
+
+Quand l'utilisateur clique sur "Ouvrir dans AIRADCR" dans le RIS :
+
+```bash
+# RIS → AIRADCR Desktop (recherche par accession_number)
+curl -X POST "http://localhost:8741/open-report?accession_number=ACC2024001"
+
+# Réponse
+{
+  "success": true,
+  "navigated": true,
+  "technical_id": "TEO_ACC2024001_MR",
+  "message": "Navigation triggered successfully"
+}
+```
+
+#### Étape 7-8 : airadcr.com récupère les données
+
+L'iframe navigue vers `https://airadcr.com/app?tid=TEO_ACC2024001_MR` qui appelle automatiquement :
+
+```bash
+GET http://localhost:8741/pending-report?tid=TEO_ACC2024001_MR
+```
+
+Le formulaire de dictée est pré-rempli avec :
+- Identifiants patient (patient_id, accession_number)
+- Données structurées (titre, indication, technique, résultats IA)
+- Métadonnées (modalité, modules IA utilisés)
+
+#### Étape 9 : Injection du rapport final
+
+Après dictée et validation, le rapport est injecté dans le RIS via le système d'injection existant (Ctrl+Shift+S ou SpeechMike).
+
+---
+
+## 🧪 Tests cURL complets
+
+```bash
+# 1. Vérifier le desktop
+curl http://localhost:8741/health
+
+# 2. TÉO Hub stocke un rapport
+curl -X POST http://localhost:8741/pending-report \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: airadcr_prod_7f3k9m2x5p8w1q4v6n0z" \
+  -d '{
+    "technical_id": "TEST_001",
+    "patient_id": "PAT123456",
+    "accession_number": "ACC001",
+    "structured": {"title": "Radio Thorax", "indication": "Toux"},
+    "modality": "CR"
+  }'
+
+# 3. RIS recherche par accession_number
+curl "http://localhost:8741/find-report?accession_number=ACC001"
+
+# 4. RIS ouvre le rapport dans AIRADCR
+curl -X POST "http://localhost:8741/open-report?accession_number=ACC001"
+
+# 5. Récupérer le rapport (fait automatiquement par airadcr.com)
+curl "http://localhost:8741/pending-report?tid=TEST_001"
+
+# 6. Nettoyer
+curl -X DELETE "http://localhost:8741/pending-report?tid=TEST_001"
 ```
 
 ---
@@ -430,3 +660,16 @@ Le hook `useLocalDesktopReport` détecte automatiquement l'indisponibilité et p
 ### Q: Comment migrer depuis la version cloud ?
 
 Aucune migration nécessaire - les deux systèmes coexistent. Le frontend détecte automatiquement le desktop et l'utilise en priorité.
+
+### Q: Le RIS doit-il connaître le technical_id de TÉO Hub ?
+
+**Non !** Le RIS peut utiliser ses propres identifiants (accession_number, patient_id, exam_uid) pour rechercher (`/find-report`) et ouvrir (`/open-report`) un rapport. AIRADCR fait la correspondance automatiquement.
+
+### Q: Quelle est la différence entre `/find-report` et `/open-report` ?
+
+- **`/find-report`** : Recherche et retourne les données du rapport (lecture seule)
+- **`/open-report`** : Recherche ET déclenche la navigation dans l'interface AIRADCR
+
+### Q: Plusieurs rapports peuvent-ils exister pour le même patient ?
+
+Oui. La recherche retourne le rapport le plus récent correspondant aux critères. Utilisez des identifiants plus spécifiques (accession_number + exam_uid) pour cibler un examen précis.

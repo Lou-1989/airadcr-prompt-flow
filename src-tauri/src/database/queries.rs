@@ -137,6 +137,88 @@ pub fn cleanup_expired_reports(conn: &Connection) -> SqlResult<usize> {
     Ok(rows)
 }
 
+/// Recherche un rapport par identifiants RIS (patient_id, accession_number, exam_uid)
+/// Retourne le premier rapport correspondant non expiré
+pub fn find_pending_report_by_identifiers(
+    conn: &Connection,
+    patient_id: Option<&str>,
+    accession_number: Option<&str>,
+    exam_uid: Option<&str>,
+) -> SqlResult<Option<PendingReport>> {
+    // Construire la requête dynamiquement selon les paramètres fournis
+    let mut conditions = Vec::new();
+    let mut param_values: Vec<String> = Vec::new();
+    
+    if let Some(acc) = accession_number {
+        if !acc.is_empty() {
+            conditions.push("accession_number = ?");
+            param_values.push(acc.to_string());
+        }
+    }
+    
+    if let Some(exam) = exam_uid {
+        if !exam.is_empty() {
+            conditions.push("exam_uid = ?");
+            param_values.push(exam.to_string());
+        }
+    }
+    
+    if let Some(pat) = patient_id {
+        if !pat.is_empty() {
+            conditions.push("patient_id = ?");
+            param_values.push(pat.to_string());
+        }
+    }
+    
+    if conditions.is_empty() {
+        return Ok(None);
+    }
+    
+    let where_clause = conditions.join(" OR ");
+    let sql = format!(
+        "SELECT id, technical_id, patient_id, exam_uid, accession_number, study_instance_uid,
+                structured_data, source_type, ai_modules, modality, metadata, status, created_at, expires_at, retrieved_at
+         FROM pending_reports
+         WHERE ({}) AND status != 'expired' AND expires_at > datetime('now')
+         ORDER BY created_at DESC
+         LIMIT 1",
+        where_clause
+    );
+    
+    let mut stmt = conn.prepare(&sql)?;
+    
+    // Convertir les paramètres en références pour rusqlite
+    let params: Vec<&dyn rusqlite::ToSql> = param_values.iter()
+        .map(|s| s as &dyn rusqlite::ToSql)
+        .collect();
+    
+    let result = stmt.query_row(params.as_slice(), |row| {
+        Ok(PendingReport {
+            id: row.get(0)?,
+            technical_id: row.get(1)?,
+            patient_id: row.get(2)?,
+            exam_uid: row.get(3)?,
+            accession_number: row.get(4)?,
+            study_instance_uid: row.get(5)?,
+            structured_data: row.get(6)?,
+            source_type: row.get(7)?,
+            ai_modules: row.get(8)?,
+            modality: row.get(9)?,
+            metadata: row.get(10)?,
+            status: row.get(11)?,
+            created_at: row.get(12)?,
+            expires_at: row.get(13)?,
+            retrieved_at: row.get(14)?,
+        })
+    });
+    
+    match result {
+        Ok(report) => Ok(Some(report)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
 // ============================================================================
 // Opérations sur les clés API
 // ============================================================================

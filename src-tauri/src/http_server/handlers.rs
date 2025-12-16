@@ -108,6 +108,23 @@ pub struct TidQuery {
 }
 
 #[derive(Deserialize)]
+pub struct FindReportQuery {
+    pub patient_id: Option<String>,
+    pub accession_number: Option<String>,
+    pub exam_uid: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct FindReportResponse {
+    pub success: bool,
+    pub found: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<ReportData>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+#[derive(Deserialize)]
 pub struct CreateApiKeyRequest {
     pub name: String,
     #[serde(default = "generate_random_key")]
@@ -563,6 +580,82 @@ pub async fn revoke_api_key(
         }
         Err(e) => {
             eprintln!("❌ [HTTP] Erreur révocation API key: {}", e);
+            HttpResponse::InternalServerError().json(ErrorResponse {
+                error: format!("Database error: {}", e),
+                field: None,
+            })
+        }
+    }
+}
+
+/// GET /find-report - Recherche un rapport par identifiants RIS (patient_id, accession_number, exam_uid)
+pub async fn find_report(
+    query: web::Query<FindReportQuery>,
+    state: web::Data<HttpServerState>,
+) -> HttpResponse {
+    // Vérifier qu'au moins un identifiant est fourni
+    let has_patient_id = query.patient_id.as_ref().map_or(false, |s| !s.is_empty());
+    let has_accession = query.accession_number.as_ref().map_or(false, |s| !s.is_empty());
+    let has_exam_uid = query.exam_uid.as_ref().map_or(false, |s| !s.is_empty());
+    
+    if !has_patient_id && !has_accession && !has_exam_uid {
+        return HttpResponse::BadRequest().json(ErrorResponse {
+            error: "At least one identifier required: patient_id, accession_number, or exam_uid".to_string(),
+            field: None,
+        });
+    }
+    
+    println!("🔍 [HTTP] Recherche rapport: patient_id={:?}, accession={:?}, exam_uid={:?}",
+             query.patient_id, query.accession_number, query.exam_uid);
+    
+    match state.db.find_pending_report_by_identifiers(
+        query.patient_id.as_deref(),
+        query.accession_number.as_deref(),
+        query.exam_uid.as_deref(),
+    ) {
+        Ok(Some(report)) => {
+            // Parser le JSON stocké
+            let structured: Value = serde_json::from_str(&report.structured_data)
+                .unwrap_or(Value::Null);
+            let ai_modules: Option<Vec<String>> = report.ai_modules
+                .as_ref()
+                .and_then(|s| serde_json::from_str(s).ok());
+            let metadata: Option<Value> = report.metadata
+                .as_ref()
+                .and_then(|s| serde_json::from_str(s).ok());
+            
+            println!("✅ [HTTP] Rapport trouvé: tid={}", report.technical_id);
+            HttpResponse::Ok().json(FindReportResponse {
+                success: true,
+                found: true,
+                data: Some(ReportData {
+                    technical_id: report.technical_id,
+                    patient_id: report.patient_id,
+                    exam_uid: report.exam_uid,
+                    accession_number: report.accession_number,
+                    study_instance_uid: report.study_instance_uid,
+                    structured,
+                    source_type: report.source_type,
+                    ai_modules,
+                    modality: report.modality,
+                    metadata,
+                    status: report.status,
+                    created_at: report.created_at,
+                }),
+                message: None,
+            })
+        }
+        Ok(None) => {
+            println!("⚠️ [HTTP] Aucun rapport trouvé pour ces identifiants");
+            HttpResponse::NotFound().json(FindReportResponse {
+                success: true,
+                found: false,
+                data: None,
+                message: Some("No report found with these identifiers".to_string()),
+            })
+        }
+        Err(e) => {
+            eprintln!("❌ [HTTP] Erreur recherche: {}", e);
             HttpResponse::InternalServerError().json(ErrorResponse {
                 error: format!("Database error: {}", e),
                 field: None,

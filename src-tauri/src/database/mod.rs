@@ -158,4 +158,16 @@ impl Database {
             queries::revoke_api_key(conn, key_prefix)
         })
     }
+    
+    /// Recherche un rapport par identifiants RIS
+    pub fn find_pending_report_by_identifiers(
+        &self,
+        patient_id: Option<&str>,
+        accession_number: Option<&str>,
+        exam_uid: Option<&str>,
+    ) -> SqlResult<Option<queries::PendingReport>> {
+        self.with_connection(|conn| {
+            queries::find_pending_report_by_identifiers(conn, patient_id, accession_number, exam_uid)
+        })
+    }
 }

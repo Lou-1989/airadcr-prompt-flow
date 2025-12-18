@@ -10,7 +10,7 @@ use uuid::Uuid;
 use tauri::Manager;
 
 use super::HttpServerState;
-use super::middleware::{validate_api_key, validate_admin_key};
+use super::middleware::{validate_api_key, validate_admin_key, RequestInfo};
 use crate::APP_HANDLE;
 
 // ============================================================================
@@ -264,6 +264,8 @@ pub async fn store_pending_report(
     body: web::Json<StorePendingReportRequest>,
     state: web::Data<HttpServerState>,
 ) -> HttpResponse {
+    let request_info = RequestInfo::from_request(&req);
+    
     // 1. Validation API Key
     let api_key = req
         .headers()
@@ -273,6 +275,7 @@ pub async fn store_pending_report(
     
     if !validate_api_key(&state.db, api_key) {
         println!("❌ [HTTP] Clé API invalide");
+        request_info.log_access(&state.db, 401, "unauthorized", Some("Invalid API key"));
         return HttpResponse::Unauthorized().json(ErrorResponse {
             error: "Invalid API key".to_string(),
             field: None,
@@ -282,6 +285,7 @@ pub async fn store_pending_report(
     // 2. Validation technical_id
     if let Err(msg) = validate_technical_id(&body.technical_id) {
         println!("❌ [HTTP] Invalid technical_id: {}", msg);
+        request_info.log_access(&state.db, 400, "bad_request", Some(&msg));
         return HttpResponse::BadRequest().json(ErrorResponse {
             error: msg,
             field: Some("technical_id".to_string()),
@@ -325,6 +329,7 @@ pub async fn store_pending_report(
         Ok(_) => {
             println!("✅ [HTTP] Rapport stocké: tid={}, patient_id={:?}", 
                      body.technical_id, body.patient_id);
+            request_info.log_access(&state.db, 200, "success", None);
             HttpResponse::Ok().json(StoreSuccessResponse {
                 success: true,
                 technical_id: body.technical_id.clone(),
@@ -334,6 +339,7 @@ pub async fn store_pending_report(
         }
         Err(e) => {
             eprintln!("❌ [HTTP] Erreur insertion: {}", e);
+            request_info.log_access(&state.db, 500, "error", Some(&format!("Database error: {}", e)));
             HttpResponse::InternalServerError().json(ErrorResponse {
                 error: format!("Database error: {}", e),
                 field: None,
@@ -344,12 +350,16 @@ pub async fn store_pending_report(
 
 /// GET /pending-report?tid=XXX - Récupère un rapport en attente (avec identifiants patients)
 pub async fn get_pending_report(
+    req: HttpRequest,
     query: web::Query<TidQuery>,
     state: web::Data<HttpServerState>,
 ) -> HttpResponse {
+    let request_info = RequestInfo::from_request(&req);
+    
     let tid = match &query.tid {
         Some(tid) if !tid.is_empty() => tid,
         _ => {
+            request_info.log_access(&state.db, 400, "bad_request", Some("Missing 'tid' parameter"));
             return HttpResponse::BadRequest().json(ErrorResponse {
                 error: "Missing 'tid' parameter".to_string(),
                 field: None,
@@ -373,6 +383,7 @@ pub async fn get_pending_report(
             let _ = state.db.mark_as_retrieved(tid);
             
             println!("✅ [HTTP] Rapport récupéré: tid={}, patient_id={:?}", tid, report.patient_id);
+            request_info.log_access(&state.db, 200, "success", None);
             HttpResponse::Ok().json(GetReportResponse {
                 success: true,
                 data: Some(ReportData {
@@ -394,6 +405,7 @@ pub async fn get_pending_report(
         }
         Ok(None) => {
             println!("⚠️ [HTTP] Rapport non trouvé: tid={}", tid);
+            request_info.log_access(&state.db, 404, "not_found", Some("Report not found or expired"));
             HttpResponse::NotFound().json(GetReportResponse {
                 success: false,
                 data: None,
@@ -402,6 +414,7 @@ pub async fn get_pending_report(
         }
         Err(e) => {
             eprintln!("❌ [HTTP] Erreur lecture: {}", e);
+            request_info.log_access(&state.db, 500, "error", Some(&format!("Database error: {}", e)));
             HttpResponse::InternalServerError().json(ErrorResponse {
                 error: format!("Database error: {}", e),
                 field: None,

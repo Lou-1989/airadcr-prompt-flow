@@ -83,6 +83,43 @@ pub fn initialize(conn: &Connection) -> SqlResult<()> {
         [],
     )?;
     
+    // =========================================================================
+    // Table des logs d'accès API (AUDIT)
+    // =========================================================================
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS access_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            ip_address TEXT NOT NULL,
+            method TEXT NOT NULL,
+            endpoint TEXT NOT NULL,
+            status_code INTEGER NOT NULL,
+            result TEXT NOT NULL CHECK (result IN ('success', 'unauthorized', 'not_found', 'error', 'bad_request')),
+            api_key_prefix TEXT,
+            user_agent TEXT,
+            request_id TEXT NOT NULL,
+            duration_ms INTEGER NOT NULL,
+            error_message TEXT
+        )",
+        [],
+    )?;
+    
+    // Index pour les requêtes de recherche sur access_logs
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_access_logs_timestamp ON access_logs(timestamp)",
+        [],
+    )?;
+    
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_access_logs_endpoint ON access_logs(endpoint)",
+        [],
+    )?;
+    
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_access_logs_result ON access_logs(result)",
+        [],
+    )?;
+    
     // Insérer la clé API de production si aucune n'existe
     // Clé de production: "airadcr_prod_7f3k9m2x5p8w1q4v6n0z"
     // SHA-256 hash calculé pour cette clé

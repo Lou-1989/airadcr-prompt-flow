@@ -416,6 +416,189 @@ pub fn list_api_keys_summary(conn: &Connection) -> SqlResult<Vec<ApiKeySummary>>
 }
 
 // ============================================================================
+// Opérations sur les logs d'accès API (AUDIT)
+// ============================================================================
+
+/// Structure représentant un log d'accès API
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AccessLog {
+    pub id: i64,
+    pub timestamp: String,
+    pub ip_address: String,
+    pub method: String,
+    pub endpoint: String,
+    pub status_code: i32,
+    pub result: String,
+    pub api_key_prefix: Option<String>,
+    pub user_agent: Option<String>,
+    pub request_id: String,
+    pub duration_ms: i64,
+    pub error_message: Option<String>,
+}
+
+/// Structure simplifiée pour l'affichage dans le Debug Panel
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AccessLogSummary {
+    pub id: i64,
+    pub timestamp: String,
+    pub ip_address: String,
+    pub method: String,
+    pub endpoint: String,
+    pub status_code: i32,
+    pub result: String,
+    pub duration_ms: i64,
+}
+
+/// Statistiques des logs d'accès
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AccessLogsStats {
+    pub total_requests: i64,
+    pub success_count: i64,
+    pub unauthorized_count: i64,
+    pub error_count: i64,
+    pub not_found_count: i64,
+    pub requests_by_endpoint: Vec<(String, i64)>,
+    pub avg_response_time_ms: f64,
+    pub last_24h_requests: i64,
+}
+
+/// Insère un nouveau log d'accès
+pub fn insert_access_log(
+    conn: &Connection,
+    timestamp: &str,
+    ip_address: &str,
+    method: &str,
+    endpoint: &str,
+    status_code: i32,
+    result: &str,
+    api_key_prefix: Option<&str>,
+    user_agent: Option<&str>,
+    request_id: &str,
+    duration_ms: i64,
+    error_message: Option<&str>,
+) -> SqlResult<i64> {
+    conn.execute(
+        "INSERT INTO access_logs 
+         (timestamp, ip_address, method, endpoint, status_code, result, 
+          api_key_prefix, user_agent, request_id, duration_ms, error_message)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        params![
+            timestamp, ip_address, method, endpoint, status_code, result,
+            api_key_prefix, user_agent, request_id, duration_ms, error_message
+        ],
+    )?;
+    
+    Ok(conn.last_insert_rowid())
+}
+
+/// Liste les logs d'accès récents (avec pagination)
+pub fn list_access_logs(conn: &Connection, limit: i64, offset: i64) -> SqlResult<Vec<AccessLogSummary>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, timestamp, ip_address, method, endpoint, status_code, result, duration_ms
+         FROM access_logs
+         ORDER BY timestamp DESC
+         LIMIT ?1 OFFSET ?2"
+    )?;
+    
+    let logs = stmt.query_map(params![limit, offset], |row| {
+        Ok(AccessLogSummary {
+            id: row.get(0)?,
+            timestamp: row.get(1)?,
+            ip_address: row.get(2)?,
+            method: row.get(3)?,
+            endpoint: row.get(4)?,
+            status_code: row.get(5)?,
+            result: row.get(6)?,
+            duration_ms: row.get(7)?,
+        })
+    })?
+    .collect::<SqlResult<Vec<_>>>()?;
+    
+    Ok(logs)
+}
+
+/// Récupère les statistiques des logs d'accès
+pub fn get_access_logs_stats(conn: &Connection) -> SqlResult<AccessLogsStats> {
+    let total_requests: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM access_logs",
+        [],
+        |row| row.get(0),
+    )?;
+    
+    let success_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM access_logs WHERE result = 'success'",
+        [],
+        |row| row.get(0),
+    )?;
+    
+    let unauthorized_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM access_logs WHERE result = 'unauthorized'",
+        [],
+        |row| row.get(0),
+    )?;
+    
+    let error_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM access_logs WHERE result = 'error'",
+        [],
+        |row| row.get(0),
+    )?;
+    
+    let not_found_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM access_logs WHERE result = 'not_found'",
+        [],
+        |row| row.get(0),
+    )?;
+    
+    let avg_response_time_ms: f64 = conn.query_row(
+        "SELECT COALESCE(AVG(duration_ms), 0.0) FROM access_logs",
+        [],
+        |row| row.get(0),
+    )?;
+    
+    let last_24h_requests: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM access_logs WHERE timestamp > datetime('now', '-24 hours')",
+        [],
+        |row| row.get(0),
+    )?;
+    
+    // Requêtes par endpoint (top 10)
+    let mut stmt = conn.prepare(
+        "SELECT endpoint, COUNT(*) as cnt FROM access_logs 
+         GROUP BY endpoint ORDER BY cnt DESC LIMIT 10"
+    )?;
+    
+    let requests_by_endpoint = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+    })?
+    .collect::<SqlResult<Vec<_>>>()?;
+    
+    Ok(AccessLogsStats {
+        total_requests,
+        success_count,
+        unauthorized_count,
+        error_count,
+        not_found_count,
+        requests_by_endpoint,
+        avg_response_time_ms,
+        last_24h_requests,
+    })
+}
+
+/// Nettoie les logs d'accès plus vieux qu'un certain nombre de jours
+pub fn cleanup_old_access_logs(conn: &Connection, days: i64) -> SqlResult<usize> {
+    let rows = conn.execute(
+        &format!("DELETE FROM access_logs WHERE timestamp < datetime('now', '-{} days')", days),
+        [],
+    )?;
+    
+    if rows > 0 {
+        println!("🧹 [Database] {} log(s) d'accès supprimé(s) (> {} jours)", rows, days);
+    }
+    
+    Ok(rows)
+}
+
+// ============================================================================
 // Tests unitaires
 // ============================================================================
 

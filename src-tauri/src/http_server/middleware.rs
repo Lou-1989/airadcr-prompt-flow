@@ -196,6 +196,99 @@ fn constant_time_compare(a: &[u8; 32], b: &[u8; 32]) -> bool {
 }
 
 // ============================================================================
+// Logging des accès API (AUDIT)
+// ============================================================================
+
+use chrono::Utc;
+use uuid::Uuid;
+
+/// Structure pour capturer les informations d'une requête avant traitement
+pub struct RequestInfo {
+    pub request_id: String,
+    pub start_time: std::time::Instant,
+    pub ip_address: String,
+    pub method: String,
+    pub endpoint: String,
+    pub api_key_prefix: Option<String>,
+    pub user_agent: Option<String>,
+}
+
+impl RequestInfo {
+    /// Crée une nouvelle instance à partir d'une requête HTTP
+    pub fn from_request(req: &actix_web::HttpRequest) -> Self {
+        let ip_address = req
+            .connection_info()
+            .peer_addr()
+            .unwrap_or("unknown")
+            .to_string();
+        
+        let api_key = req
+            .headers()
+            .get("x-api-key")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        
+        let api_key_prefix = if api_key.len() >= 8 {
+            Some(api_key[..8].to_string())
+        } else if !api_key.is_empty() {
+            Some(api_key.to_string())
+        } else {
+            None
+        };
+        
+        let user_agent = req
+            .headers()
+            .get("user-agent")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.chars().take(200).collect::<String>());
+        
+        Self {
+            request_id: Uuid::new_v4().to_string()[..8].to_string(),
+            start_time: std::time::Instant::now(),
+            ip_address,
+            method: req.method().to_string(),
+            endpoint: req.path().to_string(),
+            api_key_prefix,
+            user_agent,
+        }
+    }
+    
+    /// Enregistre le log d'accès dans la base de données
+    pub fn log_access(
+        &self,
+        db: &Arc<Database>,
+        status_code: u16,
+        result: &str,
+        error_message: Option<&str>,
+    ) {
+        let duration_ms = self.start_time.elapsed().as_millis() as i64;
+        let timestamp = Utc::now().to_rfc3339();
+        
+        match db.insert_access_log(
+            &timestamp,
+            &self.ip_address,
+            &self.method,
+            &self.endpoint,
+            status_code as i32,
+            result,
+            self.api_key_prefix.as_deref(),
+            self.user_agent.as_deref(),
+            &self.request_id,
+            duration_ms,
+            error_message,
+        ) {
+            Ok(id) => {
+                println!("📝 [Access Log] #{} {} {} {} → {} ({}ms)", 
+                    id, self.method, self.endpoint, self.ip_address, result, duration_ms);
+            }
+            Err(e) => {
+                eprintln!("❌ [Access Log] Erreur insertion: {}", e);
+            }
+        }
+    }
+}
+
+// ============================================================================
 // Tests unitaires
 // ============================================================================
 

@@ -24,7 +24,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { invoke } from '@tauri-apps/api/tauri';
-import { RefreshCw, Trash2, Database, Key, FileText, X, Plus, Copy, Check, Ban } from 'lucide-react';
+import { RefreshCw, Trash2, Database, Key, FileText, X, Plus, Copy, Check, Ban, Search } from 'lucide-react';
 
 interface DatabaseStats {
   total_reports: number;
@@ -82,6 +82,9 @@ export const DatabaseTab = ({ isTauriApp }: DatabaseTabProps) => {
   
   // État pour la révocation
   const [keyToRevoke, setKeyToRevoke] = useState<ApiKeySummary | null>(null);
+  
+  // État pour la recherche/filtre
+  const [searchQuery, setSearchQuery] = useState('');
 
   const fetchData = useCallback(async () => {
     if (!isTauriApp) return;
@@ -193,6 +196,20 @@ export const DatabaseTab = ({ isTauriApp }: DatabaseTabProps) => {
     }
   };
 
+  // Filtrage des rapports
+  const filteredReports = reports.filter((report) => {
+    if (!searchQuery.trim()) return true;
+    const query = searchQuery.toLowerCase();
+    return (
+      report.technical_id.toLowerCase().includes(query) ||
+      (report.accession_number?.toLowerCase().includes(query) ?? false) ||
+      (report.patient_id?.toLowerCase().includes(query) ?? false) ||
+      (report.modality?.toLowerCase().includes(query) ?? false) ||
+      report.status.toLowerCase().includes(query) ||
+      report.source_type.toLowerCase().includes(query)
+    );
+  });
+
   const formatDate = (dateStr: string) => {
     try {
       const date = new Date(dateStr);
@@ -293,19 +310,45 @@ export const DatabaseTab = ({ isTauriApp }: DatabaseTabProps) => {
 
       {/* Liste des rapports */}
       <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <FileText className="w-3 h-3" />
-          <span className="text-xs font-medium">Rapports ({reports.length})</span>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <FileText className="w-3 h-3" />
+            <span className="text-xs font-medium">
+              Rapports ({filteredReports.length}{searchQuery ? `/${reports.length}` : ''})
+            </span>
+          </div>
+        </div>
+        
+        {/* Champ de recherche */}
+        <div className="relative">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
+          <Input
+            type="text"
+            placeholder="Rechercher (ID, accession, modalité...)"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="h-7 pl-7 text-xs"
+          />
+          {searchQuery && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setSearchQuery('')}
+              className="absolute right-1 top-1/2 -translate-y-1/2 h-5 w-5 p-0"
+            >
+              <X className="w-3 h-3" />
+            </Button>
+          )}
         </div>
         
         <ScrollArea className="h-32">
-          {reports.length === 0 ? (
+          {filteredReports.length === 0 ? (
             <div className="text-xs text-muted-foreground text-center py-4">
-              Aucun rapport en base
+              {searchQuery ? 'Aucun rapport correspondant' : 'Aucun rapport en base'}
             </div>
           ) : (
             <div className="space-y-1">
-              {reports.map((report) => (
+              {filteredReports.map((report) => (
                 <div
                   key={report.technical_id}
                   className="p-2 bg-background/50 rounded text-xs space-y-1 group relative"

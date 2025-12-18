@@ -191,4 +191,62 @@ impl Database {
             queries::list_api_keys_summary(conn)
         })
     }
+    
+    // =========================================================================
+    // Opérations sur les logs d'accès API (AUDIT)
+    // =========================================================================
+    
+    /// Insère un log d'accès API
+    pub fn insert_access_log(
+        &self,
+        timestamp: &str,
+        ip_address: &str,
+        method: &str,
+        endpoint: &str,
+        status_code: i32,
+        result: &str,
+        api_key_prefix: Option<&str>,
+        user_agent: Option<&str>,
+        request_id: &str,
+        duration_ms: i64,
+        error_message: Option<&str>,
+    ) -> SqlResult<i64> {
+        self.with_connection(|conn| {
+            queries::insert_access_log(
+                conn,
+                timestamp,
+                ip_address,
+                method,
+                endpoint,
+                status_code,
+                result,
+                api_key_prefix,
+                user_agent,
+                request_id,
+                duration_ms,
+                error_message,
+            )
+        })
+    }
+    
+    /// Liste les logs d'accès récents
+    pub fn list_access_logs(&self, limit: i64, offset: i64) -> SqlResult<Vec<queries::AccessLogSummary>> {
+        self.with_connection(|conn| {
+            queries::list_access_logs(conn, limit, offset)
+        })
+    }
+    
+    /// Récupère les statistiques des logs d'accès
+    pub fn get_access_logs_stats(&self) -> SqlResult<queries::AccessLogsStats> {
+        self.with_connection(|conn| {
+            queries::get_access_logs_stats(conn)
+        })
+    }
+    
+    /// Nettoie les vieux logs d'accès
+    pub fn cleanup_old_access_logs(&self, days: i64) -> SqlResult<usize> {
+        self.with_connection(|conn| {
+            queries::cleanup_old_access_logs(conn, days)
+        })
+    }
 }

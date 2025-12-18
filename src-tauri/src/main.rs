@@ -1056,6 +1056,107 @@ async fn revoke_api_key_cmd(key_prefix: String) -> Result<bool, String> {
         .map_err(|e| format!("Erreur révocation: {}", e))
 }
 
+// =========================================================================
+// Commandes Access Logs (AUDIT)
+// =========================================================================
+
+/// Structure pour les logs d'accès (sérialisation)
+#[derive(Serialize)]
+struct AccessLogSummary {
+    id: i64,
+    timestamp: String,
+    ip_address: String,
+    method: String,
+    endpoint: String,
+    status_code: i32,
+    result: String,
+    duration_ms: i64,
+}
+
+/// Structure pour les statistiques des logs
+#[derive(Serialize)]
+struct AccessLogsStats {
+    total_requests: i64,
+    success_count: i64,
+    unauthorized_count: i64,
+    error_count: i64,
+    not_found_count: i64,
+    requests_by_endpoint: Vec<(String, i64)>,
+    avg_response_time_ms: f64,
+    last_24h_requests: i64,
+}
+
+/// Liste les logs d'accès API récents (pour Debug Panel)
+#[tauri::command]
+async fn get_access_logs(limit: Option<i64>, offset: Option<i64>) -> Result<Vec<AccessLogSummary>, String> {
+    let app_data_dir = dirs::data_local_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("airadcr-desktop");
+    
+    let db = database::Database::new(app_data_dir)
+        .map_err(|e| format!("Erreur ouverture DB: {}", e))?;
+    
+    let logs = db.list_access_logs(limit.unwrap_or(100), offset.unwrap_or(0))
+        .map_err(|e| format!("Erreur lecture logs: {}", e))?;
+    
+    // Convertir en structure locale
+    let result: Vec<AccessLogSummary> = logs.into_iter().map(|log| AccessLogSummary {
+        id: log.id,
+        timestamp: log.timestamp,
+        ip_address: log.ip_address,
+        method: log.method,
+        endpoint: log.endpoint,
+        status_code: log.status_code,
+        result: log.result,
+        duration_ms: log.duration_ms,
+    }).collect();
+    
+    Ok(result)
+}
+
+/// Récupère les statistiques des logs d'accès (pour Debug Panel)
+#[tauri::command]
+async fn get_access_logs_stats() -> Result<AccessLogsStats, String> {
+    let app_data_dir = dirs::data_local_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("airadcr-desktop");
+    
+    let db = database::Database::new(app_data_dir)
+        .map_err(|e| format!("Erreur ouverture DB: {}", e))?;
+    
+    let stats = db.get_access_logs_stats()
+        .map_err(|e| format!("Erreur stats logs: {}", e))?;
+    
+    Ok(AccessLogsStats {
+        total_requests: stats.total_requests,
+        success_count: stats.success_count,
+        unauthorized_count: stats.unauthorized_count,
+        error_count: stats.error_count,
+        not_found_count: stats.not_found_count,
+        requests_by_endpoint: stats.requests_by_endpoint,
+        avg_response_time_ms: stats.avg_response_time_ms,
+        last_24h_requests: stats.last_24h_requests,
+    })
+}
+
+/// Nettoie les vieux logs d'accès (pour Debug Panel)
+#[tauri::command]
+async fn cleanup_access_logs(days: Option<i64>) -> Result<i64, String> {
+    let app_data_dir = dirs::data_local_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("airadcr-desktop");
+    
+    let db = database::Database::new(app_data_dir)
+        .map_err(|e| format!("Erreur ouverture DB: {}", e))?;
+    
+    let count = db.cleanup_old_access_logs(days.unwrap_or(30))
+        .map_err(|e| format!("Erreur cleanup logs: {}", e))?;
+    
+    println!("🧹 [Access Logs] {} log(s) supprimé(s)", count);
+    
+    Ok(count as i64)
+}
+
 // 🔗 EXTRACTION DU TID DEPUIS UNE DEEP LINK
 // Formats supportés:
 //   - airadcr://open?tid=ABC123
@@ -1343,7 +1444,11 @@ fn main() {
             cleanup_expired_reports_cmd,
             delete_pending_report_cmd,
             create_api_key_cmd,
-            revoke_api_key_cmd
+            revoke_api_key_cmd,
+            // 🆕 Commandes Access Logs (AUDIT)
+            get_access_logs,
+            get_access_logs_stats,
+            cleanup_access_logs
         ])
         .setup(|app| {
             println!("🔧 [DEBUG] .setup() appelé - enregistrement raccourcis SpeechMike");

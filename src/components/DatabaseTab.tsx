@@ -24,7 +24,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { invoke } from '@tauri-apps/api/tauri';
-import { RefreshCw, Trash2, Database, Key, FileText, X, Plus, Copy, Check, Ban, Search } from 'lucide-react';
+import { RefreshCw, Trash2, Database, Key, FileText, X, Plus, Copy, Check, Ban, Search, Activity, Clock, AlertTriangle } from 'lucide-react';
 
 interface DatabaseStats {
   total_reports: number;
@@ -60,6 +60,28 @@ interface NewApiKeyResult {
   name: string;
 }
 
+interface AccessLogSummary {
+  id: number;
+  timestamp: string;
+  ip_address: string;
+  method: string;
+  endpoint: string;
+  status_code: number;
+  result: string;
+  duration_ms: number;
+}
+
+interface AccessLogsStats {
+  total_requests: number;
+  success_count: number;
+  unauthorized_count: number;
+  error_count: number;
+  not_found_count: number;
+  requests_by_endpoint: [string, number][];
+  avg_response_time_ms: number;
+  last_24h_requests: number;
+}
+
 interface DatabaseTabProps {
   isTauriApp: boolean;
 }
@@ -85,6 +107,11 @@ export const DatabaseTab = ({ isTauriApp }: DatabaseTabProps) => {
   
   // État pour la recherche/filtre
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // États pour les logs d'accès
+  const [accessLogs, setAccessLogs] = useState<AccessLogSummary[]>([]);
+  const [accessLogsStats, setAccessLogsStats] = useState<AccessLogsStats | null>(null);
+  const [showAccessLogs, setShowAccessLogs] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!isTauriApp) return;
@@ -93,15 +120,19 @@ export const DatabaseTab = ({ isTauriApp }: DatabaseTabProps) => {
     setError(null);
     
     try {
-      const [statsResult, reportsResult, keysResult] = await Promise.all([
+      const [statsResult, reportsResult, keysResult, logsResult, logsStatsResult] = await Promise.all([
         invoke<DatabaseStats>('get_database_stats'),
         invoke<PendingReportSummary[]>('get_all_pending_reports'),
         invoke<ApiKeySummary[]>('get_api_keys_list'),
+        invoke<AccessLogSummary[]>('get_access_logs', { limit: 50, offset: 0 }),
+        invoke<AccessLogsStats>('get_access_logs_stats'),
       ]);
       
       setStats(statsResult);
       setReports(reportsResult);
       setApiKeys(keysResult);
+      setAccessLogs(logsResult);
+      setAccessLogsStats(logsStatsResult);
       setLastUpdate(new Date());
     } catch (err) {
       console.error('Erreur chargement données DB:', err);
@@ -192,7 +223,36 @@ export const DatabaseTab = ({ isTauriApp }: DatabaseTabProps) => {
       console.error('Erreur révocation clé API:', err);
       setError(String(err));
     } finally {
-      setKeyToRevoke(null);
+    setKeyToRevoke(null);
+    }
+  };
+
+  // Nettoyage des logs d'accès
+  const handleCleanupLogs = async () => {
+    if (!isTauriApp) return;
+    
+    try {
+      const count = await invoke<number>('cleanup_access_logs', { days: 30 });
+      console.log(`Cleanup logs: ${count} logs supprimés`);
+      await fetchData();
+    } catch (err) {
+      console.error('Erreur cleanup logs:', err);
+      setError(String(err));
+    }
+  };
+
+  const getResultBadge = (result: string) => {
+    switch (result) {
+      case 'success':
+        return <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/30 text-[10px]">✓</Badge>;
+      case 'unauthorized':
+        return <Badge variant="outline" className="bg-red-500/10 text-red-600 border-red-500/30 text-[10px]">401</Badge>;
+      case 'not_found':
+        return <Badge variant="outline" className="bg-yellow-500/10 text-yellow-600 border-yellow-500/30 text-[10px]">404</Badge>;
+      case 'error':
+        return <Badge variant="outline" className="bg-red-500/10 text-red-600 border-red-500/30 text-[10px]">500</Badge>;
+      default:
+        return <Badge variant="secondary" className="text-[10px]">{result}</Badge>;
     }
   };
 
@@ -389,6 +449,87 @@ export const DatabaseTab = ({ isTauriApp }: DatabaseTabProps) => {
       </div>
 
       <Separator />
+
+      {/* Section Logs d'accès API */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <div 
+            className="flex items-center gap-2 cursor-pointer"
+            onClick={() => setShowAccessLogs(!showAccessLogs)}
+          >
+            <Activity className="w-3 h-3" />
+            <span className="text-xs font-medium">
+              Logs d'accès API ({accessLogsStats?.total_requests || 0})
+            </span>
+          </div>
+          <div className="flex gap-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={handleCleanupLogs}
+              disabled={isLoading}
+              className="h-6 px-2"
+              title="Nettoyer les logs > 30 jours"
+            >
+              <Trash2 className="w-3 h-3" />
+            </Button>
+          </div>
+        </div>
+        
+        {showAccessLogs && (
+          <>
+            {/* Statistiques des logs */}
+            {accessLogsStats && (
+              <div className="grid grid-cols-4 gap-1 text-[10px]">
+                <div className="p-1 bg-green-500/10 rounded text-center">
+                  <div className="font-bold text-green-600">{accessLogsStats.success_count}</div>
+                  <div className="text-muted-foreground">OK</div>
+                </div>
+                <div className="p-1 bg-red-500/10 rounded text-center">
+                  <div className="font-bold text-red-600">{accessLogsStats.unauthorized_count}</div>
+                  <div className="text-muted-foreground">401</div>
+                </div>
+                <div className="p-1 bg-yellow-500/10 rounded text-center">
+                  <div className="font-bold text-yellow-600">{accessLogsStats.not_found_count}</div>
+                  <div className="text-muted-foreground">404</div>
+                </div>
+                <div className="p-1 bg-blue-500/10 rounded text-center">
+                  <div className="font-bold text-blue-600">{Math.round(accessLogsStats.avg_response_time_ms)}ms</div>
+                  <div className="text-muted-foreground">Moy.</div>
+                </div>
+              </div>
+            )}
+            
+            {/* Liste des logs récents */}
+            <ScrollArea className="h-28">
+              {accessLogs.length === 0 ? (
+                <div className="text-xs text-muted-foreground text-center py-4">
+                  Aucun log d'accès
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {accessLogs.slice(0, 20).map((log) => (
+                    <div
+                      key={log.id}
+                      className="p-1.5 bg-background/50 rounded text-[10px] flex items-center justify-between"
+                    >
+                      <div className="flex items-center gap-2">
+                        {getResultBadge(log.result)}
+                        <span className="font-mono text-muted-foreground">{log.method}</span>
+                        <span className="font-medium truncate max-w-[100px]">{log.endpoint}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <span>{log.duration_ms}ms</span>
+                        <Clock className="w-2.5 h-2.5" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+          </>
+        )}
+      </div>
 
       {/* Liste des clés API */}
       <div className="space-y-2">

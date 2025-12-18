@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { invoke } from '@tauri-apps/api/tauri';
-import { RefreshCw, Trash2, Database, Key, FileText } from 'lucide-react';
+import { RefreshCw, Trash2, Database, Key, FileText, X } from 'lucide-react';
 
 interface DatabaseStats {
   total_reports: number;
@@ -84,6 +84,21 @@ export const DatabaseTab = ({ isTauriApp }: DatabaseTabProps) => {
       await fetchData();
     } catch (err) {
       console.error('Erreur cleanup:', err);
+      setError(String(err));
+    }
+  };
+
+  const handleDeleteReport = async (technicalId: string) => {
+    if (!isTauriApp) return;
+    
+    try {
+      const deleted = await invoke<boolean>('delete_pending_report_cmd', { technicalId });
+      if (deleted) {
+        console.log(`Rapport ${technicalId} supprimé`);
+        await fetchData();
+      }
+    } catch (err) {
+      console.error('Erreur suppression rapport:', err);
       setError(String(err));
     }
   };
@@ -203,13 +218,24 @@ export const DatabaseTab = ({ isTauriApp }: DatabaseTabProps) => {
               {reports.map((report) => (
                 <div
                   key={report.technical_id}
-                  className="p-2 bg-background/50 rounded text-xs space-y-1"
+                  className="p-2 bg-background/50 rounded text-xs space-y-1 group relative"
                 >
                   <div className="flex items-center justify-between">
                     <code className="font-mono text-[10px] text-primary">
                       {report.technical_id.substring(0, 12)}...
                     </code>
-                    {getStatusBadge(report.status)}
+                    <div className="flex items-center gap-1">
+                      {getStatusBadge(report.status)}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleDeleteReport(report.technical_id)}
+                        className="h-5 w-5 p-0 opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive hover:bg-destructive/10"
+                        title="Supprimer ce rapport"
+                      >
+                        <X className="w-3 h-3" />
+                      </Button>
+                    </div>
                   </div>
                   <div className="flex gap-2 text-[10px] text-muted-foreground">
                     {report.accession_number && (

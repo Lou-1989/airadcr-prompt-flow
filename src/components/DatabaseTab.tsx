@@ -3,6 +3,16 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { invoke } from '@tauri-apps/api/tauri';
 import { RefreshCw, Trash2, Database, Key, FileText, X } from 'lucide-react';
 
@@ -45,6 +55,7 @@ export const DatabaseTab = ({ isTauriApp }: DatabaseTabProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [reportToDelete, setReportToDelete] = useState<PendingReportSummary | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!isTauriApp) return;
@@ -88,19 +99,25 @@ export const DatabaseTab = ({ isTauriApp }: DatabaseTabProps) => {
     }
   };
 
-  const handleDeleteReport = async (technicalId: string) => {
-    if (!isTauriApp) return;
+  const handleDeleteReport = async () => {
+    if (!isTauriApp || !reportToDelete) return;
     
     try {
-      const deleted = await invoke<boolean>('delete_pending_report_cmd', { technicalId });
+      const deleted = await invoke<boolean>('delete_pending_report_cmd', { technicalId: reportToDelete.technical_id });
       if (deleted) {
-        console.log(`Rapport ${technicalId} supprimé`);
+        console.log(`Rapport ${reportToDelete.technical_id} supprimé`);
         await fetchData();
       }
     } catch (err) {
       console.error('Erreur suppression rapport:', err);
       setError(String(err));
+    } finally {
+      setReportToDelete(null);
     }
+  };
+
+  const confirmDeleteReport = (report: PendingReportSummary) => {
+    setReportToDelete(report);
   };
 
   const formatDate = (dateStr: string) => {
@@ -229,7 +246,7 @@ export const DatabaseTab = ({ isTauriApp }: DatabaseTabProps) => {
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => handleDeleteReport(report.technical_id)}
+                        onClick={() => confirmDeleteReport(report)}
                         className="h-5 w-5 p-0 opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive hover:bg-destructive/10"
                         title="Supprimer ce rapport"
                       >
@@ -294,6 +311,39 @@ export const DatabaseTab = ({ isTauriApp }: DatabaseTabProps) => {
           Mis à jour: {lastUpdate.toLocaleTimeString('fr-FR')}
         </div>
       )}
+
+      {/* Dialog de confirmation de suppression */}
+      <AlertDialog open={!!reportToDelete} onOpenChange={(open) => !open && setReportToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
+            <AlertDialogDescription>
+              Voulez-vous vraiment supprimer ce rapport ?
+              {reportToDelete && (
+                <div className="mt-2 p-2 bg-muted rounded text-xs space-y-1">
+                  <div><strong>ID:</strong> {reportToDelete.technical_id.substring(0, 20)}...</div>
+                  {reportToDelete.accession_number && (
+                    <div><strong>Accession:</strong> {reportToDelete.accession_number}</div>
+                  )}
+                  {reportToDelete.modality && (
+                    <div><strong>Modalité:</strong> {reportToDelete.modality}</div>
+                  )}
+                </div>
+              )}
+              <p className="mt-2 text-destructive font-medium">Cette action est irréversible.</p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteReport}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

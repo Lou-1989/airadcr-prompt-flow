@@ -170,4 +170,25 @@ impl Database {
             queries::find_pending_report_by_identifiers(conn, patient_id, accession_number, exam_uid)
         })
     }
+    
+    /// Liste tous les rapports (pour Debug Panel)
+    pub fn list_all_pending_reports(&self) -> SqlResult<Vec<queries::PendingReportSummary>> {
+        self.with_connection(|conn| {
+            queries::list_all_pending_reports(conn)
+        })
+    }
+    
+    /// Récupère les statistiques de la base
+    pub fn get_database_stats(&self) -> SqlResult<queries::DatabaseStats> {
+        self.with_connection(|conn| {
+            queries::get_database_stats(conn)
+        })
+    }
+    
+    /// Liste les clés API (version simplifiée pour Debug Panel)
+    pub fn list_api_keys_summary(&self) -> SqlResult<Vec<queries::ApiKeySummary>> {
+        self.with_connection(|conn| {
+            queries::list_api_keys_summary(conn)
+        })
+    }
 }

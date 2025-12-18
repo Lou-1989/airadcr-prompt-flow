@@ -284,6 +284,138 @@ pub fn revoke_api_key(conn: &Connection, key_prefix: &str) -> SqlResult<bool> {
 }
 
 // ============================================================================
+// Nouvelles fonctions pour le Debug Panel
+// ============================================================================
+
+/// Structure pour les statistiques de la base
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct DatabaseStats {
+    pub total_reports: i64,
+    pub pending_reports: i64,
+    pub retrieved_reports: i64,
+    pub expired_reports: i64,
+    pub active_api_keys: i64,
+    pub revoked_api_keys: i64,
+}
+
+/// Structure simplifiée pour affichage des rapports
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct PendingReportSummary {
+    pub technical_id: String,
+    pub accession_number: Option<String>,
+    pub patient_id: Option<String>,
+    pub modality: Option<String>,
+    pub status: String,
+    pub source_type: String,
+    pub created_at: String,
+    pub expires_at: String,
+}
+
+/// Structure simplifiée pour affichage des clés API
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ApiKeySummary {
+    pub id: String,
+    pub name: String,
+    pub key_prefix: String,
+    pub is_active: bool,
+    pub created_at: String,
+}
+
+/// Liste tous les rapports en attente (pour le Debug Panel)
+pub fn list_all_pending_reports(conn: &Connection) -> SqlResult<Vec<PendingReportSummary>> {
+    let mut stmt = conn.prepare(
+        "SELECT technical_id, accession_number, patient_id, modality, status, source_type, created_at, expires_at
+         FROM pending_reports
+         ORDER BY created_at DESC
+         LIMIT 100"
+    )?;
+    
+    let reports = stmt.query_map([], |row| {
+        Ok(PendingReportSummary {
+            technical_id: row.get(0)?,
+            accession_number: row.get(1)?,
+            patient_id: row.get(2)?,
+            modality: row.get(3)?,
+            status: row.get(4)?,
+            source_type: row.get(5)?,
+            created_at: row.get(6)?,
+            expires_at: row.get(7)?,
+        })
+    })?
+    .collect::<SqlResult<Vec<_>>>()?;
+    
+    Ok(reports)
+}
+
+/// Récupère les statistiques de la base de données
+pub fn get_database_stats(conn: &Connection) -> SqlResult<DatabaseStats> {
+    let total_reports: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM pending_reports",
+        [],
+        |row| row.get(0),
+    )?;
+    
+    let pending_reports: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM pending_reports WHERE status = 'pending'",
+        [],
+        |row| row.get(0),
+    )?;
+    
+    let retrieved_reports: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM pending_reports WHERE status = 'retrieved'",
+        [],
+        |row| row.get(0),
+    )?;
+    
+    let expired_reports: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM pending_reports WHERE status = 'expired' OR expires_at < datetime('now')",
+        [],
+        |row| row.get(0),
+    )?;
+    
+    let active_api_keys: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM api_keys WHERE is_active = 1",
+        [],
+        |row| row.get(0),
+    )?;
+    
+    let revoked_api_keys: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM api_keys WHERE is_active = 0",
+        [],
+        |row| row.get(0),
+    )?;
+    
+    Ok(DatabaseStats {
+        total_reports,
+        pending_reports,
+        retrieved_reports,
+        expired_reports,
+        active_api_keys,
+        revoked_api_keys,
+    })
+}
+
+/// Liste toutes les clés API avec infos simplifiées (sans hash)
+pub fn list_api_keys_summary(conn: &Connection) -> SqlResult<Vec<ApiKeySummary>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, name, key_prefix, is_active, created_at FROM api_keys ORDER BY created_at DESC"
+    )?;
+    
+    let keys = stmt.query_map([], |row| {
+        Ok(ApiKeySummary {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            key_prefix: row.get(2)?,
+            is_active: row.get::<_, i32>(3)? == 1,
+            created_at: row.get(4)?,
+        })
+    })?
+    .collect::<SqlResult<Vec<_>>>()?;
+    
+    Ok(keys)
+}
+
+// ============================================================================
 // Tests unitaires
 // ============================================================================
 

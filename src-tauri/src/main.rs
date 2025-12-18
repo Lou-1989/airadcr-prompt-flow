@@ -915,6 +915,66 @@ async fn open_log_folder() -> Result<(), String> {
     Ok(())
 }
 
+// ============================================================================
+// COMMANDES POUR LE DEBUG PANEL - ONGLET BASE DE DONNÉES
+// ============================================================================
+
+/// Récupère tous les rapports en attente (pour Debug Panel)
+#[tauri::command]
+async fn get_all_pending_reports() -> Result<Vec<database::queries::PendingReportSummary>, String> {
+    let app_data_dir = dirs::data_local_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("airadcr-desktop");
+    
+    let db = database::Database::new(app_data_dir)
+        .map_err(|e| format!("Erreur ouverture DB: {}", e))?;
+    
+    db.list_all_pending_reports()
+        .map_err(|e| format!("Erreur lecture rapports: {}", e))
+}
+
+/// Récupère la liste des clés API (sans données sensibles)
+#[tauri::command]
+async fn get_api_keys_list() -> Result<Vec<database::queries::ApiKeySummary>, String> {
+    let app_data_dir = dirs::data_local_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("airadcr-desktop");
+    
+    let db = database::Database::new(app_data_dir)
+        .map_err(|e| format!("Erreur ouverture DB: {}", e))?;
+    
+    db.list_api_keys_summary()
+        .map_err(|e| format!("Erreur lecture clés API: {}", e))
+}
+
+/// Récupère les statistiques de la base de données
+#[tauri::command]
+async fn get_database_stats() -> Result<database::queries::DatabaseStats, String> {
+    let app_data_dir = dirs::data_local_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("airadcr-desktop");
+    
+    let db = database::Database::new(app_data_dir)
+        .map_err(|e| format!("Erreur ouverture DB: {}", e))?;
+    
+    db.get_database_stats()
+        .map_err(|e| format!("Erreur lecture stats: {}", e))
+}
+
+/// Nettoie les rapports expirés (pour Debug Panel)
+#[tauri::command]
+async fn cleanup_expired_reports_cmd() -> Result<usize, String> {
+    let app_data_dir = dirs::data_local_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("airadcr-desktop");
+    
+    let db = database::Database::new(app_data_dir)
+        .map_err(|e| format!("Erreur ouverture DB: {}", e))?;
+    
+    db.cleanup_expired_reports()
+        .map_err(|e| format!("Erreur cleanup: {}", e))
+}
+
 // 🔗 EXTRACTION DU TID DEPUIS UNE DEEP LINK
 // Formats supportés:
 //   - airadcr://open?tid=ABC123
@@ -1194,7 +1254,12 @@ fn main() {
             get_window_client_rect_at_point,
             write_log,
             get_log_path,
-            open_log_folder
+            open_log_folder,
+            // 🆕 Commandes Debug Panel - Base de données
+            get_all_pending_reports,
+            get_api_keys_list,
+            get_database_stats,
+            cleanup_expired_reports_cmd
         ])
         .setup(|app| {
             println!("🔧 [DEBUG] .setup() appelé - enregistrement raccourcis SpeechMike");

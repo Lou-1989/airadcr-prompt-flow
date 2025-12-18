@@ -975,6 +975,20 @@ async fn cleanup_expired_reports_cmd() -> Result<usize, String> {
         .map_err(|e| format!("Erreur cleanup: {}", e))
 }
 
+/// Supprime un rapport par son technical_id (pour Debug Panel)
+#[tauri::command]
+async fn delete_pending_report_cmd(technical_id: String) -> Result<bool, String> {
+    let app_data_dir = dirs::data_local_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("airadcr-desktop");
+    
+    let db = database::Database::new(app_data_dir)
+        .map_err(|e| format!("Erreur ouverture DB: {}", e))?;
+    
+    db.delete_pending_report(&technical_id)
+        .map_err(|e| format!("Erreur suppression: {}", e))
+}
+
 // 🔗 EXTRACTION DU TID DEPUIS UNE DEEP LINK
 // Formats supportés:
 //   - airadcr://open?tid=ABC123
@@ -1259,7 +1273,8 @@ fn main() {
             get_all_pending_reports,
             get_api_keys_list,
             get_database_stats,
-            cleanup_expired_reports_cmd
+            cleanup_expired_reports_cmd,
+            delete_pending_report_cmd
         ])
         .setup(|app| {
             println!("🔧 [DEBUG] .setup() appelé - enregistrement raccourcis SpeechMike");

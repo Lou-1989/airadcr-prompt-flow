@@ -989,6 +989,73 @@ async fn delete_pending_report_cmd(technical_id: String) -> Result<bool, String>
         .map_err(|e| format!("Erreur suppression: {}", e))
 }
 
+/// Structure pour retourner une nouvelle clé API créée
+#[derive(Serialize)]
+struct NewApiKeyResult {
+    key_prefix: String,
+    full_key: String,
+    name: String,
+}
+
+/// Génère et crée une nouvelle clé API (pour Debug Panel)
+#[tauri::command]
+async fn create_api_key_cmd(name: String) -> Result<NewApiKeyResult, String> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    
+    let app_data_dir = dirs::data_local_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("airadcr-desktop");
+    
+    let db = database::Database::new(app_data_dir)
+        .map_err(|e| format!("Erreur ouverture DB: {}", e))?;
+    
+    // Générer un ID unique
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let id = format!("key_{}", timestamp);
+    
+    // Générer une clé aléatoire (32 caractères hex)
+    let random_bytes: Vec<u8> = (0..16).map(|_| rand::random::<u8>()).collect();
+    let key_hex: String = random_bytes.iter().map(|b| format!("{:02x}", b)).collect();
+    
+    // Préfixe de la clé (premiers 8 caractères)
+    let key_prefix = format!("airadcr_{}", &key_hex[..8]);
+    
+    // Clé complète
+    let full_key = format!("{}_{}", key_prefix, &key_hex[8..]);
+    
+    // Hash simple pour stockage (en production, utiliser bcrypt/argon2)
+    let key_hash = format!("{:x}", md5::compute(full_key.as_bytes()));
+    
+    // Sauvegarder dans la DB
+    db.add_api_key(&id, &key_prefix, &key_hash, &name)
+        .map_err(|e| format!("Erreur création clé: {}", e))?;
+    
+    println!("🔑 [API Key] Nouvelle clé créée: {} ({})", name, key_prefix);
+    
+    Ok(NewApiKeyResult {
+        key_prefix,
+        full_key,
+        name,
+    })
+}
+
+/// Révoque une clé API (pour Debug Panel)
+#[tauri::command]
+async fn revoke_api_key_cmd(key_prefix: String) -> Result<bool, String> {
+    let app_data_dir = dirs::data_local_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("airadcr-desktop");
+    
+    let db = database::Database::new(app_data_dir)
+        .map_err(|e| format!("Erreur ouverture DB: {}", e))?;
+    
+    db.revoke_api_key(&key_prefix)
+        .map_err(|e| format!("Erreur révocation: {}", e))
+}
+
 // 🔗 EXTRACTION DU TID DEPUIS UNE DEEP LINK
 // Formats supportés:
 //   - airadcr://open?tid=ABC123
@@ -1274,7 +1341,9 @@ fn main() {
             get_api_keys_list,
             get_database_stats,
             cleanup_expired_reports_cmd,
-            delete_pending_report_cmd
+            delete_pending_report_cmd,
+            create_api_key_cmd,
+            revoke_api_key_cmd
         ])
         .setup(|app| {
             println!("🔧 [DEBUG] .setup() appelé - enregistrement raccourcis SpeechMike");

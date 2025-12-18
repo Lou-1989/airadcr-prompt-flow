@@ -41,6 +41,7 @@ hex = "0.4"
 uuid = { version = "1", features = ["v4"] }
 rand = "0.8"
 regex = "1"
+md5 = "0.7"
 
 # 📁 Répertoires système
 dirs = "5"

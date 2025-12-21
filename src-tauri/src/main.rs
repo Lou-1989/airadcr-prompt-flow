@@ -11,7 +11,7 @@ use arboard::Clipboard;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use active_win_pos_rs::get_active_window;
-use log::info;
+use log::{info, warn, error, debug};
 use std::fs::{OpenOptions, create_dir_all};
 use std::io::Write;
 extern crate chrono;
@@ -34,9 +34,9 @@ fn enable_dpi_awareness() {
     
     unsafe {
         if SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) == 0 {
-            eprintln!("⚠️  Échec activation DPI Per-Monitor V2, fallback mode par défaut");
+            warn!("Échec activation DPI Per-Monitor V2, fallback mode par défaut");
         } else {
-            println!("✅ DPI Per-Monitor V2 activé (coordonnées physiques multi-écrans)");
+            info!("DPI Per-Monitor V2 activé (coordonnées physiques multi-écrans)");
         }
     }
 }
@@ -70,7 +70,7 @@ async fn toggle_always_on_top(window: tauri::Window, state: State<'_, AppState>)
     let mut always_on_top = match state.always_on_top.lock() {
         Ok(guard) => guard,
         Err(poisoned) => {
-            eprintln!("Mutex poisoned in toggle_always_on_top, recovering...");
+            warn!("Mutex poisoned in toggle_always_on_top, recovering...");
             poisoned.into_inner()
         }
     };
@@ -100,7 +100,7 @@ async fn set_always_on_top(window: tauri::Window, state: State<'_, AppState>, al
     let mut current_state = match state.always_on_top.lock() {
         Ok(guard) => guard,
         Err(poisoned) => {
-            eprintln!("Mutex poisoned in set_always_on_top, recovering...");
+            warn!("Mutex poisoned in set_always_on_top, recovering...");
             poisoned.into_inner()
         }
     };
@@ -215,7 +215,7 @@ async fn check_app_focus(window: tauri::Window, state: State<'_, AppState>) -> R
     let mut app_focused = match state.is_focused.lock() {
         Ok(guard) => guard,
         Err(poisoned) => {
-            eprintln!("Mutex poisoned in check_app_focus, recovering...");
+            warn!("Mutex poisoned in check_app_focus, recovering...");
             poisoned.into_inner()
         }
     };
@@ -230,7 +230,7 @@ async fn perform_injection_at_position(text: String, x: i32, y: i32, state: Stat
     let _clipboard_guard = match state.clipboard_lock.lock() {
         Ok(guard) => guard,
         Err(poisoned) => {
-            eprintln!("Clipboard mutex poisoned, recovering...");
+            warn!("Clipboard mutex poisoned, recovering...");
             poisoned.into_inner()
         }
     };
@@ -270,7 +270,7 @@ async fn perform_injection(text: String, state: State<'_, AppState>) -> Result<(
     let _clipboard_guard = match state.clipboard_lock.lock() {
         Ok(guard) => guard,
         Err(poisoned) => {
-            eprintln!("Clipboard mutex poisoned, recovering...");
+            warn!("Clipboard mutex poisoned, recovering...");
             poisoned.into_inner()
         }
     };
@@ -301,7 +301,7 @@ fn get_always_on_top_status(state: State<'_, AppState>) -> Result<bool, String> 
     let always_on_top = match state.always_on_top.lock() {
         Ok(guard) => guard,
         Err(poisoned) => {
-            eprintln!("Mutex poisoned in get_always_on_top_status, recovering...");
+            warn!("Mutex poisoned in get_always_on_top_status, recovering...");
             poisoned.into_inner()
         }
     };
@@ -315,7 +315,7 @@ async fn has_text_selection(state: State<'_, AppState>) -> Result<bool, String> 
     let _clipboard_guard = match state.clipboard_lock.lock() {
         Ok(guard) => guard,
         Err(poisoned) => {
-            eprintln!("Clipboard mutex poisoned, recovering...");
+            warn!("Clipboard mutex poisoned, recovering...");
             poisoned.into_inner()
         }
     };
@@ -341,7 +341,7 @@ async fn has_text_selection(state: State<'_, AppState>) -> Result<bool, String> 
         clipboard.set_text(&original).map_err(|e| e.to_string())?;
     }
     
-    println!("🔍 Détection sélection: {}", if has_selection { "OUI" } else { "NON" });
+    debug!("Détection sélection: {}", if has_selection { "OUI" } else { "NON" });
     Ok(has_selection)
 }
 
@@ -349,7 +349,7 @@ async fn has_text_selection(state: State<'_, AppState>) -> Result<bool, String> 
 async fn set_ignore_cursor_events(window: tauri::Window, ignore: bool) -> Result<(), String> {
     window.set_ignore_cursor_events(ignore)
         .map_err(|e| e.to_string())?;
-    println!("🖱️  Click-through {}", if ignore { "activé" } else { "désactivé" });
+    debug!("Click-through {}", if ignore { "activé" } else { "désactivé" });
     Ok(())
 }
 
@@ -385,15 +385,15 @@ async fn perform_injection_at_position_direct(x: i32, y: i32, text: String, stat
     let _clipboard_guard = match state.clipboard_lock.lock() {
         Ok(guard) => guard,
         Err(poisoned) => {
-            eprintln!("Clipboard mutex poisoned, recovering...");
+            warn!("Clipboard mutex poisoned, recovering...");
             poisoned.into_inner()
         }
     };
     
-    println!("🎯 [Injection Rust] Début - Position: ({}, {}) - Texte: {} chars", x, y, text.len());
+    info!("[Injection Rust] Début - Position: ({}, {}) - Texte: {} chars", x, y, text.len());
     let start_time = std::time::Instant::now();
     
-    println!("🎯 [Multi-écrans] Injection à ({}, {}) - {} caractères", x, y, text.len());
+    debug!("[Multi-écrans] Injection à ({}, {}) - {} caractères", x, y, text.len());
     
     // 🆕 CLAMPER les coordonnées dans les bornes du bureau virtuel
     #[cfg(target_os = "windows")]
@@ -407,7 +407,7 @@ async fn perform_injection_at_position_direct(x: i32, y: i32, text: String, stat
         let cy = y.max(vd_y).min(vd_y + vd_height - 1);
         
         if cx != x || cy != y {
-            println!("⚠️  [Multi-écrans] Coordonnées clampées: ({}, {}) → ({}, {}) [Bureau: ({}, {}) {}x{}]", 
+            debug!("[Multi-écrans] Coordonnées clampées: ({}, {}) → ({}, {}) [Bureau: ({}, {}) {}x{}]", 
                 x, y, cx, cy, vd_x, vd_y, vd_width, vd_height);
         }
         
@@ -418,13 +418,13 @@ async fn perform_injection_at_position_direct(x: i32, y: i32, text: String, stat
     let (clamped_x, clamped_y) = (x, y);
     
     if clamped_x < 0 || clamped_y < 0 {
-        println!("⚠️  [Multi-écrans] Coordonnées négatives détectées (écran secondaire gauche/haut)");
+        debug!("[Multi-écrans] Coordonnées négatives détectées (écran secondaire gauche/haut)");
     }
     
-    // 🆕 LOG: Fenêtre active AVANT clic
+    // LOG: Fenêtre active AVANT clic
     match get_active_window() {
-        Ok(win) => println!("📊 [Avant clic] Fenêtre active: {} ({})", win.app_name, win.title),
-        Err(_) => println!("⚠️  [Avant clic] Impossible de récupérer la fenêtre active")
+        Ok(win) => debug!("[Avant clic] Fenêtre active: {} ({})", win.app_name, win.title),
+        Err(_) => debug!("[Avant clic] Impossible de récupérer la fenêtre active")
     }
     
     thread::sleep(Duration::from_millis(10));
@@ -437,7 +437,7 @@ async fn perform_injection_at_position_direct(x: i32, y: i32, text: String, stat
                 return Err("Échec SetCursorPos (Win32)".to_string());
             }
         }
-        println!("✅ [Win32] SetCursorPos({}, {}) réussi", clamped_x, clamped_y);
+        debug!("[Win32] SetCursorPos({}, {}) réussi", clamped_x, clamped_y);
         
         // 🆕 FORCER LE FOCUS sur la fenêtre sous le curseur (multi-écrans)
         unsafe {
@@ -447,15 +447,15 @@ async fn perform_injection_at_position_direct(x: i32, y: i32, text: String, stat
             if !hwnd.is_null() {
                 let root_hwnd = GetAncestor(hwnd, GA_ROOT);
                 if !root_hwnd.is_null() {
-                    // ✨ DÉTECTION 1/3: Vérifier si la fenêtre est minimisée
+                    // Vérifier si la fenêtre est minimisée
                     if IsIconic(root_hwnd) != 0 {
-                        println!("🔄 [Restauration] Fenêtre minimisée détectée, restauration...");
+                        debug!("[Restauration] Fenêtre minimisée détectée, restauration...");
                         ShowWindow(root_hwnd, SW_RESTORE);
-                        thread::sleep(Duration::from_millis(200)); // Attendre animation
-                        println!("✅ [Restauration] Fenêtre restaurée depuis l'état minimisé");
+                        thread::sleep(Duration::from_millis(200));
+                        debug!("[Restauration] Fenêtre restaurée depuis l'état minimisé");
                     }
                     
-                    // ✨ DÉTECTION 2/3: Vérifier si la fenêtre est hors écran
+                    // Vérifier si la fenêtre est hors écran
                     let mut placement: WINDOWPLACEMENT = std::mem::zeroed();
                     placement.length = std::mem::size_of::<WINDOWPLACEMENT>() as u32;
                     
@@ -475,9 +475,9 @@ async fn perform_injection_at_position_direct(x: i32, y: i32, text: String, stat
                                          rect.bottom < vd_y || rect.top > vd_bottom;
                         
                         if is_offscreen {
-                            println!("🔄 [Restauration] Fenêtre hors écran détectée: ({}, {}) - ({}, {})", 
+                            debug!("[Restauration] Fenêtre hors écran détectée: ({}, {}) - ({}, {})", 
                                 rect.left, rect.top, rect.right, rect.bottom);
-                            println!("   Bureau virtuel: ({}, {}) - ({}, {})", vd_x, vd_y, vd_right, vd_bottom);
+                            debug!("   Bureau virtuel: ({}, {}) - ({}, {})", vd_x, vd_y, vd_right, vd_bottom);
                             
                             // Repositionner la fenêtre au centre du bureau principal
                             let new_x = vd_x + (vd_width / 4);
@@ -492,19 +492,19 @@ async fn perform_injection_at_position_direct(x: i32, y: i32, text: String, stat
                             placement.showCmd = SW_SHOWNORMAL as u32;
                             
                             if SetWindowPlacement(root_hwnd, &placement) != 0 {
-                                println!("✅ [Restauration] Fenêtre repositionnée à ({}, {})", new_x, new_y);
+                                debug!("[Restauration] Fenêtre repositionnée à ({}, {})", new_x, new_y);
                                 thread::sleep(Duration::from_millis(150));
                             } else {
-                                println!("⚠️  [Restauration] SetWindowPlacement a échoué");
+                                warn!("[Restauration] SetWindowPlacement a échoué");
                             }
                         }
                     }
                     
-                    // ✨ DÉTECTION 3/3: Focus final avec vérification
+                    // Focus final avec vérification
                     if SetForegroundWindow(root_hwnd) != 0 {
-                        println!("✅ [Multi-écrans] Focus forcé sur fenêtre à ({}, {})", clamped_x, clamped_y);
+                        debug!("[Multi-écrans] Focus forcé sur fenêtre à ({}, {})", clamped_x, clamped_y);
                     } else {
-                        println!("⚠️  [Multi-écrans] SetForegroundWindow a échoué");
+                        warn!("[Multi-écrans] SetForegroundWindow a échoué");
                     }
                 }
             }
@@ -520,44 +520,43 @@ async fn perform_injection_at_position_direct(x: i32, y: i32, text: String, stat
         enigo.move_mouse(clamped_x, clamped_y, Coordinate::Abs).map_err(|e| e.to_string())?;
     }
     
-    println!("🎯 [Injection] Position finale: ({}, {}) - SANS CLIC (préserve sélection)", clamped_x, clamped_y);
+    debug!("[Injection] Position finale: ({}, {}) - SANS CLIC (préserve sélection)", clamped_x, clamped_y);
     thread::sleep(Duration::from_millis(10));
     
     // Créer enigo pour Ctrl+V
     let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
     
-    // 🆕 LOG: Fenêtre active AVANT Ctrl+V
+    // LOG: Fenêtre active AVANT Ctrl+V
     match get_active_window() {
-        Ok(win) => println!("📊 [Avant Ctrl+V] Fenêtre active: {} ({})", win.app_name, win.title),
-        Err(_) => println!("⚠️  [Avant Ctrl+V] Impossible de récupérer la fenêtre active")
+        Ok(win) => debug!("[Avant Ctrl+V] Fenêtre active: {} ({})", win.app_name, win.title),
+        Err(_) => debug!("[Avant Ctrl+V] Impossible de récupérer la fenêtre active")
     }
     
-    // ✅ SAUVEGARDE du clipboard original
+    // SAUVEGARDE du clipboard original
     let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
     let original_clipboard = clipboard.get_text().unwrap_or_default();
-    println!("💾 Clipboard sauvegardé : {} caractères", original_clipboard.len());
+    debug!("Clipboard sauvegardé : {} caractères", original_clipboard.len());
     
     // Injection via Ctrl+V (remplace la sélection manuelle utilisateur si présente)
     clipboard.set_text(&text).map_err(|e| e.to_string())?;
-    println!("📋 Texte copié dans clipboard : {} caractères", text.len());
+    debug!("Texte copié dans clipboard : {} caractères", text.len());
     thread::sleep(Duration::from_millis(10));
     
-    println!("⌨️  Envoi Ctrl+V (va remplacer la sélection si présente, sinon coller)");
+    debug!("Envoi Ctrl+V (va remplacer la sélection si présente, sinon coller)");
     enigo.key(Key::Control, Direction::Press).map_err(|e| e.to_string())?;
     enigo.key(Key::Unicode('v'), Direction::Click).map_err(|e| e.to_string())?;
     enigo.key(Key::Control, Direction::Release).map_err(|e| e.to_string())?;
     
     thread::sleep(Duration::from_millis(50));
-    println!("✅ Injection Ctrl+V terminée");
+    debug!("Injection Ctrl+V terminée");
     
-    // ✅ RESTAURATION du clipboard original
+    // RESTAURATION du clipboard original
     if !original_clipboard.is_empty() {
         clipboard.set_text(&original_clipboard).map_err(|e| e.to_string())?;
-        println!("✅ Clipboard restauré ({} caractères)", original_clipboard.len());
+        debug!("Clipboard restauré ({} caractères)", original_clipboard.len());
     }
     
-    println!("✅ Injection Ctrl+V réussie ({} caractères)", text.len());
-    println!("✅ [Injection Rust] Terminée avec succès en {}ms", start_time.elapsed().as_millis());
+    info!("Injection Ctrl+V réussie ({} caractères) en {}ms", text.len(), start_time.elapsed().as_millis());
     
     Ok(())
 }
@@ -647,7 +646,7 @@ async fn get_virtual_desktop_info() -> Result<VirtualDesktopInfo, String> {
             let width = GetSystemMetrics(SM_CXVIRTUALSCREEN);
             let height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
             
-            println!("🖥️  [Multi-écrans] Bureau virtuel: ({}, {}) {}x{} | DPI Per-Monitor V2: ACTIVÉ", x, y, width, height);
+            debug!("[Multi-écrans] Bureau virtuel: ({}, {}) {}x{} | DPI Per-Monitor V2: ACTIVÉ", x, y, width, height);
             
             Ok(VirtualDesktopInfo { x, y, width, height })
         }
@@ -688,7 +687,7 @@ async fn get_physical_window_rect() -> Result<PhysicalRect, String> {
             let width = rect.right - rect.left;
             let height = rect.bottom - rect.top;
             
-            println!("📐 [DPI] GetWindowRect physique: ({}, {}) {}x{}", 
+            debug!("[DPI] GetWindowRect physique: ({}, {}) {}x{}", 
                 rect.left, rect.top, width, height);
             
             Ok(PhysicalRect {
@@ -775,9 +774,9 @@ async fn get_window_client_rect_at_point(x: i32, y: i32) -> Result<ClientRectInf
             let client_width = client_rect.right - client_rect.left;
             let client_height = client_rect.bottom - client_rect.top;
             
-            println!("📐 [ClientRect] Fenêtre: {} ({}, {}) {}x{} [HWND: {:?}]", 
+            debug!("[ClientRect] Fenêtre: {} ({}, {}) {}x{} [HWND: {:?}]", 
                 app_name, window_rect.left, window_rect.top, window_width, window_height, root_hwnd);
-            println!("📐 [ClientRect] Zone client: ({}, {}) {}x{}", 
+            debug!("[ClientRect] Zone client: ({}, {}) {}x{}", 
                 client_origin.x, client_origin.y, client_width, client_height);
             
             Ok(ClientRectInfo {
@@ -814,7 +813,7 @@ async fn simulate_key_in_iframe(window: tauri::Window, key: String) -> Result<()
         return Err(format!("Touche non supportée: {}", key));
     }
     
-    println!("🎤 [SpeechMike] Injection touche {} (code: {}) dans iframe", key, key_code);
+    debug!("[SpeechMike] Injection touche {} (code: {}) dans iframe", key, key_code);
     
     // Injection JavaScript: Dispatcher un KeyboardEvent dans l'iframe
     let js_code = format!(
@@ -1034,7 +1033,7 @@ async fn create_api_key_cmd(name: String) -> Result<NewApiKeyResult, String> {
     db.add_api_key(&id, &key_prefix, &key_hash, &name)
         .map_err(|e| format!("Erreur création clé: {}", e))?;
     
-    println!("🔑 [API Key] Nouvelle clé créée: {} ({})", name, key_prefix);
+    info!("[API Key] Nouvelle clé créée: {} ({})", name, key_prefix);
     
     Ok(NewApiKeyResult {
         key_prefix,
@@ -1153,7 +1152,7 @@ async fn cleanup_access_logs(days: Option<i64>) -> Result<i64, String> {
     let count = db.cleanup_old_access_logs(days.unwrap_or(30))
         .map_err(|e| format!("Erreur cleanup logs: {}", e))?;
     
-    println!("🧹 [Access Logs] {} log(s) supprimé(s)", count);
+    info!("[Access Logs] {} log(s) supprimé(s)", count);
     
     Ok(count as i64)
 }
@@ -1197,22 +1196,22 @@ fn extract_tid_from_deep_link(url: &str) -> Option<String> {
 fn process_initial_deep_link(app: &tauri::App) {
     // Récupérer les arguments de ligne de commande
     let args: Vec<String> = std::env::args().collect();
-    println!("🔗 [Deep Link] Arguments de démarrage: {:?}", args);
+    debug!("[Deep Link] Arguments de démarrage: {:?}", args);
     
     for arg in args.iter().skip(1) { // Skip le nom de l'exe
         // Deep Link: airadcr://...
         if arg.starts_with("airadcr://") {
             if let Some(tid) = extract_tid_from_deep_link(arg) {
-                println!("🔗 [Deep Link] Premier lancement avec tid: {}", tid);
+                info!("[Deep Link] Premier lancement avec tid: {}", tid);
                 if let Some(window) = app.get_window("main") {
                     // Délai pour laisser le temps à la fenêtre de se charger
                     let window_clone = window.clone();
                     let tid_clone = tid.clone();
                     thread::spawn(move || {
                         thread::sleep(Duration::from_millis(1500));
-                        // CORRECTION: Émettre uniquement le tid, pas l'URL complète
+                        // Émettre uniquement le tid, pas l'URL complète
                         let _ = window_clone.emit("airadcr:navigate_to_report", &tid_clone);
-                        println!("✅ [Deep Link] Navigation émise vers tid={}", tid_clone);
+                        info!("[Deep Link] Navigation émise vers tid={}", tid_clone);
                     });
                 }
                 return;
@@ -1221,15 +1220,15 @@ fn process_initial_deep_link(app: &tauri::App) {
         // CLI: --open-tid=...
         if arg.starts_with("--open-tid=") {
             let tid = arg.trim_start_matches("--open-tid=");
-            println!("🎯 [CLI] Premier lancement avec tid: {}", tid);
+            info!("[CLI] Premier lancement avec tid: {}", tid);
             if let Some(window) = app.get_window("main") {
                 let window_clone = window.clone();
                 let tid_string = tid.to_string();
                 thread::spawn(move || {
                     thread::sleep(Duration::from_millis(1500));
-                    // CORRECTION: Émettre uniquement le tid, pas l'URL complète
+                    // Émettre uniquement le tid, pas l'URL complète
                     let _ = window_clone.emit("airadcr:navigate_to_report", &tid_string);
-                    println!("✅ [CLI] Navigation émise vers tid={}", tid_string);
+                    info!("[CLI] Navigation émise vers tid={}", tid_string);
                 });
             }
             return;
@@ -1243,7 +1242,7 @@ fn main() {
         .filter_level(log::LevelFilter::Debug)
         .init();
     
-    info!("🚀 Démarrage de AIRADCR Desktop v1.0.0");
+    info!("Démarrage de AIRADCR Desktop v{}", env!("CARGO_PKG_VERSION"));
     
     #[cfg(target_os = "windows")]
     enable_dpi_awareness();
@@ -1253,13 +1252,13 @@ fn main() {
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("airadcr-desktop");
     
-    let db = match database::Database::new(app_data_dir) {
+    let db = match database::Database::new(app_data_dir.clone()) {
         Ok(db) => {
-            println!("✅ [Database] Initialisée avec succès");
+            info!("[Database] Initialisée avec succès");
             Arc::new(db)
         }
         Err(e) => {
-            eprintln!("❌ [Database] Erreur d'initialisation: {}", e);
+            error!("[Database] Erreur d'initialisation: {}", e);
             // Continuer sans base de données (le serveur HTTP ne fonctionnera pas)
             std::process::exit(1);
         }
@@ -1273,24 +1272,57 @@ fn main() {
         let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
         rt.block_on(async {
             if let Err(e) = http_server::start_server(8741, db_for_server).await {
-                eprintln!("❌ [HTTP Server] Erreur: {}", e);
+                error!("[HTTP Server] Erreur: {}", e);
             }
         });
     });
     
-    // Clone pour le cleanup périodique
+    // Clone pour le cleanup périodique et backup
     let db_for_cleanup = Arc::clone(&db);
+    let db_path = app_data_dir.join("airadcr.db");
     
-    // 🧹 Démarrer le cleanup automatique des rapports expirés (toutes les 10 minutes)
+    // 🧹 Démarrer le cleanup automatique des rapports expirés + backup quotidien (toutes les 10 minutes)
     thread::spawn(move || {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        use crate::database::backup::BackupManager;
+        
+        // Compteur pour backup quotidien (1 jour = 144 cycles de 10 min)
+        static BACKUP_COUNTER: AtomicU64 = AtomicU64::new(0);
+        let backup_manager = BackupManager::new(db_path, 7); // 7 jours de rétention
+        
+        // Backup initial au démarrage
+        match backup_manager.create_backup() {
+            Ok(path) => info!("[Backup] Backup initial créé: {:?}", path),
+            Err(e) => warn!("[Backup] Erreur backup initial: {}", e),
+        }
+        
         loop {
             thread::sleep(Duration::from_secs(600)); // 10 minutes
+            
+            // Cleanup des rapports expirés
             match db_for_cleanup.cleanup_expired_reports() {
                 Ok(count) if count > 0 => {
-                    println!("🧹 [Cleanup] {} rapport(s) expiré(s) supprimé(s)", count);
+                    info!("[Cleanup] {} rapport(s) expiré(s) supprimé(s)", count);
                 }
                 Ok(_) => {} // Rien à nettoyer
-                Err(e) => eprintln!("❌ [Cleanup] Erreur: {}", e),
+                Err(e) => error!("[Cleanup] Erreur: {}", e),
+            }
+            
+            // Backup quotidien (toutes les 144 cycles = 24h)
+            let counter = BACKUP_COUNTER.fetch_add(1, Ordering::SeqCst);
+            if counter % 144 == 0 && counter > 0 {
+                match backup_manager.create_backup() {
+                    Ok(path) => {
+                        info!("[Backup] Backup quotidien créé: {:?}", path);
+                        // Nettoyer les anciens backups
+                        if let Ok(deleted) = backup_manager.cleanup_old_backups() {
+                            if deleted > 0 {
+                                info!("[Backup] {} ancien(s) backup(s) supprimé(s)", deleted);
+                            }
+                        }
+                    }
+                    Err(e) => error!("[Backup] Erreur backup quotidien: {}", e),
+                }
             }
         }
     });
@@ -1313,36 +1345,36 @@ fn main() {
     let app = tauri::Builder::default()
         // 🔒 Protection contre les instances multiples + Deep Links
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            println!("🔄 [Single Instance] Instance secondaire détectée");
-            println!("   Arguments: {:?}", argv);
+            debug!("[Single Instance] Instance secondaire détectée");
+            debug!("   Arguments: {:?}", argv);
             
             // Focus la fenêtre existante
             if let Some(window) = app.get_window("main") {
                 let _ = window.show();
                 let _ = window.unminimize();
                 let _ = window.set_focus();
-                println!("✅ [Single Instance] Fenêtre principale focusée");
+                debug!("[Single Instance] Fenêtre principale focusée");
             }
             
             // Traiter les arguments pour deep links et --open-tid
             for arg in argv.iter() {
-                // 🔗 Deep Link: airadcr://open?tid=ABC123
+                // Deep Link: airadcr://open?tid=ABC123
                 if arg.starts_with("airadcr://") {
                     if let Some(tid) = extract_tid_from_deep_link(arg) {
-                        println!("🔗 [Deep Link] Navigation vers tid: {}", tid);
+                        info!("[Deep Link] Navigation vers tid: {}", tid);
                         if let Some(window) = app.get_window("main") {
-                            // CORRECTION: Émettre uniquement le tid
+                            // Émettre uniquement le tid
                             let _ = window.emit("airadcr:navigate_to_report", &tid);
                         }
                     }
                     break;
                 }
-                // 🎯 Argument classique: --open-tid=ABC123
+                // Argument classique: --open-tid=ABC123
                 if arg.starts_with("--open-tid=") {
                     let tid = arg.trim_start_matches("--open-tid=");
-                    println!("🎯 [CLI] Navigation vers tid: {}", tid);
+                    info!("[CLI] Navigation vers tid: {}", tid);
                     if let Some(window) = app.get_window("main") {
-                        // CORRECTION: Émettre uniquement le tid
+                        // Émettre uniquement le tid
                         let _ = window.emit("airadcr:navigate_to_report", tid);
                     }
                     break;
@@ -1360,7 +1392,7 @@ fn main() {
                             let _ = window.show();
                             let _ = window.set_focus();
                         }
-                        Err(e) => eprintln!("Error checking window visibility: {}", e),
+                        Err(e) => error!("Error checking window visibility: {}", e),
                     }
                 }
             }
@@ -1384,8 +1416,8 @@ fn main() {
                         let state = app.state::<AppState>();
                         let mut always_on_top = match state.always_on_top.lock() {
                             Ok(guard) => guard,
-                            Err(poisoned) => {
-                                eprintln!("Mutex poisoned in tray event, recovering...");
+                        Err(poisoned) => {
+                            warn!("Mutex poisoned in tray event, recovering...");
                                 poisoned.into_inner()
                             }
                         };
@@ -1402,7 +1434,7 @@ fn main() {
         .on_window_event(|event| match event.event() {
             WindowEvent::CloseRequested { api, .. } => {
                 if let Err(e) = event.window().hide() {
-                    eprintln!("Error hiding window on close: {}", e);
+                    error!("Error hiding window on close: {}", e);
                 }
                 api.prevent_close();
             }
@@ -1452,12 +1484,12 @@ fn main() {
             cleanup_access_logs
         ])
         .setup(|app| {
-            println!("🔧 [DEBUG] .setup() appelé - enregistrement raccourcis SpeechMike");
+            debug!("[DEBUG] .setup() appelé - enregistrement raccourcis SpeechMike");
             register_global_shortcuts(app.handle());
             
             // 🌐 Stocker l'AppHandle pour le serveur HTTP
             let _ = APP_HANDLE.set(app.handle());
-            println!("✅ [Global] AppHandle stocké pour communication HTTP → Tauri");
+            info!("[Global] AppHandle stocké pour communication HTTP → Tauri");
             
             // 🔗 Traiter les deep links au premier lancement
             process_initial_deep_link(app);
@@ -1468,7 +1500,7 @@ fn main() {
                 thread::spawn(move || {
                     thread::sleep(Duration::from_millis(800));
                     let _ = window_clone.set_always_on_top(true);
-                    println!("✅ Always-on-top: Assertion initiale (800ms)");
+                    debug!("Always-on-top: Assertion initiale (800ms)");
                 });
             }
             
@@ -1491,96 +1523,89 @@ fn register_global_shortcuts(app_handle: tauri::AppHandle) {
     let handle_debug = app_handle.clone();
     shortcut_manager
         .register("Ctrl+Alt+D", move || {
-            println!("🐛 [Shortcuts] Ctrl+Alt+D pressé (debug panel)");
+            debug!("[Shortcuts] Ctrl+Alt+D pressé (debug panel)");
             if let Some(window) = handle_debug.get_window("main") {
                 window.emit("airadcr:toggle_debug", ()).ok();
             }
         })
-        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+Alt+D: {}", e));
+        .unwrap_or_else(|e| warn!("Erreur enregistrement Ctrl+Alt+D: {}", e));
     
     // 📋 LOG WINDOW: Ctrl+Alt+L (modifié de Ctrl+Shift+L)
     let handle_logs = app_handle.clone();
     shortcut_manager
         .register("Ctrl+Alt+L", move || {
-            println!("📋 [Shortcuts] Ctrl+Alt+L pressé (log window)");
+            debug!("[Shortcuts] Ctrl+Alt+L pressé (log window)");
             if let Some(window) = handle_logs.get_window("main") {
                 window.emit("airadcr:toggle_logs", ()).ok();
             }
         })
-        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+Alt+L: {}", e));
+        .unwrap_or_else(|e| warn!("Erreur enregistrement Ctrl+Alt+L: {}", e));
     
     // 🧪 TEST INJECTION: Ctrl+Alt+I (modifié de Ctrl+Shift+T)
     let handle_test = app_handle.clone();
     shortcut_manager
         .register("Ctrl+Alt+I", move || {
-            println!("🧪 [Shortcuts] Ctrl+Alt+I pressé (test injection)");
+            debug!("[Shortcuts] Ctrl+Alt+I pressé (test injection)");
             if let Some(window) = handle_test.get_window("main") {
                 window.emit("airadcr:test_injection", ()).ok();
             }
         })
-        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+Alt+I: {}", e));
+        .unwrap_or_else(|e| warn!("Erreur enregistrement Ctrl+Alt+I: {}", e));
     
     // 🎤 DICTATION: Ctrl+Shift+D (Start/Stop dictée)
     let handle_ctrl_shift_d = app_handle.clone();
     shortcut_manager
         .register("Ctrl+Shift+D", move || {
-            println!("🔴 [Shortcuts] Ctrl+Shift+D pressé (start/stop dictée)");
+            debug!("[Shortcuts] Ctrl+Shift+D pressé (start/stop dictée)");
             if let Some(window) = handle_ctrl_shift_d.get_window("main") {
                 window.emit("airadcr:dictation_startstop", ()).ok();
             }
         })
-        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+Shift+D: {}", e));
+        .unwrap_or_else(|e| warn!("Erreur enregistrement Ctrl+Shift+D: {}", e));
     
     // 🎤 DICTATION: Ctrl+Shift+P (Pause/Resume dictée)
     let handle_ctrl_shift_p = app_handle.clone();
     shortcut_manager
         .register("Ctrl+Shift+P", move || {
-            println!("⏯️ [Shortcuts] Ctrl+Shift+P pressé (pause/resume dictée)");
+            debug!("[Shortcuts] Ctrl+Shift+P pressé (pause/resume dictée)");
             if let Some(window) = handle_ctrl_shift_p.get_window("main") {
                 window.emit("airadcr:dictation_pause", ()).ok();
             }
         })
-        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+Shift+P: {}", e));
+        .unwrap_or_else(|e| warn!("Erreur enregistrement Ctrl+Shift+P: {}", e));
     
-    // 💉 INJECTION: Ctrl+Shift+T (Inject texte brut)
+    // INJECTION: Ctrl+Shift+T (Inject texte brut)
     let handle_ctrl_shift_t = app_handle.clone();
     shortcut_manager
         .register("Ctrl+Shift+T", move || {
-            println!("💉 [Shortcuts] Ctrl+Shift+T pressé (inject texte brut)");
+            debug!("[Shortcuts] Ctrl+Shift+T pressé (inject texte brut)");
             if let Some(window) = handle_ctrl_shift_t.get_window("main") {
                 window.emit("airadcr:inject_raw", ()).ok();
             }
         })
-        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+Shift+T: {}", e));
+        .unwrap_or_else(|e| warn!("Erreur enregistrement Ctrl+Shift+T: {}", e));
     
-    // 💉 INJECTION: Ctrl+Shift+S (Inject rapport structuré)
+    // INJECTION: Ctrl+Shift+S (Inject rapport structuré)
     let handle_ctrl_shift_s = app_handle.clone();
     shortcut_manager
         .register("Ctrl+Shift+S", move || {
-            println!("📋 [Shortcuts] Ctrl+Shift+S pressé (inject rapport structuré)");
+            debug!("[Shortcuts] Ctrl+Shift+S pressé (inject rapport structuré)");
             if let Some(window) = handle_ctrl_shift_s.get_window("main") {
                 window.emit("airadcr:inject_structured", ()).ok();
             }
         })
-        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement Ctrl+Shift+S: {}", e));
+        .unwrap_or_else(|e| warn!("Erreur enregistrement Ctrl+Shift+S: {}", e));
     
-    // 🔓 ANTI-GHOST: F9 (désactiver click-through)
+    // ANTI-GHOST: F9 (désactiver click-through)
     let handle_f9 = app_handle.clone();
     shortcut_manager
         .register("F9", move || {
-            println!("🔓 [Shortcuts] F9 pressé (anti-fantôme)");
+            debug!("[Shortcuts] F9 pressé (anti-fantôme)");
             if let Some(window) = handle_f9.get_window("main") {
                 window.emit("airadcr:force_clickable", ()).ok();
             }
         })
-        .unwrap_or_else(|e| eprintln!("❌ Erreur enregistrement F9: {}", e));
+        .unwrap_or_else(|e| warn!("Erreur enregistrement F9: {}", e));
     
-    println!("✅ [Shortcuts] Raccourcis globaux enregistrés (Système unifié v3.0):");
-    println!("   🎨 Ctrl+Alt+D (Debug), Ctrl+Alt+L (Logs), Ctrl+Alt+I (Test)");
-    println!("   🔓 F9 (Anti-fantôme)");
-    println!("   🎤 Ctrl+Shift+D (Start/Stop dictée)");
-    println!("   🎤 Ctrl+Shift+P (Pause/Resume dictée)");
-    println!("   💉 Ctrl+Shift+T (Inject texte brut - Insert)");
-    println!("   💉 Ctrl+Shift+S (Inject rapport structuré - EOL)");
-    println!("   ✅ SpeechMike utilise les MÊMES raccourcis Ctrl+Shift+D/P/T/S");
+    info!("[Shortcuts] Raccourcis globaux enregistrés: Ctrl+Alt+D/L/I, F9, Ctrl+Shift+D/P/T/S");
 }

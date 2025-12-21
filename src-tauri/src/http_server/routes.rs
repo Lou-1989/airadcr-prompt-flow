@@ -4,12 +4,19 @@
 
 use actix_web::web;
 use super::handlers;
+use super::metrics;
 
 /// Configure toutes les routes du serveur HTTP
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg
         // Health check (sans authentification)
         .route("/health", web::get().to(handlers::health_check))
+        
+        // 🆕 Health check étendu (Phase 2)
+        .route("/health/extended", web::get().to(metrics::extended_health_handler))
+        
+        // 🆕 Métriques Prometheus (Phase 2)
+        .route("/metrics", web::get().to(metrics::metrics_handler))
         
         // Pending reports API
         .route("/pending-report", web::post().to(handlers::store_pending_report))

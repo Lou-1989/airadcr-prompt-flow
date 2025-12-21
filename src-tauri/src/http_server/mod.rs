@@ -8,6 +8,7 @@
 pub mod routes;
 pub mod handlers;
 pub mod middleware;
+pub mod metrics;
 
 use actix_web::{App, HttpServer, web, middleware::Logger};
 use actix_cors::Cors;

@@ -48,6 +48,7 @@ fn default_expires_hours() -> i64 {
 pub struct HealthResponse {
     pub status: String,
     pub timestamp: String,
+    // 🆕 Version dynamique depuis Cargo.toml (Phase 1)
     pub version: String,
 }
 
@@ -254,7 +255,8 @@ pub async fn health_check() -> HttpResponse {
     HttpResponse::Ok().json(HealthResponse {
         status: "ok".to_string(),
         timestamp: Utc::now().to_rfc3339(),
-        version: "1.0.0".to_string(),
+        // 🆕 Version dynamique depuis Cargo.toml (Phase 1)
+        version: env!("CARGO_PKG_VERSION").to_string(),
     })
 }
 

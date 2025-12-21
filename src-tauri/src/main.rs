@@ -171,7 +171,8 @@ async fn get_system_info() -> Result<SystemInfo, String> {
     Ok(SystemInfo {
         platform: std::env::consts::OS.to_string(),
         arch: std::env::consts::ARCH.to_string(),
-        version: "1.0.0".to_string(),
+        // 🆕 Version dynamique depuis Cargo.toml (Phase 1)
+        version: env!("CARGO_PKG_VERSION").to_string(),
     })
 }
 

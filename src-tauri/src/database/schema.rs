@@ -3,6 +3,25 @@
 // ============================================================================
 
 use rusqlite::{Connection, Result as SqlResult};
+use sha2::{Sha256, Digest};
+use rand::Rng;
+
+/// Génère une clé API aléatoire sécurisée
+fn generate_secure_api_key() -> String {
+    let suffix: String = rand::thread_rng()
+        .sample_iter(&rand::distributions::Alphanumeric)
+        .take(32)
+        .map(char::from)
+        .collect();
+    format!("airadcr_{}", suffix.to_lowercase())
+}
+
+/// Calcule le hash SHA-256 d'une clé API
+fn hash_api_key(key: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(key.as_bytes());
+    hex::encode(hasher.finalize())
+}
 
 /// Initialise le schéma de la base de données
 pub fn initialize(conn: &Connection) -> SqlResult<()> {
@@ -47,7 +66,11 @@ pub fn initialize(conn: &Connection) -> SqlResult<()> {
         [],
     )?;
     
-    // Index pour optimiser les requêtes
+    // =========================================================================
+    // INDEX DE PERFORMANCE (Phase 3)
+    // =========================================================================
+    
+    // Index existants
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_pending_technical_id ON pending_reports(technical_id)",
         [],
@@ -80,6 +103,12 @@ pub fn initialize(conn: &Connection) -> SqlResult<()> {
     
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_api_keys_prefix ON api_keys(key_prefix)",
+        [],
+    )?;
+    
+    // 🆕 Nouveaux index de performance (Phase 3)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pending_created_at ON pending_reports(created_at)",
         [],
     )?;
     
@@ -120,9 +149,20 @@ pub fn initialize(conn: &Connection) -> SqlResult<()> {
         [],
     )?;
     
-    // Insérer la clé API de production si aucune n'existe
-    // Clé de production: "airadcr_prod_7f3k9m2x5p8w1q4v6n0z"
-    // SHA-256 hash calculé pour cette clé
+    // 🆕 Nouveaux index de performance pour access_logs (Phase 3)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_access_logs_ip ON access_logs(ip_address)",
+        [],
+    )?;
+    
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_access_logs_timestamp_result ON access_logs(timestamp, result)",
+        [],
+    )?;
+    
+    // =========================================================================
+    // Clé API de production - EXTERNALISÉE (Phase 1)
+    // =========================================================================
     let count: i64 = conn.query_row(
         "SELECT COUNT(*) FROM api_keys",
         [],
@@ -130,17 +170,43 @@ pub fn initialize(conn: &Connection) -> SqlResult<()> {
     )?;
     
     if count == 0 {
-        // Clé de production sécurisée (32 caractères alphanumériques)
-        // Clé: airadcr_prod_7f3k9m2x5p8w1q4v6n0z
-        // Hash SHA-256 (calculé via: echo -n "airadcr_prod_7f3k9m2x5p8w1q4v6n0z" | sha256sum)
-        // = 8b94e7c6f3d2a1b0e9f8d7c6b5a4938271605f4e3d2c1b0a9f8e7d6c5b4a3928
+        // 🔐 SÉCURITÉ: Lire la clé depuis la variable d'environnement
+        let (api_key, key_source) = match std::env::var("AIRADCR_PROD_API_KEY") {
+            Ok(key) if !key.is_empty() => {
+                println!("🔐 [Database] Clé API de production chargée depuis AIRADCR_PROD_API_KEY");
+                (key, "env")
+            }
+            _ => {
+                // Mode développement: générer une clé aléatoire
+                let generated_key = generate_secure_api_key();
+                println!("⚠️  [Database] ATTENTION: Aucune clé de production configurée!");
+                println!("⚠️  [Database] Variable AIRADCR_PROD_API_KEY non définie");
+                println!("🔑 [Database] Clé de développement générée: {}", generated_key);
+                println!("💡 [Database] En production, définissez AIRADCR_PROD_API_KEY");
+                (generated_key, "generated")
+            }
+        };
+        
+        let key_hash = hash_api_key(&api_key);
+        let key_prefix = if api_key.len() >= 8 { 
+            api_key[..8].to_string() 
+        } else { 
+            "airadcr_".to_string() 
+        };
+        
+        let key_name = if key_source == "env" {
+            "Production Key (from ENV)"
+        } else {
+            "Development Key (auto-generated)"
+        };
+        
         conn.execute(
             "INSERT INTO api_keys (id, key_prefix, key_hash, name, is_active, created_at)
-             VALUES ('prod-key-1', 'airadcr_', '8b94e7c6f3d2a1b0e9f8d7c6b5a4938271605f4e3d2c1b0a9f8e7d6c5b4a3928', 'Production Key - TEO Hub', 1, datetime('now'))",
-            [],
+             VALUES ('prod-key-1', ?1, ?2, ?3, 1, datetime('now'))",
+            [&key_prefix, &key_hash, &key_name.to_string()],
         )?;
-        println!("🔑 [Database] Clé API de production créée (prefix: airadcr_)");
-        println!("📋 Clé à utiliser: airadcr_prod_7f3k9m2x5p8w1q4v6n0z");
+        
+        println!("🔑 [Database] Clé API {} créée (prefix: {})", key_source, key_prefix);
     }
     
     Ok(())

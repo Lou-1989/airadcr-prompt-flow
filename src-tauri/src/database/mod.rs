@@ -7,6 +7,7 @@
 
 pub mod schema;
 pub mod queries;
+pub mod backup;
 
 use rusqlite::{Connection, Result as SqlResult};
 use std::sync::Mutex;
@@ -247,6 +248,41 @@ impl Database {
     pub fn cleanup_old_access_logs(&self, days: i64) -> SqlResult<usize> {
         self.with_connection(|conn| {
             queries::cleanup_old_access_logs(conn, days)
+        })
+    }
+    
+    // =========================================================================
+    // Méthodes pour métriques Prometheus (Phase 2)
+    // =========================================================================
+    
+    /// Compte les rapports en attente
+    pub fn count_pending_reports(&self) -> SqlResult<i64> {
+        self.with_connection(|conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM pending_reports WHERE status = 'pending'",
+                [],
+                |row| row.get(0),
+            )
+        })
+    }
+    
+    /// Compte les clés API actives
+    pub fn count_active_api_keys(&self) -> SqlResult<i64> {
+        self.with_connection(|conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM api_keys WHERE is_active = 1",
+                [],
+                |row| row.get(0),
+            )
+        })
+    }
+    
+    /// Récupère la taille de la base de données
+    pub fn get_database_size(&self) -> SqlResult<u64> {
+        self.with_connection(|conn| {
+            let page_count: i64 = conn.query_row("PRAGMA page_count", [], |row| row.get(0))?;
+            let page_size: i64 = conn.query_row("PRAGMA page_size", [], |row| row.get(0))?;
+            Ok((page_count * page_size) as u64)
         })
     }
 }

@@ -14,7 +14,84 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      customers: {
+        Row: {
+          company_name: string | null
+          created_at: string | null
+          customer_type: string | null
+          id: string
+          siret: string | null
+          stripe_customer_id: string | null
+          updated_at: string | null
+          vat_number: string | null
+        }
+        Insert: {
+          company_name?: string | null
+          created_at?: string | null
+          customer_type?: string | null
+          id: string
+          siret?: string | null
+          stripe_customer_id?: string | null
+          updated_at?: string | null
+          vat_number?: string | null
+        }
+        Update: {
+          company_name?: string | null
+          created_at?: string | null
+          customer_type?: string | null
+          id?: string
+          siret?: string | null
+          stripe_customer_id?: string | null
+          updated_at?: string | null
+          vat_number?: string | null
+        }
+        Relationships: []
+      }
+      subscriptions: {
+        Row: {
+          billing_interval: string | null
+          cancel_at_period_end: boolean | null
+          created_at: string | null
+          current_period_end: string | null
+          current_period_start: string | null
+          id: string
+          plan_type: string | null
+          status: string | null
+          stripe_price_id: string | null
+          stripe_subscription_id: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          billing_interval?: string | null
+          cancel_at_period_end?: boolean | null
+          created_at?: string | null
+          current_period_end?: string | null
+          current_period_start?: string | null
+          id?: string
+          plan_type?: string | null
+          status?: string | null
+          stripe_price_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          billing_interval?: string | null
+          cancel_at_period_end?: boolean | null
+          created_at?: string | null
+          current_period_end?: string | null
+          current_period_start?: string | null
+          id?: string
+          plan_type?: string | null
+          status?: string | null
+          stripe_price_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

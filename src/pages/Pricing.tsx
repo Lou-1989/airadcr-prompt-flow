@@ -4,18 +4,56 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { PricingCard } from "@/components/pricing/PricingCard";
 import { BillingToggle } from "@/components/pricing/BillingToggle";
+import { B2BForm } from "@/components/pricing/B2BForm";
 import { SUBSCRIPTION_PLANS, type PlanType, type BillingInterval } from "@/config/subscriptionPlans";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Building2, User } from "lucide-react";
+
+interface BusinessInfo {
+  companyName: string;
+  siret: string;
+  vatNumber: string;
+}
 
 export default function Pricing() {
   const navigate = useNavigate();
   const [isAnnual, setIsAnnual] = useState(false);
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
+  const [isB2B, setIsB2B] = useState(false);
+  const [businessInfo, setBusinessInfo] = useState<BusinessInfo>({
+    companyName: "",
+    siret: "",
+    vatNumber: ""
+  });
+  const [formErrors, setFormErrors] = useState<Partial<Record<keyof BusinessInfo, string>>>({});
 
   const interval: BillingInterval = isAnnual ? "year" : "month";
 
+  const validateB2BForm = (): boolean => {
+    const errors: Partial<Record<keyof BusinessInfo, string>> = {};
+    
+    if (isB2B) {
+      if (!businessInfo.companyName.trim()) {
+        errors.companyName = "La raison sociale est requise";
+      } else if (businessInfo.companyName.trim().length < 2) {
+        errors.companyName = "La raison sociale doit contenir au moins 2 caractères";
+      }
+    }
+    
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const handleSelectPlan = async (planKey: string) => {
     if (planKey === "equipes") {
-      window.location.href = "mailto:contact@airadcr.com?subject=Demande%20de%20devis%20-%20Plan%20Équipes";
+      const subject = encodeURIComponent("Demande de devis - Plan Équipes");
+      window.location.href = `mailto:contact@airadcr.com?subject=${subject}`;
+      return;
+    }
+
+    if (!validateB2BForm()) {
+      toast.error("Veuillez corriger les erreurs du formulaire");
       return;
     }
 
@@ -36,7 +74,12 @@ export default function Pricing() {
       const { data, error } = await supabase.functions.invoke("create-checkout-session", {
         body: { 
           priceId,
-          customerType: "individual"
+          customerType: isB2B ? "business" : "individual",
+          businessInfo: isB2B ? {
+            companyName: businessInfo.companyName.trim(),
+            siret: businessInfo.siret.trim(),
+            vatNumber: businessInfo.vatNumber.trim()
+          } : undefined
         }
       });
 
@@ -64,7 +107,35 @@ export default function Pricing() {
           </p>
         </div>
 
+        {/* Toggle B2B */}
+        <div className="flex items-center justify-center gap-4 mb-6">
+          <div className={`flex items-center gap-2 ${!isB2B ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
+            <User className="h-4 w-4" />
+            <Label htmlFor="b2b-toggle" className="cursor-pointer">Particulier</Label>
+          </div>
+          <Switch
+            id="b2b-toggle"
+            checked={isB2B}
+            onCheckedChange={setIsB2B}
+          />
+          <div className={`flex items-center gap-2 ${isB2B ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
+            <Building2 className="h-4 w-4" />
+            <Label htmlFor="b2b-toggle" className="cursor-pointer">Professionnel</Label>
+          </div>
+        </div>
+
         <BillingToggle isAnnual={isAnnual} onToggle={setIsAnnual} />
+
+        {/* B2B Form */}
+        {isB2B && (
+          <div className="max-w-md mx-auto mb-8">
+            <B2BForm 
+              businessInfo={businessInfo} 
+              onChange={setBusinessInfo}
+              errors={formErrors}
+            />
+          </div>
+        )}
 
         <div className="grid md:grid-cols-3 gap-8 mt-8">
           {Object.entries(SUBSCRIPTION_PLANS).map(([key, plan]) => {

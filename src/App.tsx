@@ -5,9 +5,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
-import Pricing from "./pages/Pricing";
-import SubscriptionSuccess from "./pages/SubscriptionSuccess";
-import Account from "./pages/Account";
 import { useTauriWindow } from "@/hooks/useTauriWindow";
 import { InjectionProvider, useInjectionContext } from "@/contexts/InjectionContext";
 import { useEffect, useState } from "react";
@@ -130,9 +127,6 @@ const AppContent = () => {
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />
-          <Route path="/pricing" element={<Pricing />} />
-          <Route path="/subscription-success" element={<SubscriptionSuccess />} />
-          <Route path="/account" element={<Account />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

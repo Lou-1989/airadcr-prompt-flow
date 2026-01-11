@@ -14,6 +14,19 @@ use super::middleware::{validate_api_key, validate_admin_key, RequestInfo};
 use crate::APP_HANDLE;
 
 // ============================================================================
+// Fonctions utilitaires de sécurité
+// ============================================================================
+
+/// 🛡️ Masque un identifiant sensible pour les logs (affiche seulement les 4 premiers caractères)
+fn mask_sensitive_id(id: &str) -> String {
+    if id.len() <= 4 {
+        "****".to_string()
+    } else {
+        format!("{}****", &id[..4])
+    }
+}
+
+// ============================================================================
 // Structures de données
 // ============================================================================
 
@@ -329,8 +342,10 @@ pub async fn store_pending_report(
         &expires_at.to_rfc3339(),
     ) {
         Ok(_) => {
-            println!("✅ [HTTP] Rapport stocké: tid={}, patient_id={:?}", 
-                     body.technical_id, body.patient_id);
+            // 🛡️ SÉCURITÉ: Masquer les identifiants sensibles dans les logs
+            let masked_patient_id = body.patient_id.as_ref().map(|id| mask_sensitive_id(id));
+            log::info!("✅ [HTTP] Rapport stocké: tid={}, patient_id={:?}",
+                     body.technical_id, masked_patient_id);
             request_info.log_access(&state.db, 200, "success", None);
             HttpResponse::Ok().json(StoreSuccessResponse {
                 success: true,
@@ -384,7 +399,9 @@ pub async fn get_pending_report(
             // Marquer comme récupéré
             let _ = state.db.mark_as_retrieved(tid);
             
-            println!("✅ [HTTP] Rapport récupéré: tid={}, patient_id={:?}", tid, report.patient_id);
+            // 🛡️ SÉCURITÉ: Masquer les identifiants sensibles dans les logs
+            let masked_patient_id = report.patient_id.as_ref().map(|id| mask_sensitive_id(id));
+            log::info!("✅ [HTTP] Rapport récupéré: tid={}, patient_id={:?}", tid, masked_patient_id);
             request_info.log_access(&state.db, 200, "success", None);
             HttpResponse::Ok().json(GetReportResponse {
                 success: true,

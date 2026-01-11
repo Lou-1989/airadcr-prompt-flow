@@ -134,12 +134,13 @@ use std::fs;
 static ADMIN_KEY_HASH: OnceLock<[u8; 32]> = OnceLock::new();
 
 /// Récupère le hash de la clé admin depuis ENV ou fichier
+/// 🛡️ SÉCURITÉ: En mode release, refuse de démarrer sans clé configurée
 fn get_admin_key_hash() -> &'static [u8; 32] {
     ADMIN_KEY_HASH.get_or_init(|| {
         // 1. Essayer la variable d'environnement AIRADCR_ADMIN_KEY
         if let Ok(key) = std::env::var("AIRADCR_ADMIN_KEY") {
             if !key.is_empty() {
-                println!("🔐 [Security] Clé admin chargée depuis AIRADCR_ADMIN_KEY");
+                log::info!("🔐 [Security] Clé admin chargée depuis AIRADCR_ADMIN_KEY");
                 let mut hasher = Sha256::new();
                 hasher.update(key.as_bytes());
                 return hasher.finalize().into();
@@ -152,7 +153,7 @@ fn get_admin_key_hash() -> &'static [u8; 32] {
             if let Ok(key) = fs::read_to_string(&key_path) {
                 let key = key.trim();
                 if !key.is_empty() {
-                    println!("🔐 [Security] Clé admin chargée depuis {:?}", key_path);
+                    log::info!("🔐 [Security] Clé admin chargée depuis {:?}", key_path);
                     let mut hasher = Sha256::new();
                     hasher.update(key.as_bytes());
                     return hasher.finalize().into();
@@ -160,13 +161,27 @@ fn get_admin_key_hash() -> &'static [u8; 32] {
             }
         }
         
-        // 3. Fallback: clé par défaut (seulement pour dev, affiché avec warning)
-        eprintln!("⚠️ [Security] ATTENTION: Utilisation de la clé admin par défaut!");
-        eprintln!("⚠️ [Security] Définissez AIRADCR_ADMIN_KEY ou créez ~/.airadcr/admin.key");
-        let default_key = "airadcr_admin_master_9x7w5v3t1r8p6n4m2k0j";
-        let mut hasher = Sha256::new();
-        hasher.update(default_key.as_bytes());
-        hasher.finalize().into()
+        // 3. Mode DEBUG uniquement: clé de développement avec avertissement
+        #[cfg(debug_assertions)]
+        {
+            log::warn!("⚠️ [Security] MODE DEBUG: Utilisation d'une clé admin de développement");
+            log::warn!("⚠️ [Security] Cette clé ne sera PAS disponible en production!");
+            let dev_key = "airadcr_dev_only_unsafe_key_12345";
+            let mut hasher = Sha256::new();
+            hasher.update(dev_key.as_bytes());
+            return hasher.finalize().into();
+        }
+        
+        // 4. Mode RELEASE: Refuser de démarrer sans clé configurée
+        #[cfg(not(debug_assertions))]
+        {
+            log::error!("🚨 [SECURITY CRITICAL] Aucune clé admin configurée!");
+            log::error!("🚨 Configurez AIRADCR_ADMIN_KEY ou créez ~/.airadcr/admin.key");
+            log::error!("🚨 Les fonctions d'administration seront désactivées.");
+            // Retourner un hash impossible à deviner (32 bytes aléatoires à la compilation)
+            // Ceci rend toute authentification admin impossible sans clé configurée
+            [0xFF; 32]
+        }
     })
 }
 

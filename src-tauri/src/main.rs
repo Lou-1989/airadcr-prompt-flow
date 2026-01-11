@@ -1026,8 +1026,11 @@ async fn create_api_key_cmd(name: String) -> Result<NewApiKeyResult, String> {
     // Clé complète
     let full_key = format!("{}_{}", key_prefix, &key_hex[8..]);
     
-    // Hash simple pour stockage (en production, utiliser bcrypt/argon2)
-    let key_hash = format!("{:x}", md5::compute(full_key.as_bytes()));
+    // 🛡️ SÉCURITÉ: Hash SHA-256 (aligné avec le serveur HTTP)
+    use sha2::{Sha256, Digest};
+    let mut hasher = Sha256::new();
+    hasher.update(full_key.as_bytes());
+    let key_hash = hex::encode(hasher.finalize());
     
     // Sauvegarder dans la DB
     db.add_api_key(&id, &key_prefix, &key_hash, &name)
@@ -1166,30 +1169,40 @@ fn extract_tid_from_deep_link(url: &str) -> Option<String> {
     // Retirer le préfixe airadcr://
     let path = url.strip_prefix("airadcr://")?;
     
+    // 🛡️ SÉCURITÉ: Fonction de validation du tid
+    let validate_tid = |tid: &str| -> Option<String> {
+        // Limite de longueur (protection DoS)
+        if tid.is_empty() || tid.len() > 64 {
+            if tid.len() > 64 {
+                log::warn!("[Deep Link] tid trop long rejeté: {} chars", tid.len());
+            }
+            return None;
+        }
+        // Validation caractères autorisés (alphanumériques, tirets, underscores)
+        if tid.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+            Some(tid.to_string())
+        } else {
+            log::warn!("[Deep Link] tid avec caractères invalides rejeté");
+            None
+        }
+    };
+    
     // Format: airadcr://open?tid=ABC123
     if path.contains("tid=") {
         let tid = path.split("tid=").nth(1)?;
         let tid = tid.split('&').next()?; // Au cas où il y a d'autres params
-        if !tid.is_empty() {
-            return Some(tid.to_string());
-        }
+        return validate_tid(tid);
     }
     
     // Format: airadcr://open/ABC123
     if path.starts_with("open/") {
         let tid = path.strip_prefix("open/")?;
-        if !tid.is_empty() {
-            return Some(tid.to_string());
-        }
+        return validate_tid(tid);
     }
     
     // Format: airadcr://ABC123 (direct)
     let tid = path.trim_start_matches("open").trim_start_matches('/').trim_start_matches('?');
-    if !tid.is_empty() && !tid.contains('/') {
-        return Some(tid.to_string());
-    }
-    
-    None
+    validate_tid(tid)
 }
 
 // 🔗 TRAITEMENT DES DEEP LINKS AU PREMIER LANCEMENT

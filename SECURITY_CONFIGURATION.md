@@ -77,6 +77,63 @@ curl -X POST http://localhost:8741/pending-report \
 
 ---
 
+## 🔒 Authentification pour Endpoints de Lecture
+
+Par défaut, les endpoints `GET /pending-report` et `GET /find-report` sont accessibles **sans authentification** pour faciliter l'intégration RIS/PACS.
+
+### Activer l'authentification obligatoire
+
+Pour exiger une clé API sur ces endpoints :
+
+1. Modifier `%APPDATA%/airadcr-desktop/config.toml` :
+   ```toml
+   require_auth_for_reads = true
+   ```
+
+2. Redémarrer l'application
+
+3. Les appels GET devront inclure le header `X-API-Key` :
+   ```bash
+   curl http://localhost:8741/pending-report?tid=ABC123 \
+     -H "X-API-Key: airadcr_xxxxxxxx_yyyyyyyyyyyyyyyy"
+   ```
+
+### ⚠️ Impact
+
+- **Avantage** : Protection renforcée des données médicales locales
+- **Inconvénient** : Complexifie l'intégration RIS (distribution de clés requise)
+
+---
+
+## 🔏 Protection des Données Sensibles
+
+### Masquage Automatique des PII
+
+Les identifiants patients sont automatiquement masqués dans les logs :
+
+| Donnée originale | Affichage dans les logs |
+|------------------|-------------------------|
+| `patient_id: "12345678"` | `patient_id: "1234****"` |
+| `X-API-Key: airadcr_abc123_xyz789` | `api_key_prefix: "abc123"` |
+
+### Validation Deep Links (tid)
+
+Les paramètres `tid` des deep links sont validés :
+
+- **Longueur maximale** : 64 caractères
+- **Caractères autorisés** : `a-z`, `A-Z`, `0-9`, `-`, `_`
+- **Exemples valides** : `ABC123`, `exam-2024-001`, `patient_12345`
+- **Exemples rejetés** : URLs complètes, caractères spéciaux, injection SQL
+
+```
+✅ airadcr://open?tid=EXAM-2024-001
+✅ airadcr://ABC123
+❌ airadcr://open?tid=<script>alert(1)</script>
+❌ airadcr://open?tid=' OR 1=1--
+```
+
+---
+
 ## 🛡️ Recommandations de Déploiement
 
 ### Réseau
@@ -128,6 +185,8 @@ Les logs d'accès API sont stockés dans SQLite et accessibles via :
 - [ ] Logs d'accès activés et consultables
 - [ ] Backup régulier du fichier `pending_reports.db`
 - [ ] Protocole `airadcr://` enregistré (deep links)
+- [ ] **Politiques RLS DELETE vérifiées** (Cloud/Supabase)
+- [ ] Option `require_auth_for_reads` évaluée selon contexte
 
 ---
 
@@ -148,6 +207,12 @@ Les logs d'accès API sont stockés dans SQLite et accessibles via :
 4. Configurer une nouvelle clé admin
 5. Révoquer toutes les clés API existantes et en créer de nouvelles
 
+### Deep Link malveillant détecté
+
+1. Vérifier les logs pour identifier la source
+2. Les paramètres invalides sont automatiquement rejetés
+3. Aucune action requise si validation a fonctionné
+
 ---
 
-*Document généré le 2026-01-11 - Version 1.0*
+*Document mis à jour le 2026-01-11 - Version 2.0*

@@ -9,19 +9,26 @@
  pub mod models;
  pub mod errors;
  
- use crate::config::get_config;
- use errors::TeoClientError;
- use models::{TeoHealthResponse, TeoAiReport, TeoApprovedReport, TeoApprovalResponse};
- use log::{info, warn, debug, error};
- use std::time::Duration;
- use std::sync::OnceLock;
- 
- // Client HTTP global (réutilisable)
- static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
- 
- /// Obtient ou crée le client HTTP singleton
- fn get_http_client() -> Result<&'static reqwest::Client, TeoClientError> {
-     HTTP_CLIENT.get_or_try_init(|| {
+use crate::config::get_config;
+use errors::TeoClientError;
+use models::{TeoHealthResponse, TeoAiReport, TeoApprovedReport, TeoApprovalResponse};
+use log::{info, warn, debug};
+use std::time::Duration;
+use std::sync::Mutex;
+use once_cell::sync::Lazy;
+
+// Client HTTP global (réutilisable) - initialisé paresseusement
+static HTTP_CLIENT: Lazy<Mutex<Option<reqwest::Client>>> = Lazy::new(|| Mutex::new(None));
+
+/// Obtient ou crée le client HTTP singleton
+fn get_http_client() -> Result<reqwest::Client, TeoClientError> {
+    let mut guard = HTTP_CLIENT.lock().map_err(|_| TeoClientError::ClientError("Lock poisoned".to_string()))?;
+    
+    if let Some(client) = guard.as_ref() {
+        return Ok(client.clone());
+    }
+    
+    // Initialisation du client
          let config = get_config();
          let timeout = Duration::from_secs(config.teo_hub.timeout_secs);
          
@@ -74,10 +81,12 @@
              }
          }
          
-         builder.build()
-             .map_err(|e| TeoClientError::ClientError(format!("Erreur création client HTTP: {}", e)))
-     })
- }
+    let client = builder.build()
+        .map_err(|e| TeoClientError::ClientError(format!("Erreur création client HTTP: {}", e)))?;
+    
+    *guard = Some(client.clone());
+    Ok(client)
+}
  
  /// Construit l'URL de base du serveur TÉO Hub
  fn build_base_url() -> String {
@@ -166,9 +175,7 @@
      
      debug!("[TÉO Client] Fetch AI report: {}", url);
      
-     let request = add_auth_headers(client.get(&url));
-     
-     // Retry logic avec backoff exponentiel
+    // Retry logic avec backoff exponentiel
      let mut last_error = None;
      for attempt in 0..config.teo_hub.retry_count {
          if attempt > 0 {

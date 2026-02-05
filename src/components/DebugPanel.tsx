@@ -7,7 +7,8 @@ import { logger, LogLevel } from '@/utils/logger';
 import { useInjectionContext } from '@/contexts/InjectionContext';
 import { Label } from '@/components/ui/label';
 import { DatabaseTab } from './DatabaseTab';
-import { Settings, Database } from 'lucide-react';
+import { TeoHubConfig } from './TeoHubConfig';
+import { Settings, Database, Server } from 'lucide-react';
 
 interface DebugPanelProps {
   isTauriApp: boolean;
@@ -77,14 +78,18 @@ export const DebugPanel = ({
       
       <CardContent className="p-0">
         <Tabs defaultValue="system" className="w-full">
-          <TabsList className="w-full grid grid-cols-2 h-8 mx-3 mb-2" style={{ width: 'calc(100% - 24px)' }}>
+          <TabsList className="w-full grid grid-cols-3 h-8 mx-3 mb-2" style={{ width: 'calc(100% - 24px)' }}>
             <TabsTrigger value="system" className="text-xs h-7 gap-1">
               <Settings className="w-3 h-3" />
               Système
             </TabsTrigger>
             <TabsTrigger value="database" className="text-xs h-7 gap-1">
               <Database className="w-3 h-3" />
-              Base de données
+              BDD
+            </TabsTrigger>
+            <TabsTrigger value="teo_hub" className="text-xs h-7 gap-1">
+              <Server className="w-3 h-3" />
+              TÉO Hub
             </TabsTrigger>
           </TabsList>
           
@@ -236,6 +241,11 @@ export const DebugPanel = ({
           {/* Onglet Base de données */}
           <TabsContent value="database" className="px-4 pb-4 mt-0">
             <DatabaseTab isTauriApp={isTauriApp} />
+          </TabsContent>
+          
+          {/* Onglet TÉO Hub */}
+          <TabsContent value="teo_hub" className="px-4 pb-4 mt-0">
+            <TeoHubConfig isTauriApp={isTauriApp} />
           </TabsContent>
         </Tabs>
       </CardContent>

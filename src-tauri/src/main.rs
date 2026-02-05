@@ -22,6 +22,8 @@ pub static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 // 🌐 Modules serveur HTTP et base de données
 mod http_server;
 mod database;
+mod teo_client;
+mod config;
 
 #[cfg(target_os = "windows")]
 use winapi::um::winuser::{GetSystemMetrics, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN};
@@ -1160,6 +1162,70 @@ async fn cleanup_access_logs(days: Option<i64>) -> Result<i64, String> {
     Ok(count as i64)
 }
 
+// ============================================================================
+// COMMANDES TAURI - TÉO HUB CLIENT
+// ============================================================================
+
+/// Vérifie la disponibilité du serveur TÉO Hub
+#[tauri::command]
+async fn teo_check_health() -> Result<teo_client::models::TeoHealthResponse, String> {
+    teo_client::check_health().await.map_err(|e| e.to_string())
+}
+
+/// Récupère un rapport IA depuis TÉO Hub par accession_number
+#[tauri::command]
+async fn teo_fetch_report(accession_number: String) -> Result<teo_client::models::TeoAiReport, String> {
+    teo_client::fetch_ai_report(&accession_number).await.map_err(|e| e.to_string())
+}
+
+/// Envoie un rapport validé à TÉO Hub
+#[tauri::command]
+async fn teo_submit_approved(
+    report_id: String,
+    accession_number: String,
+    approved_text: String,
+    radiologist_id: Option<String>,
+    radiologist_name: Option<String>,
+    modifications_made: bool,
+) -> Result<teo_client::models::TeoApprovalResponse, String> {
+    let report = teo_client::models::TeoApprovedReport {
+        report_id,
+        accession_number,
+        approved_text,
+        radiologist_id,
+        radiologist_name,
+        approval_timestamp: chrono::Utc::now().to_rfc3339(),
+        modifications_made,
+        modified_sections: None,
+        signature: None,
+    };
+    
+    teo_client::submit_approved_report(report).await.map_err(|e| e.to_string())
+}
+
+/// Récupère la configuration TÉO Hub actuelle (sans secrets)
+#[tauri::command]
+fn teo_get_config() -> teo_client::models::TeoHubConfigInfo {
+    let cfg = config::get_config();
+    teo_client::models::TeoHubConfigInfo {
+        enabled: cfg.teo_hub.enabled,
+        host: cfg.teo_hub.host.clone(),
+        port: cfg.teo_hub.port,
+        tls_enabled: cfg.teo_hub.tls_enabled,
+        timeout_secs: cfg.teo_hub.timeout_secs,
+        retry_count: cfg.teo_hub.retry_count,
+        has_api_key: !cfg.teo_hub.api_key.is_empty(),
+        has_bearer_token: !cfg.teo_hub.bearer_token.is_empty(),
+        has_tls_certs: !cfg.teo_hub.cert_file.is_empty() && !cfg.teo_hub.key_file.is_empty(),
+    }
+}
+
+/// Récupère le statut de connexion TÉO Hub
+#[tauri::command]
+fn teo_get_connection_status() -> String {
+    format!("{:?}", teo_client::get_connection_status())
+}
+
 // 🔗 EXTRACTION DU TID DEPUIS UNE DEEP LINK
 // Formats supportés:
 //   - airadcr://open?tid=ABC123
@@ -1494,7 +1560,13 @@ fn main() {
             // 🆕 Commandes Access Logs (AUDIT)
             get_access_logs,
             get_access_logs_stats,
-            cleanup_access_logs
+            cleanup_access_logs,
+            // 🆕 Commandes TÉO Hub Client
+            teo_check_health,
+            teo_fetch_report,
+            teo_submit_approved,
+            teo_get_config,
+            teo_get_connection_status
         ])
         .setup(|app| {
             debug!("[DEBUG] .setup() appelé - enregistrement raccourcis SpeechMike");

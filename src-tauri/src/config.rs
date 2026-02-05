@@ -11,6 +11,102 @@ use std::sync::OnceLock;
 
 static CONFIG: OnceLock<AppConfig> = OnceLock::new();
 
+/// Configuration TÉO Hub Client
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TeoHubConfig {
+    /// Activer le client TÉO Hub
+    #[serde(default = "default_teo_enabled")]
+    pub enabled: bool,
+    
+    /// Adresse du serveur TÉO Hub
+    #[serde(default = "default_teo_host")]
+    pub host: String,
+    
+    /// Port du serveur TÉO Hub
+    #[serde(default = "default_teo_port")]
+    pub port: u16,
+    
+    /// Endpoint health check
+    #[serde(default = "default_teo_health_endpoint")]
+    pub health_endpoint: String,
+    
+    /// Endpoint GET rapport IA
+    #[serde(default = "default_teo_get_report_endpoint")]
+    pub get_report_endpoint: String,
+    
+    /// Endpoint POST rapport approuvé
+    #[serde(default = "default_teo_post_report_endpoint")]
+    pub post_report_endpoint: String,
+    
+    /// Timeout en secondes
+    #[serde(default = "default_teo_timeout")]
+    pub timeout_secs: u64,
+    
+    /// Nombre de retries
+    #[serde(default = "default_teo_retry_count")]
+    pub retry_count: u32,
+    
+    /// Délai entre retries (ms)
+    #[serde(default = "default_teo_retry_delay")]
+    pub retry_delay_ms: u64,
+    
+    /// Activer TLS
+    #[serde(default)]
+    pub tls_enabled: bool,
+    
+    /// Fichier certificat CA
+    #[serde(default)]
+    pub ca_file: String,
+    
+    /// Fichier certificat client
+    #[serde(default)]
+    pub cert_file: String,
+    
+    /// Fichier clé privée client
+    #[serde(default)]
+    pub key_file: String,
+    
+    /// API Key pour authentification
+    #[serde(default)]
+    pub api_key: String,
+    
+    /// Bearer token pour authentification
+    #[serde(default)]
+    pub bearer_token: String,
+}
+
+fn default_teo_enabled() -> bool { false }
+fn default_teo_host() -> String { "192.168.1.36".to_string() }
+fn default_teo_port() -> u16 { 54489 }
+fn default_teo_health_endpoint() -> String { "th_health".to_string() }
+fn default_teo_get_report_endpoint() -> String { "th_get_ai_report".to_string() }
+fn default_teo_post_report_endpoint() -> String { "th_post_approved_report".to_string() }
+fn default_teo_timeout() -> u64 { 30 }
+fn default_teo_retry_count() -> u32 { 3 }
+fn default_teo_retry_delay() -> u64 { 1000 }
+
+impl Default for TeoHubConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_teo_enabled(),
+            host: default_teo_host(),
+            port: default_teo_port(),
+            health_endpoint: default_teo_health_endpoint(),
+            get_report_endpoint: default_teo_get_report_endpoint(),
+            post_report_endpoint: default_teo_post_report_endpoint(),
+            timeout_secs: default_teo_timeout(),
+            retry_count: default_teo_retry_count(),
+            retry_delay_ms: default_teo_retry_delay(),
+            tls_enabled: false,
+            ca_file: String::new(),
+            cert_file: String::new(),
+            key_file: String::new(),
+            api_key: String::new(),
+            bearer_token: String::new(),
+        }
+    }
+}
+
 /// Configuration de l'application
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
@@ -45,6 +141,10 @@ pub struct AppConfig {
     /// Intervalle de cleanup en secondes (défaut: 3600 = 1h)
     #[serde(default = "default_cleanup_interval_secs")]
     pub cleanup_interval_secs: u64,
+    
+    /// Configuration TÉO Hub Client
+    #[serde(default)]
+    pub teo_hub: TeoHubConfig,
 }
 
 fn default_http_port() -> u16 { 8741 }
@@ -67,6 +167,7 @@ impl Default for AppConfig {
             backup_enabled: default_backup_enabled(),
             backup_retention_days: default_backup_retention_days(),
             cleanup_interval_secs: default_cleanup_interval_secs(),
+            teo_hub: TeoHubConfig::default(),
         }
     }
 }

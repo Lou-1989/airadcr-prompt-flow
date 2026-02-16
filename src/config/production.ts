@@ -1,7 +1,7 @@
 // Configuration pour la production
 export const PRODUCTION_CONFIG = {
   // URL de l'application AirADCR
-  AIRADCR_URL: 'https://airadcr.com',
+  AIRADCR_URL: 'https://airadcr.com/app?tori=true',
   
   // Configuration iframe
   IFRAME_CONFIG: {

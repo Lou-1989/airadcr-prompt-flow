@@ -151,7 +151,7 @@ fn default_http_port() -> u16 { 8741 }
 fn default_log_level() -> String { "info".to_string() }
 fn default_log_retention_days() -> u32 { 30 }
 fn default_report_retention_hours() -> u32 { 24 }
-fn default_iframe_url() -> String { "https://airadcr.com".to_string() }
+fn default_iframe_url() -> String { "https://airadcr.com/app?tori=true".to_string() }
 fn default_backup_enabled() -> bool { true }
 fn default_backup_retention_days() -> u32 { 7 }
 fn default_cleanup_interval_secs() -> u64 { 3600 }

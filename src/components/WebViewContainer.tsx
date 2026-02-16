@@ -40,7 +40,8 @@ export const WebViewContainer = ({ className }: WebViewContainerProps) => {
           logger.debug('[Navigation] Événement reçu: tid=' + tid);
           
           // Construire l'URL avec le tid
-          const newUrl = `${PRODUCTION_CONFIG.AIRADCR_URL}?tid=${encodeURIComponent(tid)}`;
+          const separator = PRODUCTION_CONFIG.AIRADCR_URL.includes('?') ? '&' : '?';
+          const newUrl = `${PRODUCTION_CONFIG.AIRADCR_URL}${separator}tid=${encodeURIComponent(tid)}`;
           
           // Valider l'URL avant navigation
           if (validateAirADCRUrl(newUrl)) {

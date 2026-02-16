@@ -1172,32 +1172,23 @@ async fn teo_check_health() -> Result<teo_client::models::TeoHealthResponse, Str
     teo_client::check_health().await.map_err(|e| e.to_string())
 }
 
-/// Récupère un rapport IA depuis TÉO Hub par accession_number
+/// Récupère un rapport IA depuis TÉO Hub par patient_id + study_uid
 #[tauri::command]
-async fn teo_fetch_report(accession_number: String) -> Result<teo_client::models::TeoAiReport, String> {
-    teo_client::fetch_ai_report(&accession_number).await.map_err(|e| e.to_string())
+async fn teo_fetch_report(patient_id: String, study_uid: String) -> Result<teo_client::models::TeoAiReportResponse, String> {
+    teo_client::fetch_ai_report(&patient_id, &study_uid).await.map_err(|e| e.to_string())
 }
 
 /// Envoie un rapport validé à TÉO Hub
 #[tauri::command]
 async fn teo_submit_approved(
-    report_id: String,
-    accession_number: String,
-    approved_text: String,
-    radiologist_id: Option<String>,
-    radiologist_name: Option<String>,
-    modifications_made: bool,
+    patient_id: String,
+    study_uid: String,
+    approved_report: String,
 ) -> Result<teo_client::models::TeoApprovalResponse, String> {
     let report = teo_client::models::TeoApprovedReport {
-        report_id,
-        accession_number,
-        approved_text,
-        radiologist_id,
-        radiologist_name,
-        approval_timestamp: chrono::Utc::now().to_rfc3339(),
-        modifications_made,
-        modified_sections: None,
-        signature: None,
+        patient_id,
+        study_uid,
+        approved_report,
     };
     
     teo_client::submit_approved_report(report).await.map_err(|e| e.to_string())
@@ -1214,8 +1205,7 @@ fn teo_get_config() -> teo_client::models::TeoHubConfigInfo {
         tls_enabled: cfg.teo_hub.tls_enabled,
         timeout_secs: cfg.teo_hub.timeout_secs,
         retry_count: cfg.teo_hub.retry_count,
-        has_api_key: !cfg.teo_hub.api_key.is_empty(),
-        has_bearer_token: !cfg.teo_hub.bearer_token.is_empty(),
+        has_api_token: !cfg.teo_hub.api_token.is_empty(),
         has_tls_certs: !cfg.teo_hub.cert_file.is_empty() && !cfg.teo_hub.key_file.is_empty(),
     }
 }

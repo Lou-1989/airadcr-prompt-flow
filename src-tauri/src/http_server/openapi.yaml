@@ -49,7 +49,7 @@ paths:
       summary: Stocke un rapport radiologique en attente
       description: |
         Enregistre un rapport pré-rempli depuis un système RIS/PACS externe.
-        Le rapport sera récupérable via l'URL `https://airadcr.com/app?tid=XXX`.
+        Le rapport sera récupérable via l'URL `https://airadcr.com/app?tori=true&tid=XXX`.
         
         **Validation Patient-Safe** : Toute donnée nominative sera rejetée.
       operationId: storePendingReport
@@ -244,7 +244,7 @@ paths:
         1. Si `tid` fourni → utilisation directe
         2. Sinon → recherche dans la base par identifiants RIS
         3. Émission d'un événement Tauri `airadcr:navigate_to_report`
-        4. L'iframe navigue vers `https://airadcr.com/app?tid=XXX`
+        4. L'iframe navigue vers `https://airadcr.com/app?tori=true&tid=XXX`
         5. La fenêtre passe au premier plan
       operationId: openReport
       tags:
@@ -289,7 +289,7 @@ paths:
                 success: true
                 message: "Navigation triggered successfully"
                 technical_id: "TEO_2024_12345"
-                navigated_to: "https://airadcr.com/app?tid=TEO_2024_12345"
+                navigated_to: "https://airadcr.com/app?tori=true&tid=TEO_2024_12345"
         '400':
           description: Aucun identifiant fourni
           content:
@@ -396,7 +396,7 @@ components:
         retrieval_url:
           type: string
           format: uri
-          example: "https://airadcr.com/app?tid=TEO_2024_001"
+          example: "https://airadcr.com/app?tori=true&tid=TEO_2024_001"
         expires_at:
           type: string
           format: date-time

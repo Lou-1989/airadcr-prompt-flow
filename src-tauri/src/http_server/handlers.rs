@@ -350,7 +350,7 @@ pub async fn store_pending_report(
             HttpResponse::Ok().json(StoreSuccessResponse {
                 success: true,
                 technical_id: body.technical_id.clone(),
-                retrieval_url: format!("https://airadcr.com/app?tid={}", body.technical_id),
+                retrieval_url: format!("https://airadcr.com/app?tori=true&tid={}", body.technical_id),
                 expires_at: expires_at.to_rfc3339(),
             })
         }

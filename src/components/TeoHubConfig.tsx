@@ -17,7 +17,8 @@
    CheckCircle2,
    Loader2
  } from 'lucide-react';
- import { logger } from '@/utils/logger';
+import { logger } from '@/utils/logger';
+import { RisSimulator } from './RisSimulator';
  
 interface TeoHubConfigInfo {
   enabled: boolean;
@@ -264,9 +265,14 @@ interface TeoHealthResponse {
          )}
        </div>
  
-       <Separator />
- 
-       {/* Instructions */}
+        <Separator />
+
+        {/* Simulation RIS */}
+        <RisSimulator isTauriApp={isTauriApp} />
+
+        <Separator />
+  
+        {/* Instructions */}
        <div className="text-xs text-muted-foreground space-y-2">
          <p className="font-medium">Configuration via config.toml:</p>
         <pre className="p-2 bg-muted/50 rounded text-[10px] overflow-x-auto">

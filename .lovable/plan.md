@@ -1,134 +1,84 @@
 
 
-# Mise en conformite du client TEO Hub avec l'API reelle
+# Ajout d'un bouton "Simuler appel RIS" dans le panneau Debug
 
-## Probleme
+## Probleme actuel
 
-L'implementation actuelle du client Rust a ete construite sur des hypotheses qui ne correspondent pas a l'API reelle documentee dans le script Python de test. **5 incompatibilites majeures** empechent tout appel fonctionnel.
+Les commandes PowerShell posent des problemes d'encodage (UTF-8, caracteres speciaux) et de gestion des cles API. Il est beaucoup plus fiable de tester le pipeline complet directement depuis l'application.
 
-## Incompatibilites detectees
+## Solution
 
-### 1. Authentification : mauvais header
+Ajouter un bouton **"Simuler appel RIS"** dans l'onglet **TEO Hub** du panneau debug qui execute automatiquement les 3 etapes du pipeline :
 
-L'API reelle utilise le header `API_TOKEN`, pas `X-API-Key` ni `Authorization: Bearer`.
+1. **POST /pending-report** - Injecte un rapport de test dans le serveur local (SQLite)
+2. **POST /open-report** - Declenche la navigation de l'iframe vers le rapport
+3. Affiche le resultat de chaque etape dans un log visuel
 
-```text
-ACTUEL (ne fonctionne pas) :  X-API-Key: <token>
-REEL (TÉO Hub)             :  API_TOKEN: <token>
-```
+Le bouton utilisera les commandes Tauri existantes (`invoke`) pour appeler directement les fonctions Rust, sans passer par HTTP, ce qui elimine les problemes d'authentification et d'encodage.
 
-Le token fourni : `Dz1RyxZu8noENuX9Vno9URcBlsP0UXA1UgUDX0Fd7gJQL2tY4zvlIRDsxIISkrk7sJ8PR2vfC6mGOvQK`
+## Donnees de test utilisees
 
-### 2. GET /th_get_ai_report : mauvais parametres
+Les 3 jeux de donnees de la documentation TEO Hub seront proposes :
 
-L'API exige `patient_id` ET `study_uid` (les deux obligatoires). Le code actuel envoie uniquement `accession_number`.
+| Patient ID | Study UID | Description |
+|-----------|-----------|-------------|
+| 11601 | 5.1.600...945557.148 | Mammographie BI-RADS 1 bilateral |
+| 11600 | 5.1.600...33160890.148 | Mammographie avec masse |
+| 006 | 2.16.840...10001221047 | Mammographie foyer tissulaire |
 
-```text
-ACTUEL :  GET /th_get_ai_report?accession_number=ACC001
-REEL   :  GET /th_get_ai_report?patient_id=11601&study_uid=5.1.600...
-```
+## Modifications techniques
 
-### 3. Reponse GET : structure differente
+### 1. Fichier `src/components/TeoHubConfig.tsx`
 
-La reponse reelle est enveloppee dans un objet `result` contenant `translation` et `structured_report`, pas la structure plate `TeoAiReport` actuelle.
+- Ajouter une section "Simulation RIS" avec :
+  - Un menu deroulant pour choisir le jeu de donnees patient
+  - Un bouton "Simuler appel RIS complet"
+  - Un log de resultats affichant chaque etape (succes/echec)
+- La simulation appellera directement le serveur local via `fetch("http://localhost:8741/...")` depuis le frontend
 
-Reponse reelle :
-```text
-{
-  "result": {
-    "translation": {
-      "language": "fr",
-      "translated_text": "Mammographie\n\nIndication : ..."
-    },
-    "structured_report": {
-      "title": "Mammographie",
-      "results": "...",
-      "conclusion": "Sein droit: BI-RADS 1..."
-    }
-  }
-}
-```
-
-### 4. POST /th_post_approved_report : mauvais champs
-
-Le body attendu est `{patient_id, study_uid, approved_report}`, pas la structure complexe `TeoApprovedReport` actuelle.
+### 2. Fichier `src/components/TeoHubConfig.tsx` - Logique de simulation
 
 ```text
-ACTUEL :  {report_id, accession_number, approved_text, radiologist_id, ...}
-REEL   :  {patient_id, study_uid, approved_report}
+Etape 1: POST /pending-report (avec X-API-Key depuis la BDD locale)
+   -> Stocke le rapport de test dans SQLite
+   
+Etape 2: POST /open-report?tid=TEST-XXX  
+   -> Declenche l'evenement Tauri pour naviguer l'iframe
+   
+Etape 3: Affiche le resultat final
+   -> URL de navigation, statut de chaque etape
 ```
 
-### 5. Health check : format different
+### 3. Nouvelle commande Tauri (optionnelle, dans `src-tauri/src/main.rs`)
+
+- Ajouter une commande `simulate_ris_call` qui :
+  - Insere directement le rapport dans SQLite (sans passer par HTTP)
+  - Emet l'evenement `airadcr:navigate_to_report`
+  - Retourne le resultat complet
+
+Cette approche est plus fiable car elle contourne les problemes d'authentification HTTP.
+
+### 4. Alternative plus simple (approche recommandee)
+
+Plutot que de passer par HTTP (qui necessite une cle API), utiliser `invoke` pour appeler une commande Tauri dediee :
 
 ```text
-ACTUEL :  {status: "ok", version: "1.0.0", uptime_seconds: 3600}
-REEL   :  {ok: true, service: "AiReportWebServer/1.0"}
+invoke('simulate_ris_call', { 
+  patientId: '11601',
+  studyUid: '5.1.600.598386.1.618.1.905951.1.945557.148'
+})
 ```
 
-## Plan de corrections
+Cette commande :
+- Insere le rapport directement en SQLite
+- Emet l'evenement de navigation
+- Retourne le resultat sans authentification HTTP
 
-### Fichier 1 : `src-tauri/src/teo_client/models.rs`
+## Resultat attendu
 
-Remplacer toutes les structures de donnees par celles correspondant a l'API reelle :
-
-- `TeoHealthResponse` : champs `ok` (bool) et `service` (String)
-- Nouvelle structure `TeoAiReportResponse` avec `result.translation` et `result.structured_report`
-- `TeoApprovedReport` : simplifier en 3 champs (`patient_id`, `study_uid`, `approved_report`)
-- `TeoApprovalResponse` : champ `status` (String)
-
-### Fichier 2 : `src-tauri/src/teo_client/mod.rs`
-
-- **`add_auth_headers()`** : remplacer `X-API-Key` par `API_TOKEN` comme nom de header
-- **`fetch_ai_report()`** : changer la signature pour accepter `patient_id` + `study_uid` au lieu de `accession_number`, et construire l'URL avec ces deux parametres
-- **`submit_approved_report()`** : adapter au nouveau format de body simplifie
-
-### Fichier 3 : `src-tauri/src/config.rs`
-
-- Renommer le champ `api_key` en `api_token` pour refleter le nom exact du header (ou ajouter un champ `api_token` dedie)
-- Mettre a jour la valeur par defaut avec le token fourni par TÉO Hub
-
-### Fichier 4 : `src-tauri/src/main.rs`
-
-- Mettre a jour les commandes Tauri `teo_fetch_report` pour accepter `patient_id` + `study_uid`
-- Mettre a jour `teo_submit_approved` pour le nouveau format
-
-### Fichier 5 : `src/components/TeoHubConfig.tsx` (frontend)
-
-- Adapter l'interface de configuration pour afficher `API_TOKEN` au lieu de `API Key`
-
-### Fichier 6 : Documentation
-
-- Mettre a jour `TEO_HUB_CLIENT_INTEGRATION.md` avec les vrais formats d'API
-
-## Configuration requise pour tester
-
-Avant de pouvoir faire un appel test, il faudra configurer dans `config.toml` :
-
-```text
-[teo_hub]
-enabled = true
-host = "192.168.1.253"
-port = 54489
-tls_enabled = false
-api_token = "Dz1RyxZu8noENuX9Vno9URcBlsP0UXA1UgUDX0Fd7gJQL2tY4zvlIRDsxIISkrk7sJ8PR2vfC6mGOvQK"
-```
-
-Donnees de test disponibles (3 paires patient_id/study_uid pre-calculees dans la base TÉO Hub) :
-
-```text
-patient_id = "11601"  /  study_uid = "5.1.600.598386.1.618.1.905951.1.945557.148"
-patient_id = "11600"  /  study_uid = "5.1.600.598386.1.618.1.905951.1.33160890.148"
-patient_id = "006"    /  study_uid = "2.16.840.1.113669.632.20.798523242.537038478.10001221047"
-```
-
-## Fichiers a modifier
-
-| Fichier | Description |
-|---|---|
-| `src-tauri/src/teo_client/models.rs` | Nouvelles structures conformes a l'API reelle |
-| `src-tauri/src/teo_client/mod.rs` | Header API_TOKEN, parametres patient_id+study_uid |
-| `src-tauri/src/config.rs` | Champ api_token, host par defaut 192.168.1.253 |
-| `src-tauri/src/main.rs` | Commandes Tauri mises a jour |
-| `src/components/TeoHubConfig.tsx` | UI adaptee |
-| `TEO_HUB_CLIENT_INTEGRATION.md` | Documentation corrigee |
+Depuis l'onglet TEO Hub du panneau debug (Ctrl+Alt+D) :
+1. Choisir un patient de test dans le menu deroulant
+2. Cliquer sur "Simuler appel RIS"
+3. Voir le log des etapes s'afficher en temps reel
+4. L'iframe AIRADCR navigue automatiquement vers le rapport pre-rempli
 

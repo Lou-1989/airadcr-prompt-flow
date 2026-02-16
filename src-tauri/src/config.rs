@@ -184,7 +184,13 @@ impl AppConfig {
         if let Some(path) = Self::config_path() {
             if path.exists() {
                 if let Ok(content) = fs::read_to_string(&path) {
-                    if let Ok(config) = toml::from_str::<AppConfig>(&content) {
+                if let Ok(mut config) = toml::from_str::<AppConfig>(&content) {
+                        // Migration automatique : corriger l'ancienne URL sans ?tori=true
+                        if config.iframe_url == "https://airadcr.com/app" || config.iframe_url == "https://airadcr.com" {
+                            println!("🔄 [Config] Migration: ancienne iframe_url détectée, mise à jour vers ?tori=true");
+                            config.iframe_url = "https://airadcr.com/app?tori=true".to_string();
+                            let _ = config.save();
+                        }
                         println!("📁 [Config] Chargé depuis {:?}", path);
                         return config;
                     } else {

@@ -1,314 +1,67 @@
 
-# Plan d'Implementation: Mode Client HTTP vers TÉO Hub
 
-## 1. Contexte et Objectif
+# Correction de l'integration TÉO Hub apres changement d'URL
 
-### 1.1 Situation Actuelle
-L'application AIRADCR Desktop fonctionne actuellement en mode **SERVEUR HTTP** (écoute sur `localhost:8741`). Les systèmes externes envoient des données vers AIRADCR.
+## Probleme identifie
 
-### 1.2 Nouveau Besoin
-Le CTO de TÉO Hub a implementé une architecture où **TÉO Hub est le serveur** et **AIRADCR doit être le client** qui :
-- **Récupère** les rapports IA via `GET /th_get_ai_report`
-- **Renvoie** les rapports validés via `POST /th_post_approved_report`
-
-### 1.3 Configuration TÉO Hub
-```text
-┌─────────────────────────────────────────────────────────────┐
-│  Paramètres TÉO Hub (fournis par le CTO)                    │
-├─────────────────────────────────────────────────────────────┤
-│  Host       : 192.168.1.36 (variable)                       │
-│  Port       : 54489                                         │
-│  Endpoints  : th_health, th_get_ai_report,                  │
-│               th_post_approved_report                       │
-│  SSL        : Prévu (certificats CA, cert, key)             │
-│  Body limit : 20 Mo                                         │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 2. Architecture Proposée
-
-### 2.1 Diagramme du Flux Client
+Le changement d'URL vers `?tori=true` casse la construction des URLs de navigation RIS. Actuellement, quand le RIS demande l'ouverture d'un rapport, l'URL generee est **invalide** :
 
 ```text
-┌───────────────┐                    ┌─────────────────┐
-│  TÉO Hub      │                    │  AIRADCR Tauri  │
-│  Serveur HTTP │                    │  Client HTTP    │
-│  :54489       │                    │                 │
-└───────┬───────┘                    └────────┬────────┘
-        │                                     │
-        │  1. GET /th_health                  │
-        │<────────────────────────────────────│
-        │                                     │
-        │  2. 200 OK {"status": "ok"}         │
-        │────────────────────────────────────>│
-        │                                     │
-        │  3. GET /th_get_ai_report           │
-        │     ?accession_number=ACC001        │
-        │<────────────────────────────────────│
-        │                                     │
-        │  4. 200 + Rapport IA structuré      │
-        │────────────────────────────────────>│
-        │                                     │
-        │         [ Radiologue valide ]       │
-        │                                     │
-        │  5. POST /th_post_approved_report   │
-        │     (rapport final + metadata)      │
-        │<────────────────────────────────────│
-        │                                     │
-        │  6. 201 Created                     │
-        │────────────────────────────────────>│
+AVANT (correct) :  https://airadcr.com/app?tid=XXX
+APRES (casse)   :  https://airadcr.com/app?tori=true?tid=XXX
+                                                     ^
+                                              Devrait etre &
 ```
 
-### 2.2 Coexistence des Deux Modes
+Cela affecte **2 endroits** dans le code :
 
-L'application supportera les deux modes simultanément :
+1. **Frontend** (`WebViewContainer.tsx` ligne 43) : utilise `?tid=` alors que l'URL de base contient deja un `?`
+2. **Backend Rust** (`handlers.rs` ligne 353) : utilise une URL en dur **sans** `?tori=true`, donc desynchronisee avec la nouvelle config
 
-```text
-┌─────────────────────────────────────────────────────────────┐
-│                    AIRADCR Desktop                          │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│   MODE SERVEUR (existant)         MODE CLIENT (nouveau)     │
-│   localhost:8741                  -> TÉO Hub:54489          │
-│   ─────────────────               ────────────────────      │
-│   POST /pending-report            GET /th_get_ai_report     │
-│   GET  /pending-report            POST /th_post_approved    │
-│   POST /open-report                                         │
-│                                                             │
-│   Reçoit depuis: RIS/PACS         Envoie vers: TÉO Hub      │
-│   Stocke dans: SQLite local       Récupère depuis: MySQL    │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+## Corrections a appliquer
+
+### 1. WebViewContainer.tsx (ligne 43)
+
+Remplacer la concatenation naive par une construction d'URL correcte qui utilise `&` si l'URL contient deja des parametres :
+
+```typescript
+// Avant
+const newUrl = `${PRODUCTION_CONFIG.AIRADCR_URL}?tid=${encodeURIComponent(tid)}`;
+
+// Apres
+const separator = PRODUCTION_CONFIG.AIRADCR_URL.includes('?') ? '&' : '?';
+const newUrl = `${PRODUCTION_CONFIG.AIRADCR_URL}${separator}tid=${encodeURIComponent(tid)}`;
 ```
 
----
+### 2. handlers.rs (ligne 353)
 
-## 3. Modifications Techniques
+Mettre a jour l'URL de retour dans la reponse `POST /pending-report` pour inclure `tori=true` et utiliser `&` :
 
-### 3.1 Nouveau Module Rust: `teo_client`
+```rust
+// Avant
+retrieval_url: format!("https://airadcr.com/app?tid={}", body.technical_id),
 
-**Fichier**: `src-tauri/src/teo_client/mod.rs`
-
-Responsabilités :
-- Client HTTP asynchrone (reqwest)
-- Gestion des certificats TLS
-- Retry logic avec backoff exponentiel
-- Health check automatique
-
-### 3.2 Configuration Étendue
-
-**Fichier**: `src-tauri/src/config.rs` (extension)
-
-Nouveaux paramètres dans `config.toml` :
-```toml
-# Configuration TÉO Hub Client
-[teo_hub]
-enabled = true
-host = "192.168.1.36"
-port = 54489
-health_endpoint = "th_health"
-get_report_endpoint = "th_get_ai_report"
-post_report_endpoint = "th_post_approved_report"
-timeout_secs = 30
-retry_count = 3
-retry_delay_ms = 1000
-
-# SSL/TLS (optionnel)
-tls_enabled = false
-ca_file = ""
-cert_file = ""
-key_file = ""
+// Apres
+retrieval_url: format!("https://airadcr.com/app?tori=true&tid={}", body.technical_id),
 ```
 
-### 3.3 Structures de Données TÉO Hub
+### 3. handlers.rs (ligne 817 - open-report)
 
-**Fichier**: `src-tauri/src/teo_client/models.rs`
+Verifier que l'evenement Tauri `airadcr:navigate_to_report` envoie uniquement le `tid` (pas l'URL complete) -- c'est deja le cas, donc pas de changement necessaire ici. La correction du frontend (point 1) suffit.
 
-```text
-TeoHealthResponse
-├── status: String
-└── version: Option<String>
+### 4. openapi.yaml (documentation)
 
-TeoAiReport (réponse GET)
-├── report_id: String
-├── accession_number: String
-├── patient_id: String
-├── study_instance_uid: String
-├── modality: String
-├── ai_analysis: TeoAiAnalysis
-│   ├── findings: Vec<String>
-│   ├── measurements: Option<Value>
-│   ├── confidence_score: f64
-│   └── ai_modules: Vec<String>
-├── template_id: Option<String>
-├── status: String
-└── created_at: String
+Mettre a jour les exemples d'URL dans la specification OpenAPI pour refleter le nouveau format avec `?tori=true&tid=XXX`.
 
-TeoApprovedReport (payload POST)
-├── report_id: String
-├── accession_number: String
-├── approved_text: String
-├── radiologist_id: Option<String>
-├── approval_timestamp: String
-└── modifications_made: bool
-```
+## Fichiers a modifier
 
-### 3.4 Nouvelles Commandes Tauri
+| Fichier | Modification |
+|---|---|
+| `src/components/WebViewContainer.tsx` | Utiliser `&` au lieu de `?` pour ajouter le parametre `tid` |
+| `src-tauri/src/http_server/handlers.rs` | Ajouter `tori=true` dans l'URL de retour |
+| `src-tauri/src/http_server/openapi.yaml` | Mettre a jour les exemples d'URL |
 
-**Fichier**: `src-tauri/src/main.rs` (extension)
+## Impact
 
-| Commande | Description |
-|----------|-------------|
-| `teo_check_health` | Vérifie la disponibilité du serveur TÉO Hub |
-| `teo_fetch_report` | Récupère un rapport IA depuis TÉO Hub |
-| `teo_submit_approved` | Envoie le rapport validé à TÉO Hub |
-| `teo_get_config` | Récupère la configuration client active |
-| `teo_update_config` | Met à jour les paramètres de connexion |
+Sans ces corrections, **toute ouverture de rapport depuis le RIS echouera** car l'URL sera malformee et airadcr.com ne reconnaitra pas le parametre `tid`.
 
-### 3.5 Dépendances Cargo
-
-**Fichier**: `src-tauri/Cargo.toml` (ajout)
-
-```toml
-# Client HTTP async
-reqwest = { version = "0.12", features = ["json", "rustls-tls", "cookies"] }
-
-# Gestion certificats TLS
-rustls = "0.23"
-rustls-pemfile = "2"
-```
-
----
-
-## 4. Sécurité
-
-### 4.1 Authentification TÉO Hub
-
-Le CTO n'a pas précisé le mécanisme d'authentification. Options supportées :
-- **API Key** via header `X-API-Key`
-- **Bearer Token** via header `Authorization`
-- **Certificat client TLS** (mutualTLS)
-
-La configuration permettra les trois modes.
-
-### 4.2 Validation des Réponses
-
-- Vérification du Content-Type (application/json)
-- Validation du schéma JSON avec serde
-- Limite de taille (20 Mo max)
-- Timeout configurable
-
-### 4.3 Logging Sécurisé
-
-- PII masqué dans les logs (patient_id: `1234****`)
-- Credentials jamais loggés
-- Logs d'accès dans SQLite (audit)
-
----
-
-## 5. Interface Utilisateur
-
-### 5.1 Panneau de Configuration TÉO Hub
-
-Nouveau panneau dans l'interface (React) permettant de :
-- Configurer l'adresse du serveur TÉO Hub
-- Tester la connexion (health check)
-- Voir le statut de la connexion
-- Uploader les certificats TLS
-
-### 5.2 Indicateur de Connexion
-
-Badge dans la barre d'état montrant :
-- Vert : TÉO Hub connecté
-- Orange : En cours de connexion
-- Rouge : TÉO Hub inaccessible
-- Gris : Mode TÉO Hub désactivé
-
----
-
-## 6. Plan de Fichiers
-
-| Action | Fichier | Description |
-|--------|---------|-------------|
-| CRÉER | `src-tauri/src/teo_client/mod.rs` | Module principal client |
-| CRÉER | `src-tauri/src/teo_client/models.rs` | Structures de données |
-| CRÉER | `src-tauri/src/teo_client/errors.rs` | Gestion des erreurs |
-| MODIFIER | `src-tauri/src/config.rs` | Ajout config TÉO Hub |
-| MODIFIER | `src-tauri/src/main.rs` | Nouvelles commandes Tauri |
-| MODIFIER | `src-tauri/Cargo.toml` | Dépendance reqwest |
-| CRÉER | `src/components/TeoHubConfig.tsx` | UI configuration |
-| MODIFIER | `src/components/DebugPanel.tsx` | Ajout onglet TÉO Hub |
-
----
-
-## 7. Workflow Complet Intégré
-
-```text
-┌────────────────────────────────────────────────────────────────────┐
-│                    WORKFLOW COMPLET                                │
-├────────────────────────────────────────────────────────────────────┤
-│                                                                    │
-│  1. PACS → TÉO Hub                                                 │
-│     [Images DICOM envoyées pour analyse IA]                        │
-│                                                                    │
-│  2. TÉO Hub → Prestataire IA (Gleamer, etc.)                       │
-│     [Analyse volumétrie, détection lésions, etc.]                  │
-│                                                                    │
-│  3. Prestataire IA → TÉO Hub                                       │
-│     [Résultats IA + DICOM SR]                                      │
-│                                                                    │
-│  4. TÉO Hub stocke dans MySQL (table th_ai_reports)                │
-│                                                                    │
-│  5. RIS/PACS → AIRADCR (appel contextuel)                          │
-│     POST localhost:8741/open-report?accession_number=XXX           │
-│                                                                    │
-│  6. AIRADCR → TÉO Hub [NOUVEAU CLIENT]                             │
-│     GET http://192.168.1.36:54489/th_get_ai_report                 │
-│         ?accession_number=XXX                                      │
-│                                                                    │
-│  7. AIRADCR affiche le rapport pré-rempli                          │
-│     [Radiologue valide/modifie]                                    │
-│                                                                    │
-│  8. AIRADCR → TÉO Hub [NOUVEAU CLIENT]                             │
-│     POST http://192.168.1.36:54489/th_post_approved_report         │
-│                                                                    │
-│  9. AIRADCR → RIS                                                  │
-│     [Injection clavier du rapport final]                           │
-│                                                                    │
-└────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 8. Estimation et Phases
-
-| Phase | Tâche | Durée estimée |
-|-------|-------|---------------|
-| 1 | Configuration + structures de données | 2-3 heures |
-| 2 | Client HTTP avec reqwest + TLS | 3-4 heures |
-| 3 | Commandes Tauri + intégration | 2-3 heures |
-| 4 | Interface utilisateur React | 2-3 heures |
-| 5 | Tests et documentation | 2 heures |
-| **Total** | | **11-15 heures** |
-
----
-
-## 9. Points à Clarifier avec le CTO
-
-Avant l'implementation complète, il serait utile de confirmer :
-
-1. **Authentification** : Quel mécanisme (API Key, Bearer, mTLS) ?
-2. **Format exact** des réponses `th_get_ai_report`
-3. **Format exact** attendu pour `th_post_approved_report`
-4. **Gestion des erreurs** côté TÉO Hub (codes HTTP, messages)
-5. **Polling vs Push** : AIRADCR doit-il interroger périodiquement ou attendre un signal ?
-
----
-
-## 10. Résumé Exécutif
-
-Cette implementation ajoute un **mode client HTTP** à AIRADCR Desktop pour communiquer avec TÉO Hub en tant que serveur central. Les deux modes (serveur local et client TÉO Hub) coexistent et permettent une intégration flexible selon le contexte de déploiement.
-
-L'architecture est conçue pour être **robuste** (retry logic, timeouts), **sécurisée** (TLS, authentification, PII masking) et **configurable** (paramètres externalisés dans config.toml).

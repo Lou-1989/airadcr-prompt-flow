@@ -19,23 +19,21 @@
  } from 'lucide-react';
  import { logger } from '@/utils/logger';
  
- interface TeoHubConfigInfo {
-   enabled: boolean;
-   host: string;
-   port: number;
-   tls_enabled: boolean;
-   timeout_secs: number;
-   retry_count: number;
-   has_api_key: boolean;
-   has_bearer_token: boolean;
-   has_tls_certs: boolean;
- }
+interface TeoHubConfigInfo {
+  enabled: boolean;
+  host: string;
+  port: number;
+  tls_enabled: boolean;
+  timeout_secs: number;
+  retry_count: number;
+  has_api_token: boolean;
+  has_tls_certs: boolean;
+}
  
- interface TeoHealthResponse {
-   status: string;
-   version?: string;
-   uptime_seconds?: number;
- }
+interface TeoHealthResponse {
+  ok: boolean;
+  service: string;
+}
  
  type ConnectionStatus = 'connected' | 'disconnected' | 'checking' | 'disabled' | 'unknown';
  
@@ -178,12 +176,12 @@
                    {config.tls_enabled ? 'https' : 'http'}://{config.host}:{config.port}
                  </span>
                </div>
-               {healthInfo?.version && (
-                 <div className="flex justify-between">
-                   <span>Version:</span>
-                   <span>{healthInfo.version}</span>
-                 </div>
-               )}
+                {healthInfo?.service && (
+                  <div className="flex justify-between">
+                    <span>Service:</span>
+                    <span>{healthInfo.service}</span>
+                  </div>
+                )}
                {lastCheck && (
                  <div className="flex justify-between">
                    <span>Dernière vérif:</span>
@@ -236,12 +234,12 @@
                </Badge>
              </div>
              
-             <div className="flex items-center justify-between p-2 bg-background/50 rounded">
-               <span>API Key</span>
-               <Badge variant={config.has_api_key ? "default" : "outline"} className="text-xs">
-                 {config.has_api_key ? "Configurée" : "Non configurée"}
-               </Badge>
-             </div>
+              <div className="flex items-center justify-between p-2 bg-background/50 rounded">
+                <span>API Token</span>
+                <Badge variant={config.has_api_token ? "default" : "outline"} className="text-xs">
+                  {config.has_api_token ? "Configuré" : "Non configuré"}
+                </Badge>
+              </div>
              
              <div className="flex items-center justify-between p-2 bg-background/50 rounded">
                <span>Certificats mTLS</span>
@@ -271,13 +269,13 @@
        {/* Instructions */}
        <div className="text-xs text-muted-foreground space-y-2">
          <p className="font-medium">Configuration via config.toml:</p>
-         <pre className="p-2 bg-muted/50 rounded text-[10px] overflow-x-auto">
- {`[teo_hub]
- enabled = true
- host = "192.168.1.36"
- port = 54489
- api_key = "votre_clé"`}
-         </pre>
+        <pre className="p-2 bg-muted/50 rounded text-[10px] overflow-x-auto">
+{`[teo_hub]
+enabled = true
+host = "192.168.1.253"
+port = 54489
+api_token = "votre_token"`}
+        </pre>
          <p className="text-[10px]">
            Chemin: <code className="bg-muted px-1 rounded">%APPDATA%/airadcr-desktop/config.toml</code>
          </p>

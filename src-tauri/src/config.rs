@@ -66,17 +66,17 @@ pub struct TeoHubConfig {
     #[serde(default)]
     pub key_file: String,
     
-    /// API Key pour authentification
+    /// API Token pour authentification (header API_TOKEN)
+    #[serde(default)]
+    pub api_token: String,
+    
+    /// Ancien champ api_key (migration automatique vers api_token)
     #[serde(default)]
     pub api_key: String,
-    
-    /// Bearer token pour authentification
-    #[serde(default)]
-    pub bearer_token: String,
 }
 
 fn default_teo_enabled() -> bool { false }
-fn default_teo_host() -> String { "192.168.1.36".to_string() }
+fn default_teo_host() -> String { "192.168.1.253".to_string() }
 fn default_teo_port() -> u16 { 54489 }
 fn default_teo_health_endpoint() -> String { "th_health".to_string() }
 fn default_teo_get_report_endpoint() -> String { "th_get_ai_report".to_string() }
@@ -101,8 +101,8 @@ impl Default for TeoHubConfig {
             ca_file: String::new(),
             cert_file: String::new(),
             key_file: String::new(),
+            api_token: String::new(),
             api_key: String::new(),
-            bearer_token: String::new(),
         }
     }
 }
@@ -185,12 +185,34 @@ impl AppConfig {
             if path.exists() {
                 if let Ok(content) = fs::read_to_string(&path) {
                 if let Ok(mut config) = toml::from_str::<AppConfig>(&content) {
+                        let mut needs_save = false;
+                        
                         // Migration automatique : corriger l'ancienne URL sans ?tori=true
                         if config.iframe_url == "https://airadcr.com/app" || config.iframe_url == "https://airadcr.com" {
                             println!("🔄 [Config] Migration: ancienne iframe_url détectée, mise à jour vers ?tori=true");
                             config.iframe_url = "https://airadcr.com/app?tori=true".to_string();
+                            needs_save = true;
+                        }
+                        
+                        // Migration automatique : api_key → api_token
+                        if !config.teo_hub.api_key.is_empty() && config.teo_hub.api_token.is_empty() {
+                            println!("🔄 [Config] Migration: api_key → api_token");
+                            config.teo_hub.api_token = config.teo_hub.api_key.clone();
+                            config.teo_hub.api_key = String::new();
+                            needs_save = true;
+                        }
+                        
+                        // Migration automatique : ancien host par défaut
+                        if config.teo_hub.host == "192.168.1.36" {
+                            println!("🔄 [Config] Migration: host TÉO Hub 192.168.1.36 → 192.168.1.253");
+                            config.teo_hub.host = "192.168.1.253".to_string();
+                            needs_save = true;
+                        }
+                        
+                        if needs_save {
                             let _ = config.save();
                         }
+                        
                         println!("📁 [Config] Chargé depuis {:?}", path);
                         return config;
                     } else {

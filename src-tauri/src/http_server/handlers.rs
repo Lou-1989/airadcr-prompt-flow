@@ -827,7 +827,7 @@ pub async fn open_report(
                         success: true,
                         message: Some("Navigation triggered successfully".to_string()),
                         technical_id: Some(tid.clone()),
-                        navigated_to: Some(format!("https://airadcr.com/app?tid={}", tid)),
+                        navigated_to: Some(format!("https://airadcr.com/app?tori=true&tid={}", tid)),
                         error: None,
                     })
                 }

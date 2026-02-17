@@ -89,29 +89,9 @@ const AppContent = () => {
           });
       }),
       
-      // 🎤 DICTATION: Ctrl+Shift+D (Start/Stop dictée)
-      listen('airadcr:dictation_startstop', () => {
-        logger.debug('[Shortcuts] Ctrl+Shift+D → Start/Stop dictée');
-        sendToIframe('airadcr:toggle_recording');
-      }),
-      
-      // 🎤 DICTATION: Ctrl+Shift+P (Pause/Resume dictée)
-      listen('airadcr:dictation_pause', () => {
-        logger.debug('[Shortcuts] Ctrl+Shift+P → Pause/Resume dictée');
-        sendToIframe('airadcr:toggle_pause');
-      }),
-      
-      // 💉 INJECTION: Ctrl+Shift+T (Inject texte brut)
-      listen('airadcr:inject_raw', () => {
-        logger.debug('[Shortcuts] Ctrl+Shift+T → Inject texte brut');
-        sendToIframe('airadcr:request_injection', { type: 'brut' });
-      }),
-      
-      // 💉 INJECTION: Ctrl+Shift+S (Inject rapport structuré)
-      listen('airadcr:inject_structured', () => {
-        logger.debug('[Shortcuts] Ctrl+Shift+S → Inject rapport structuré');
-        sendToIframe('airadcr:request_injection', { type: 'structuré' });
-      }),
+      // NOTE: Les événements de dictée/injection (dictation_startstop, dictation_pause,
+      // inject_raw, inject_structured) sont gérés UNIQUEMENT dans useSecureMessaging.ts
+      // pour éviter les doublons de postMessage vers l'iframe.
     ];
 
     // Cleanup

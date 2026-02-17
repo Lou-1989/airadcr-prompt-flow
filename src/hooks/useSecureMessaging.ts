@@ -54,10 +54,12 @@ export const useSecureMessaging = () => {
     }
     
     try {
+      const timestamp = new Date().toISOString();
       iframe.contentWindow.postMessage(
         { type, payload },
         'https://airadcr.com'
       );
+      logger.debug(`[Sécurisé] ✉️ postMessage envoyé @ ${timestamp}: ${type}`, payload || '(pas de payload)');
       return true;
     } catch (error) {
       logger.error('[Sécurisé] Erreur envoi message:', error);

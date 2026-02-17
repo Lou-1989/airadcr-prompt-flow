@@ -1,3 +1,4 @@
+import { useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -36,6 +37,33 @@ export const DebugPanel = ({
   onClose
 }: DebugPanelProps) => {
   const { activeWindow, lockedPosition } = useInjectionContext();
+  const [iframeTestResult, setIframeTestResult] = useState<'idle' | 'testing' | 'success' | 'fail'>('idle');
+
+  const testIframeCommunication = useCallback(() => {
+    setIframeTestResult('testing');
+    const iframe = document.querySelector('iframe[title="AirADCR"]') as HTMLIFrameElement;
+    if (!iframe?.contentWindow) {
+      setIframeTestResult('fail');
+      logger.error('[Debug] Iframe AirADCR non trouvée');
+      return;
+    }
+
+    const handler = (event: MessageEvent) => {
+      if (event.origin === 'https://airadcr.com' && event.data?.type === 'airadcr:status') {
+        setIframeTestResult('success');
+        window.removeEventListener('message', handler);
+        logger.info('[Debug] ✅ Iframe répond !', event.data.payload);
+      }
+    };
+    window.addEventListener('message', handler);
+    iframe.contentWindow.postMessage({ type: 'airadcr:request_status', payload: null }, 'https://airadcr.com');
+    logger.debug('[Debug] postMessage airadcr:request_status envoyé');
+
+    setTimeout(() => {
+      window.removeEventListener('message', handler);
+      setIframeTestResult(prev => prev === 'testing' ? 'fail' : prev);
+    }, 3000);
+  }, []);
 
   const getStatusBadge = (status: boolean, label: string) => (
     <div className="flex items-center justify-between p-2 bg-background/50 rounded">
@@ -234,6 +262,31 @@ export const DebugPanel = ({
                 >
                   🔓 Unlock
                 </Button>
+              </div>
+
+              <Separator />
+
+              {/* Test communication iframe */}
+              <div className="space-y-2">
+                <h4 className="text-sm font-semibold">Communication Iframe</h4>
+                <Button
+                  onClick={testIframeCommunication}
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-start"
+                  disabled={iframeTestResult === 'testing'}
+                >
+                  📡 Test communication iframe
+                </Button>
+                {iframeTestResult === 'testing' && (
+                  <Badge variant="secondary" className="w-full justify-center">⏳ En attente de réponse...</Badge>
+                )}
+                {iframeTestResult === 'success' && (
+                  <Badge variant="default" className="w-full justify-center bg-green-600">✅ Iframe répond</Badge>
+                )}
+                {iframeTestResult === 'fail' && (
+                  <Badge variant="destructive" className="w-full justify-center">❌ Iframe ne répond pas (3s)</Badge>
+                )}
               </div>
             </div>
           </TabsContent>

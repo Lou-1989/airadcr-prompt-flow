@@ -1,84 +1,61 @@
 
 
-# Ajout d'un bouton "Simuler appel RIS" dans le panneau Debug
+# Correction des raccourcis clavier et du systeme d'injection
 
-## Probleme actuel
+## Probleme identifie
 
-Les commandes PowerShell posent des problemes d'encodage (UTF-8, caracteres speciaux) et de gestion des cles API. Il est beaucoup plus fiable de tester le pipeline complet directement depuis l'application.
+Les raccourcis clavier (dictee, injection) ne fonctionnent plus car **4 evenements Tauri sont ecoutes en double** dans deux fichiers differents. Chaque raccourci envoie donc 2 messages identiques a l'iframe airadcr.com, ce qui provoque une annulation immediate (ex: Start + Stop = rien).
 
-## Solution
+Ce probleme est **cote application web React uniquement** (ce projet). L'exe Tauri fonctionne correctement.
 
-Ajouter un bouton **"Simuler appel RIS"** dans l'onglet **TEO Hub** du panneau debug qui execute automatiquement les 3 etapes du pipeline :
+### Evenements dupliques
 
-1. **POST /pending-report** - Injecte un rapport de test dans le serveur local (SQLite)
-2. **POST /open-report** - Declenche la navigation de l'iframe vers le rapport
-3. Affiche le resultat de chaque etape dans un log visuel
+| Evenement | App.tsx | useSecureMessaging.ts |
+|---|---|---|
+| dictation_startstop | Ligne 93 | Ligne 272 |
+| dictation_pause | Ligne 99 | Ligne 278 |
+| inject_raw | Ligne 105 | Ligne 284 |
+| inject_structured | Ligne 111 | Ligne 290 |
 
-Le bouton utilisera les commandes Tauri existantes (`invoke`) pour appeler directement les fonctions Rust, sans passer par HTTP, ce qui elimine les problemes d'authentification et d'encodage.
+## Corrections prevues
 
-## Donnees de test utilisees
+### 1. Supprimer les listeners dupliques dans App.tsx
 
-Les 3 jeux de donnees de la documentation TEO Hub seront proposes :
+Retirer les 4 listeners de dictee/injection (lignes 92-114) de `App.tsx`. Ces evenements sont deja correctement geres dans `useSecureMessaging.ts` avec en plus :
+- La queue FIFO d'injection
+- Le debounce et la deduplication
+- L'envoi via `sendSecureMessage` (avec validation de securite)
 
-| Patient ID | Study UID | Description |
-|-----------|-----------|-------------|
-| 11601 | 5.1.600...945557.148 | Mammographie BI-RADS 1 bilateral |
-| 11600 | 5.1.600...33160890.148 | Mammographie avec masse |
-| 006 | 2.16.840...10001221047 | Mammographie foyer tissulaire |
+`App.tsx` conservera uniquement les 4 evenements qui lui sont propres :
+- `airadcr:toggle_debug` (panneau debug)
+- `airadcr:toggle_logs` (fenetre logs)
+- `airadcr:test_injection` (test injection)
+- `airadcr:force_clickable` (anti-ghost F9)
 
-## Modifications techniques
+### 2. Ajouter un bouton "Test communication iframe" dans le panneau debug
 
-### 1. Fichier `src/components/TeoHubConfig.tsx`
+Ajouter dans `DebugPanel.tsx` un bouton qui :
+1. Envoie un `postMessage` de type `airadcr:request_status` a l'iframe
+2. Attend une reponse pendant 3 secondes
+3. Affiche "iframe repond" (vert) ou "iframe ne repond pas" (rouge)
 
-- Ajouter une section "Simulation RIS" avec :
-  - Un menu deroulant pour choisir le jeu de donnees patient
-  - Un bouton "Simuler appel RIS complet"
-  - Un log de resultats affichant chaque etape (succes/echec)
-- La simulation appellera directement le serveur local via `fetch("http://localhost:8741/...")` depuis le frontend
+Cela permettra de verifier que le site airadcr.com en mode `?tori=true` ecoute bien les messages, sans avoir a ouvrir la console du navigateur.
 
-### 2. Fichier `src/components/TeoHubConfig.tsx` - Logique de simulation
+### 3. Ameliorer les logs dans useSecureMessaging.ts
 
-```text
-Etape 1: POST /pending-report (avec X-API-Key depuis la BDD locale)
-   -> Stocke le rapport de test dans SQLite
-   
-Etape 2: POST /open-report?tid=TEST-XXX  
-   -> Declenche l'evenement Tauri pour naviguer l'iframe
-   
-Etape 3: Affiche le resultat final
-   -> URL de navigation, statut de chaque etape
-```
+Ajouter des logs avec timestamp pour chaque `sendSecureMessage` afin de faciliter le diagnostic en cas de probleme futur.
 
-### 3. Nouvelle commande Tauri (optionnelle, dans `src-tauri/src/main.rs`)
+## Fichiers modifies
 
-- Ajouter une commande `simulate_ris_call` qui :
-  - Insere directement le rapport dans SQLite (sans passer par HTTP)
-  - Emet l'evenement `airadcr:navigate_to_report`
-  - Retourne le resultat complet
-
-Cette approche est plus fiable car elle contourne les problemes d'authentification HTTP.
-
-### 4. Alternative plus simple (approche recommandee)
-
-Plutot que de passer par HTTP (qui necessite une cle API), utiliser `invoke` pour appeler une commande Tauri dediee :
-
-```text
-invoke('simulate_ris_call', { 
-  patientId: '11601',
-  studyUid: '5.1.600.598386.1.618.1.905951.1.945557.148'
-})
-```
-
-Cette commande :
-- Insere le rapport directement en SQLite
-- Emet l'evenement de navigation
-- Retourne le resultat sans authentification HTTP
+- `src/App.tsx` : Suppression des 4 listeners dupliques
+- `src/components/DebugPanel.tsx` : Ajout du bouton de test communication iframe
+- `src/hooks/useSecureMessaging.ts` : Logs ameliores avec timestamps
 
 ## Resultat attendu
 
-Depuis l'onglet TEO Hub du panneau debug (Ctrl+Alt+D) :
-1. Choisir un patient de test dans le menu deroulant
-2. Cliquer sur "Simuler appel RIS"
-3. Voir le log des etapes s'afficher en temps reel
-4. L'iframe AIRADCR navigue automatiquement vers le rapport pre-rempli
+Apres correction :
+- Chaque raccourci clavier n'enverra qu'**un seul** postMessage (au lieu de deux)
+- La dictee (Ctrl+Shift+D) demarrera/arretera correctement
+- L'injection (Ctrl+Shift+T/S) fonctionnera sans doublon
+- Le bouton de test permettra de diagnostiquer si un probleme vient du cote airadcr.com
 

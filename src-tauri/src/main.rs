@@ -1590,6 +1590,39 @@ fn main() {
     });
 }
 
+// 🔧 Focus-flash + eval : contourne le throttling WebView2 hors-focus
+// Réveille brièvement le WebView pour garantir la livraison du postMessage à l'iframe cross-origin,
+// puis redonne le focus à l'application précédente (Word, RIS, etc.)
+#[cfg(target_os = "windows")]
+fn eval_with_focus_flash(window: &tauri::Window, js_code: &str) {
+    use winapi::um::winuser::{GetForegroundWindow, SetForegroundWindow};
+
+    unsafe {
+        // 1. Sauvegarder la fenêtre active (Word, RIS, etc.)
+        let prev_hwnd = GetForegroundWindow();
+
+        // 2. Réveiller le WebView en lui donnant brièvement le focus
+        let _ = window.show();
+        let _ = window.set_focus();
+
+        // 3. Exécuter le JS directement via ExecuteScript (synchrone, pas throttlé)
+        let _ = window.eval(js_code);
+
+        // 4. Laisser le temps au postMessage d'être traité par l'iframe
+        std::thread::sleep(std::time::Duration::from_millis(60));
+
+        // 5. Redonner le focus à l'application précédente
+        if !prev_hwnd.is_null() {
+            SetForegroundWindow(prev_hwnd);
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn eval_with_focus_flash(window: &tauri::Window, js_code: &str) {
+    let _ = window.eval(js_code);
+}
+
 // ✅ Raccourcis globaux simplifiés - Backend = relai, Frontend = logique
 fn register_global_shortcuts(app_handle: tauri::AppHandle) {
     let mut shortcut_manager = app_handle.global_shortcut_manager();
@@ -1627,46 +1660,90 @@ fn register_global_shortcuts(app_handle: tauri::AppHandle) {
         })
         .unwrap_or_else(|e| warn!("Erreur enregistrement Ctrl+Alt+I: {}", e));
     
-    // 🎤 DICTATION: Ctrl+Shift+D (Start/Stop dictée)
+    // 🎤 DICTATION: Ctrl+Shift+D (Start/Stop dictée) — focus-flash + eval pour fiabilité hors-focus
     let handle_ctrl_shift_d = app_handle.clone();
     shortcut_manager
         .register("Ctrl+Shift+D", move || {
             debug!("[Shortcuts] Ctrl+Shift+D pressé (start/stop dictée)");
             if let Some(window) = handle_ctrl_shift_d.get_window("main") {
-                window.emit("airadcr:dictation_startstop", ()).ok();
+                eval_with_focus_flash(&window, r#"
+                    (function() {
+                        var iframe = document.querySelector('iframe[title="AirADCR"]');
+                        if (iframe && iframe.contentWindow) {
+                            iframe.contentWindow.postMessage(
+                                { type: 'airadcr:toggle_recording' },
+                                'https://airadcr.com'
+                            );
+                            console.log('[Shortcut] toggle_recording envoyé via focus-flash');
+                        }
+                    })();
+                "#);
             }
         })
         .unwrap_or_else(|e| warn!("Erreur enregistrement Ctrl+Shift+D: {}", e));
     
-    // 🎤 DICTATION: Ctrl+Shift+P (Pause/Resume dictée)
+    // 🎤 DICTATION: Ctrl+Shift+P (Pause/Resume dictée) — focus-flash + eval
     let handle_ctrl_shift_p = app_handle.clone();
     shortcut_manager
         .register("Ctrl+Shift+P", move || {
             debug!("[Shortcuts] Ctrl+Shift+P pressé (pause/resume dictée)");
             if let Some(window) = handle_ctrl_shift_p.get_window("main") {
-                window.emit("airadcr:dictation_pause", ()).ok();
+                eval_with_focus_flash(&window, r#"
+                    (function() {
+                        var iframe = document.querySelector('iframe[title="AirADCR"]');
+                        if (iframe && iframe.contentWindow) {
+                            iframe.contentWindow.postMessage(
+                                { type: 'airadcr:toggle_pause' },
+                                'https://airadcr.com'
+                            );
+                            console.log('[Shortcut] toggle_pause envoyé via focus-flash');
+                        }
+                    })();
+                "#);
             }
         })
         .unwrap_or_else(|e| warn!("Erreur enregistrement Ctrl+Shift+P: {}", e));
     
-    // INJECTION: Ctrl+Shift+T (Inject texte brut)
+    // 💉 INJECTION: Ctrl+Shift+T (Inject texte brut) — focus-flash + eval
     let handle_ctrl_shift_t = app_handle.clone();
     shortcut_manager
         .register("Ctrl+Shift+T", move || {
             debug!("[Shortcuts] Ctrl+Shift+T pressé (inject texte brut)");
             if let Some(window) = handle_ctrl_shift_t.get_window("main") {
-                window.emit("airadcr:inject_raw", ()).ok();
+                eval_with_focus_flash(&window, r#"
+                    (function() {
+                        var iframe = document.querySelector('iframe[title="AirADCR"]');
+                        if (iframe && iframe.contentWindow) {
+                            iframe.contentWindow.postMessage(
+                                { type: 'airadcr:request_injection', payload: { type: 'brut' } },
+                                'https://airadcr.com'
+                            );
+                            console.log('[Shortcut] request_injection (brut) envoyé via focus-flash');
+                        }
+                    })();
+                "#);
             }
         })
         .unwrap_or_else(|e| warn!("Erreur enregistrement Ctrl+Shift+T: {}", e));
     
-    // INJECTION: Ctrl+Shift+S (Inject rapport structuré)
+    // 💉 INJECTION: Ctrl+Shift+S (Inject rapport structuré) — focus-flash + eval
     let handle_ctrl_shift_s = app_handle.clone();
     shortcut_manager
         .register("Ctrl+Shift+S", move || {
             debug!("[Shortcuts] Ctrl+Shift+S pressé (inject rapport structuré)");
             if let Some(window) = handle_ctrl_shift_s.get_window("main") {
-                window.emit("airadcr:inject_structured", ()).ok();
+                eval_with_focus_flash(&window, r#"
+                    (function() {
+                        var iframe = document.querySelector('iframe[title="AirADCR"]');
+                        if (iframe && iframe.contentWindow) {
+                            iframe.contentWindow.postMessage(
+                                { type: 'airadcr:request_injection', payload: { type: 'structuré' } },
+                                'https://airadcr.com'
+                            );
+                            console.log('[Shortcut] request_injection (structuré) envoyé via focus-flash');
+                        }
+                    })();
+                "#);
             }
         })
         .unwrap_or_else(|e| warn!("Erreur enregistrement Ctrl+Shift+S: {}", e));

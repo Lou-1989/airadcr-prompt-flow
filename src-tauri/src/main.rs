@@ -1590,44 +1590,45 @@ fn main() {
     });
 }
 
-// 🔧 Focus-flash + eval : contourne le throttling WebView2 hors-focus
-// Réveille brièvement le WebView pour garantir la livraison du postMessage à l'iframe cross-origin,
-// puis redonne le focus à l'application précédente (Word, RIS, etc.)
-#[cfg(target_os = "windows")]
-fn eval_with_focus_flash(window: &tauri::Window, js_code: &str) {
-    use winapi::um::winuser::{GetForegroundWindow, SetForegroundWindow};
-
-    unsafe {
-        // 1. Sauvegarder la fenêtre active (Word, RIS, etc.)
-        let prev_hwnd = GetForegroundWindow();
-
-        // 2. Réveiller le WebView en lui donnant brièvement le focus
-        let _ = window.show();
-        let _ = window.set_focus();
-
-        // 3. Exécuter le JS directement via ExecuteScript (synchrone, pas throttlé)
-        let _ = window.eval(js_code);
-
-        // 4. Laisser le temps au postMessage d'être traité par l'iframe
-        std::thread::sleep(std::time::Duration::from_millis(60));
-
-        // 5. Redonner le focus à l'application précédente
-        if !prev_hwnd.is_null() {
-            SetForegroundWindow(prev_hwnd);
-        }
-    }
-}
-
-#[cfg(not(target_os = "windows"))]
-fn eval_with_focus_flash(window: &tauri::Window, js_code: &str) {
-    let _ = window.eval(js_code);
-}
-
-// ✅ Raccourcis globaux simplifiés - Backend = relai, Frontend = logique
+// ✅ Raccourcis globaux — Pattern officiel Tauri: channel tokio pour dispatch thread-safe
+// Corrige le problème fondamental : les callbacks GlobalShortcutManager s'exécutent dans un thread
+// secondaire où window.eval() (COM WebView2) et SetForegroundWindow() (UIPI) échouent silencieusement.
+// Solution : tx.send() non-bloquant → tokio task → window.emit() depuis le bon runtime.
 fn register_global_shortcuts(app_handle: tauri::AppHandle) {
+    // Channel tokio : bridge thread secondaire → runtime Tauri async
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<&'static str>();
+
+    // Task tokio : reçoit les actions et émet les événements Tauri depuis le bon contexte
+    let handle_for_task = app_handle.clone();
+    tauri::async_runtime::spawn(async move {
+        while let Some(action) = rx.recv().await {
+            if let Some(window) = handle_for_task.get_window("main") {
+                match action {
+                    "toggle_recording" => {
+                        debug!("[Shortcuts/task] Émission airadcr:dictation_startstop");
+                        window.emit("airadcr:dictation_startstop", ()).ok();
+                    }
+                    "toggle_pause" => {
+                        debug!("[Shortcuts/task] Émission airadcr:dictation_pause");
+                        window.emit("airadcr:dictation_pause", ()).ok();
+                    }
+                    "inject_raw" => {
+                        debug!("[Shortcuts/task] Émission airadcr:inject_raw");
+                        window.emit("airadcr:inject_raw", ()).ok();
+                    }
+                    "inject_structured" => {
+                        debug!("[Shortcuts/task] Émission airadcr:inject_structured");
+                        window.emit("airadcr:inject_structured", ()).ok();
+                    }
+                    _ => {}
+                }
+            }
+        }
+    });
+
     let mut shortcut_manager = app_handle.global_shortcut_manager();
-    
-    // 🎨 DEBUG PANEL: Ctrl+Alt+D (modifié de Ctrl+Shift+D)
+
+    // 🎨 DEBUG PANEL: Ctrl+Alt+D
     let handle_debug = app_handle.clone();
     shortcut_manager
         .register("Ctrl+Alt+D", move || {
@@ -1637,8 +1638,8 @@ fn register_global_shortcuts(app_handle: tauri::AppHandle) {
             }
         })
         .unwrap_or_else(|e| warn!("Erreur enregistrement Ctrl+Alt+D: {}", e));
-    
-    // 📋 LOG WINDOW: Ctrl+Alt+L (modifié de Ctrl+Shift+L)
+
+    // 📋 LOG WINDOW: Ctrl+Alt+L
     let handle_logs = app_handle.clone();
     shortcut_manager
         .register("Ctrl+Alt+L", move || {
@@ -1648,8 +1649,8 @@ fn register_global_shortcuts(app_handle: tauri::AppHandle) {
             }
         })
         .unwrap_or_else(|e| warn!("Erreur enregistrement Ctrl+Alt+L: {}", e));
-    
-    // 🧪 TEST INJECTION: Ctrl+Alt+I (modifié de Ctrl+Shift+T)
+
+    // 🧪 TEST INJECTION: Ctrl+Alt+I
     let handle_test = app_handle.clone();
     shortcut_manager
         .register("Ctrl+Alt+I", move || {
@@ -1659,95 +1660,43 @@ fn register_global_shortcuts(app_handle: tauri::AppHandle) {
             }
         })
         .unwrap_or_else(|e| warn!("Erreur enregistrement Ctrl+Alt+I: {}", e));
-    
-    // 🎤 DICTATION: Ctrl+Shift+D (Start/Stop dictée) — focus-flash + eval pour fiabilité hors-focus
-    let handle_ctrl_shift_d = app_handle.clone();
+
+    // 🎤 DICTATION: Ctrl+Shift+D (Start/Stop dictée)
+    let tx_d = tx.clone();
     shortcut_manager
         .register("Ctrl+Shift+D", move || {
-            debug!("[Shortcuts] Ctrl+Shift+D pressé (start/stop dictée)");
-            if let Some(window) = handle_ctrl_shift_d.get_window("main") {
-                eval_with_focus_flash(&window, r#"
-                    (function() {
-                        var iframe = document.querySelector('iframe[title="AirADCR"]');
-                        if (iframe && iframe.contentWindow) {
-                            iframe.contentWindow.postMessage(
-                                { type: 'airadcr:toggle_recording' },
-                                'https://airadcr.com'
-                            );
-                            console.log('[Shortcut] toggle_recording envoyé via focus-flash');
-                        }
-                    })();
-                "#);
-            }
+            debug!("[Shortcuts] Ctrl+Shift+D pressé → tx.send(toggle_recording)");
+            let _ = tx_d.send("toggle_recording");
         })
         .unwrap_or_else(|e| warn!("Erreur enregistrement Ctrl+Shift+D: {}", e));
-    
-    // 🎤 DICTATION: Ctrl+Shift+P (Pause/Resume dictée) — focus-flash + eval
-    let handle_ctrl_shift_p = app_handle.clone();
+
+    // 🎤 DICTATION: Ctrl+Shift+P (Pause/Resume dictée)
+    let tx_p = tx.clone();
     shortcut_manager
         .register("Ctrl+Shift+P", move || {
-            debug!("[Shortcuts] Ctrl+Shift+P pressé (pause/resume dictée)");
-            if let Some(window) = handle_ctrl_shift_p.get_window("main") {
-                eval_with_focus_flash(&window, r#"
-                    (function() {
-                        var iframe = document.querySelector('iframe[title="AirADCR"]');
-                        if (iframe && iframe.contentWindow) {
-                            iframe.contentWindow.postMessage(
-                                { type: 'airadcr:toggle_pause' },
-                                'https://airadcr.com'
-                            );
-                            console.log('[Shortcut] toggle_pause envoyé via focus-flash');
-                        }
-                    })();
-                "#);
-            }
+            debug!("[Shortcuts] Ctrl+Shift+P pressé → tx.send(toggle_pause)");
+            let _ = tx_p.send("toggle_pause");
         })
         .unwrap_or_else(|e| warn!("Erreur enregistrement Ctrl+Shift+P: {}", e));
-    
-    // 💉 INJECTION: Ctrl+Shift+T (Inject texte brut) — focus-flash + eval
-    let handle_ctrl_shift_t = app_handle.clone();
+
+    // 💉 INJECTION: Ctrl+Shift+T (Inject texte brut)
+    let tx_t = tx.clone();
     shortcut_manager
         .register("Ctrl+Shift+T", move || {
-            debug!("[Shortcuts] Ctrl+Shift+T pressé (inject texte brut)");
-            if let Some(window) = handle_ctrl_shift_t.get_window("main") {
-                eval_with_focus_flash(&window, r#"
-                    (function() {
-                        var iframe = document.querySelector('iframe[title="AirADCR"]');
-                        if (iframe && iframe.contentWindow) {
-                            iframe.contentWindow.postMessage(
-                                { type: 'airadcr:request_injection', payload: { type: 'brut' } },
-                                'https://airadcr.com'
-                            );
-                            console.log('[Shortcut] request_injection (brut) envoyé via focus-flash');
-                        }
-                    })();
-                "#);
-            }
+            debug!("[Shortcuts] Ctrl+Shift+T pressé → tx.send(inject_raw)");
+            let _ = tx_t.send("inject_raw");
         })
         .unwrap_or_else(|e| warn!("Erreur enregistrement Ctrl+Shift+T: {}", e));
-    
-    // 💉 INJECTION: Ctrl+Shift+S (Inject rapport structuré) — focus-flash + eval
-    let handle_ctrl_shift_s = app_handle.clone();
+
+    // 💉 INJECTION: Ctrl+Shift+S (Inject rapport structuré)
+    let tx_s = tx.clone();
     shortcut_manager
         .register("Ctrl+Shift+S", move || {
-            debug!("[Shortcuts] Ctrl+Shift+S pressé (inject rapport structuré)");
-            if let Some(window) = handle_ctrl_shift_s.get_window("main") {
-                eval_with_focus_flash(&window, r#"
-                    (function() {
-                        var iframe = document.querySelector('iframe[title="AirADCR"]');
-                        if (iframe && iframe.contentWindow) {
-                            iframe.contentWindow.postMessage(
-                                { type: 'airadcr:request_injection', payload: { type: 'structuré' } },
-                                'https://airadcr.com'
-                            );
-                            console.log('[Shortcut] request_injection (structuré) envoyé via focus-flash');
-                        }
-                    })();
-                "#);
-            }
+            debug!("[Shortcuts] Ctrl+Shift+S pressé → tx.send(inject_structured)");
+            let _ = tx_s.send("inject_structured");
         })
         .unwrap_or_else(|e| warn!("Erreur enregistrement Ctrl+Shift+S: {}", e));
-    
+
     // ANTI-GHOST: F9 (désactiver click-through)
     let handle_f9 = app_handle.clone();
     shortcut_manager
@@ -1758,6 +1707,6 @@ fn register_global_shortcuts(app_handle: tauri::AppHandle) {
             }
         })
         .unwrap_or_else(|e| warn!("Erreur enregistrement F9: {}", e));
-    
-    info!("[Shortcuts] Raccourcis globaux enregistrés: Ctrl+Alt+D/L/I, F9, Ctrl+Shift+D/P/T/S");
+
+    info!("[Shortcuts] Raccourcis globaux enregistrés (channel tokio): Ctrl+Alt+D/L/I, F9, Ctrl+Shift+D/P/T/S");
 }

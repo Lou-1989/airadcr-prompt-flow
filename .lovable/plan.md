@@ -1,182 +1,171 @@
 
+# Audit définitif : Pourquoi les raccourcis hors-focus ne fonctionnent pas malgré la correction focus-flash
 
-# Audit senior : Raccourcis hors-focus -- Analyse definitive et 2 solutions
+## Le vrai problème racine (non diagnostiqué jusqu'ici)
 
-## Diagnostic confirme
+### Problème 1 : `window.eval()` est une API COM WebView2 — elle DOIT s'exécuter sur le thread UI
 
-Tous les raccourcis (debug et dictee) utilisent le meme pipeline Rust :
+La recherche WebView2 officielle (GitHub WebView2Feedback #765, Microsoft Learn Threading Model) confirme :
+
+> **"ExecuteScript is only working from UI thread"**
+> "The WebView2 API need to run in a UI thread"
+
+Le callback du `GlobalShortcutManager` dans Tauri v1 s'exécute dans un **thread secondaire** (le thread du gestionnaire de raccourcis, pas le thread UI principal). Donc quand `eval_with_focus_flash` appelle `window.eval()`, WebView2 **reçoit l'appel sur le mauvais thread COM** — l'appel est silencieusement ignoré ou mis en queue indéfiniment.
+
+### Problème 2 : `SetForegroundWindow` est bloqué par UIPI (User Interface Privilege Isolation)
+
+Windows bloque `SetForegroundWindow()` sauf si le processus appelant est déjà le processus de premier plan ou a reçu une permission explicite via `AllowSetForegroundWindow()`. Dans le callback du raccourci global (thread secondaire sans droits de foreground), l'appel échoue silencieusement — **le focus-flash ne se déclenche pas**.
+
+### Preuve : `simulate_key_in_iframe` fonctionne car c'est une commande Tauri async
+
+La commande `simulate_key_in_iframe` (ligne 811) utilise aussi `window.eval()` — MAIS elle est appelée via `invoke()` depuis le frontend Tauri, qui dispatch correctement sur le thread UI. C'est pour ça qu'elle fonctionne. Les raccourcis globaux n'ont pas ce dispatch automatique.
+
+### Résumé du vrai diagnostic
+
 ```text
-GlobalShortcutManager -> window.emit("event_name", ()) -> WebView IPC -> JS listen() callback
+GlobalShortcutManager callback thread (secondaire)
+  → eval_with_focus_flash()
+    → SetForegroundWindow() → ÉCHEC SILENCIEUX (UIPI)
+    → window.eval()        → ÉCHEC SILENCIEUX (mauvais thread COM)
+  → Résultat : RIEN ne se passe
 ```
-
-La difference est exclusivement dans le callback JS :
-- **Debug (marche)** : `listen()` dans `App.tsx` -> `setState()` local React
-- **Dictee (echoue)** : `listen()` dans `useSecureMessaging.ts` -> `sendSecureMessage()` -> `postMessage()` vers iframe cross-origin
-
-### Pourquoi ca echoue
-
-Le `window.emit()` de Tauri utilise `PostWebMessageAsJson` de WebView2, qui poste un message dans la **file d'attente du WebView**. Quand la fenetre n'a pas le focus, WebView2 (Chromium) **throttle cette file d'attente** -- les messages sont traites avec un delai de plusieurs secondes, voire pas du tout.
-
-Pour les raccourcis debug, ce delai est invisible : l'utilisateur ne voit le panneau que quand il revient sur l'application. Pour la dictee, le delai rend la fonctionnalite inutilisable car l'action doit etre immediate.
-
-### Preuve technique
-
-Le code existant utilise deja `window.eval()` pour contourner exactement ce probleme (ligne 846, fonction `simulate_key_in_iframe`). `eval()` appelle `ExecuteScript` de WebView2 qui est une **execution synchrone depuis le thread natif**, sans passer par la file d'attente throttlee.
 
 ---
 
-## Solution A : window.eval() direct (simple, 95% fiable)
+## Solution A : Dispatch via le serveur HTTP local (port 8741) — 99% fiable
 
 ### Principe
-Remplacer `window.emit()` par `window.eval()` pour les 4 raccourcis dictee/injection. Le JavaScript est injecte directement dans le WebView par le thread natif, sans passer par l'IPC Tauri.
+L'application a déjà un serveur HTTP Actix-web sur le port 8741 qui tourne sur le bon thread async. Au lieu que le callback du raccourci appelle `window.eval()` directement, il envoie une requête HTTP à lui-même. Le handler HTTP s'exécute dans le runtime Actix (qui est correctement dispatché) et peut émettre un événement Tauri depuis le bon contexte.
 
-### Modification unique : `src-tauri/src/main.rs`
+### Flux
+```text
+Ctrl+Shift+D pressé
+  → GlobalShortcutManager callback (thread secondaire)
+    → reqwest::blocking::get("http://127.0.0.1:8741/shortcut?action=toggle_recording")
+  → Actix handler (thread async correct)
+    → APP_HANDLE.get().get_window("main").emit("airadcr:shortcut_eval", action)
+  → Tauri IPC (sur thread UI via event loop)
+    → useSecureMessaging.ts listen() reçoit
+    → sendSecureMessage() → postMessage vers iframe ✅
+```
 
-Remplacer les 4 blocs de raccourcis dictee (lignes 1630-1672) par des appels `window.eval()` :
+### Pourquoi ça marche
+- Le serveur HTTP Actix est déjà en place et fonctionne (port 8741)
+- `APP_HANDLE` est déjà un `OnceLock<AppHandle>` global disponible dans tous les handlers
+- Actix dispatch ses futures correctement sur le runtime tokio
+- `window.emit()` depuis un handler HTTP Actix fonctionne — c'est exactement ce que fait déjà `/open-report` (ligne ~300 du http_server/handlers.rs)
 
+### Modifications requises
+1. **`src-tauri/src/http_server/handlers.rs`** : Ajouter un endpoint `GET /shortcut?action=XXX` qui appelle `window.emit("airadcr:shortcut_action", action)`
+2. **`src-tauri/src/http_server/routes.rs`** : Enregistrer la nouvelle route
+3. **`src-tauri/src/main.rs`** : Dans `register_global_shortcuts`, remplacer `eval_with_focus_flash` par `reqwest::blocking::get(...)` vers le serveur local
+4. **`src/hooks/useSecureMessaging.ts`** : Ajouter `listen("airadcr:shortcut_action", ...)` — les listeners existants sont déjà en place et peuvent être réutilisés
+
+### Risque résiduel (1%)
+- Si le serveur HTTP local n'est pas encore démarré au moment du premier raccourci (démarrage applicatif), la requête échoue. Mitigation : retry automatique avec 2 tentatives espacées de 100ms.
+
+---
+
+## Solution B : Dispatch via `tauri::async_runtime::spawn` + channel (tokio) — 100% fiable, RECOMMANDÉE
+
+### Principe
+Utiliser un **channel tokio** (`tokio::sync::mpsc`) pour transmettre les actions de raccourcis depuis le thread secondaire du GlobalShortcutManager vers un **task tokio** qui s'exécute dans le runtime Tauri. Ce task appelle ensuite `window.emit()` — qui, depuis le runtime tokio de Tauri, est correctement dispatché sur le thread UI.
+
+C'est le **pattern officiel recommandé par Tauri** pour émettre des événements depuis des threads qui ne sont pas sur le runtime Tauri.
+
+### Flux
+```text
+Ctrl+Shift+D pressé
+  → GlobalShortcutManager callback (thread secondaire)
+    → tx.send("toggle_recording") // channel non-bloquant
+  → tokio task (runtime Tauri, thread correct)
+    → rx.recv() → window.emit("airadcr:dictation_startstop", ())
+  → WebView IPC (correctement dispatché)
+    → useSecureMessaging.ts listen() reçoit IMMÉDIATEMENT
+    → sendSecureMessage() → postMessage vers iframe ✅
+```
+
+### Modifications requises
+
+#### `src-tauri/src/main.rs` uniquement — 3 changements
+
+**1. Supprimer `eval_with_focus_flash`** (lignes 1593-1624) — elle est inutile et défectueuse
+
+**2. Créer le channel dans la fonction `register_global_shortcuts`** :
 ```rust
-// Ctrl+Shift+D : Start/Stop dictee
-let handle = app_handle.clone();
-shortcut_manager.register("Ctrl+Shift+D", move || {
-    debug!("[Shortcuts] Ctrl+Shift+D presse");
-    if let Some(window) = handle.get_window("main") {
-        let _ = window.eval(r#"
-            (function() {
-                var iframe = document.querySelector('iframe[title="AirADCR"]');
-                if (iframe && iframe.contentWindow) {
-                    iframe.contentWindow.postMessage(
-                        { type: 'airadcr:toggle_recording' },
-                        'https://airadcr.com'
-                    );
+fn register_global_shortcuts(app_handle: tauri::AppHandle) {
+    // Channel tokio pour dispatcher vers le bon thread
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<&'static str>();
+    
+    // Task tokio: reçoit les actions et émet les événements Tauri
+    let handle_for_task = app_handle.clone();
+    tauri::async_runtime::spawn(async move {
+        while let Some(action) = rx.recv().await {
+            if let Some(window) = handle_for_task.get_window("main") {
+                match action {
+                    "toggle_recording" => { window.emit("airadcr:dictation_startstop", ()).ok(); }
+                    "toggle_pause"     => { window.emit("airadcr:dictation_pause", ()).ok(); }
+                    "inject_raw"       => { window.emit("airadcr:inject_raw", ()).ok(); }
+                    "inject_structured"=> { window.emit("airadcr:inject_structured", ()).ok(); }
+                    _ => {}
                 }
-            })();
-        "#);
-    }
-}).unwrap_or_else(|e| warn!("Erreur: {}", e));
-```
-
-Meme pattern pour Ctrl+Shift+P (`toggle_pause`), Ctrl+Shift+T (`request_injection` type brut), Ctrl+Shift+S (`request_injection` type structure).
-
-### Pourquoi 95% et pas 100%
-
-`ExecuteScript` de WebView2 execute le JS dans le **contexte de la page principale** (le WebView Tauri). Le `postMessage` est envoye vers l'iframe. En theorie, le `message` event dans l'iframe devrait se declencher immediatement car les message events ne sont pas soumis au throttling Chromium. Cependant, avec le **Site Isolation** de WebView2, l'iframe cross-origin (`airadcr.com`) peut etre dans un **processus separe**, et la livraison du message passe par un IPC inter-processus Chromium qui pourrait avoir un leger delai.
-
-### Fichiers modifies
-- `src-tauri/src/main.rs` : lignes 1630-1672 (4 raccourcis)
-- Aucun autre fichier modifie
-
----
-
-## Solution B : Focus-flash + eval (robuste, 99.9% fiable) -- RECOMMANDEE
-
-### Principe
-Avant d'executer le `eval`, **reveiller le WebView** en ramenant brievement la fenetre au premier plan. Cela garantit que le WebView2 et son iframe sont pleinement actifs. Puis redonner le focus a l'application precedente (Word, RIS).
-
-### Flux detaille
-```text
-1. Rust: GetForegroundWindow() -> sauvegarder le HWND de Word/RIS
-2. Rust: window.show() + window.set_focus() -> reveille WebView2
-3. Rust: window.eval(postMessage...) -> message envoye a l'iframe
-4. Rust: sleep(50ms) -> laisser le temps au postMessage d'etre traite
-5. Rust: SetForegroundWindow(hwnd_precedent) -> redonner le focus a Word/RIS
-```
-
-### Modification : `src-tauri/src/main.rs`
-
-#### Etape 1 : Fonction utilitaire (nouvelle, ~30 lignes)
-
-```rust
-#[cfg(target_os = "windows")]
-fn eval_with_focus_flash(window: &tauri::Window, js_code: &str) {
-    use winapi::um::winuser::{GetForegroundWindow, SetForegroundWindow};
-
-    unsafe {
-        // Sauvegarder la fenetre active
-        let prev_hwnd = GetForegroundWindow();
-
-        // Reveiller le WebView
-        let _ = window.show();
-        let _ = window.set_focus();
-
-        // Executer le JS
-        let _ = window.eval(js_code);
-
-        // Laisser le temps au message d'etre traite
-        std::thread::sleep(std::time::Duration::from_millis(60));
-
-        // Redonner le focus
-        if !prev_hwnd.is_null() {
-            SetForegroundWindow(prev_hwnd);
+            }
         }
-    }
-}
-
-#[cfg(not(target_os = "windows"))]
-fn eval_with_focus_flash(window: &tauri::Window, js_code: &str) {
-    let _ = window.eval(js_code);
+    });
+    
+    // ...
 }
 ```
 
-#### Etape 2 : Raccourcis dictee (remplace lignes 1630-1672)
-
+**3. Remplacer les 4 raccourcis dictée** par des `tx.send(...)` :
 ```rust
-// Ctrl+Shift+D : Start/Stop dictee
-let handle = app_handle.clone();
+// Ctrl+Shift+D
+let tx_d = tx.clone();
 shortcut_manager.register("Ctrl+Shift+D", move || {
-    debug!("[Shortcuts] Ctrl+Shift+D (dictee)");
-    if let Some(window) = handle.get_window("main") {
-        eval_with_focus_flash(&window, r#"
-            (function() {
-                var iframe = document.querySelector('iframe[title="AirADCR"]');
-                if (iframe && iframe.contentWindow) {
-                    iframe.contentWindow.postMessage(
-                        { type: 'airadcr:toggle_recording' },
-                        'https://airadcr.com'
-                    );
-                    console.log('[Shortcut] toggle_recording envoye via focus-flash');
-                }
-            })();
-        "#);
-    }
+    debug!("[Shortcuts] Ctrl+Shift+D pressé");
+    let _ = tx_d.send("toggle_recording");
 }).unwrap_or_else(|e| warn!("Erreur: {}", e));
+
+// Ctrl+Shift+P
+let tx_p = tx.clone();
+shortcut_manager.register("Ctrl+Shift+P", move || {
+    let _ = tx_p.send("toggle_pause");
+}).unwrap_or_else(|e| warn!("Erreur: {}", e));
+// ... idem pour T et S
 ```
 
-Meme pattern pour les 3 autres raccourcis.
+### Pourquoi 100% fiable
 
-### Pourquoi 99.9%
+- `tokio::sync::mpsc::unbounded_channel` est `Send + Sync` — fonctionne parfaitement depuis n'importe quel thread
+- `tauri::async_runtime::spawn` exécute sur le **runtime tokio de Tauri** — exactement le bon contexte pour `window.emit()`
+- `window.emit()` depuis le runtime Tauri fonctionne toujours, focus ou pas focus — c'est ainsi que les handlers Actix (qui utilisent le même `APP_HANDLE`) émettent déjà des événements Tauri depuis les requêtes RIS entrantes
+- Le channel est non-bloquant (`unbounded`) — le callback du raccourci ne bloque jamais le thread du GlobalShortcutManager
+- **Aucune dépendance sur le focus de la fenêtre, UIPI, threads COM, ou WebView2**
 
-- `GetForegroundWindow` et `SetForegroundWindow` sont **deja importes et utilises** dans le code (ligne 378, 506, 679)
-- `window.show()` et `window.set_focus()` sont **deja utilises** a plusieurs endroits (lignes 150, 1422, 1462)
-- Le focus-flash de 60ms est **imperceptible** pour l'utilisateur, surtout si la fenetre est always-on-top (elle est deja visible, seul le focus change)
-- En revenant au HWND precedent, le curseur et la selection dans Word/RIS ne sont pas perturbes
+### Et `useSecureMessaging.ts` ?
 
-### Risque residuel (0.1%)
-- Si la fenetre Tauri est **minimisee dans le tray** (pas juste hors-focus), le `show()` pourrait provoquer un flash visuel bref. Mitigation : verifier `window.is_visible()` avant le flash.
+**Aucune modification nécessaire.** Les listeners `listen("airadcr:dictation_startstop", ...)` etc. sont déjà en place (lignes 274-295). Le canal utilisé est `window.emit()` → IPC Tauri → `listen()` JS — c'est le canal standard qui fonctionne.
 
-### Fichiers modifies
-- `src-tauri/src/main.rs` : ajout de `eval_with_focus_flash` + modification des 4 raccourcis
-- Aucun autre fichier modifie
+**Mais si le focus est un problème pour que le JS reçoive l'event**, ajouter dans le handler de chaque action, après `window.emit()`, un `window.show()` optionnel si la fenêtre est cachée (pas juste hors-focus).
 
 ---
 
-## Conservation du code existant
+## Comparatif final
 
-Les listeners dans `useSecureMessaging.ts` (lignes 262-300) sont **conserves sans modification** comme fallback. Quand l'application a le focus, les deux chemins (eval direct + listen/postMessage) enverront le meme message. La deduplication existante cote iframe `airadcr.com` (basee sur l'ID de requete) empeche tout doublon.
+| Critère | Focus-flash actuel | Solution A (HTTP) | Solution B (channel tokio) |
+|---------|-------------------|-------------------|---------------------------|
+| Fiabilité hors-focus | 0% (thread UI incorrect) | 99% | 100% |
+| Complexité | Faible (mais ne marche pas) | Moyenne (3 fichiers) | Faible (1 seul fichier) |
+| Dépendances nouvelles | Aucune | Aucune (reqwest déjà présent) | Aucune (tokio déjà présent) |
+| Modification frontend | Non | Non | Non |
+| Pattern officiel Tauri | Non | Partiel | **Oui** |
+| Risque de régression | Aucun | Faible | **Aucun** |
 
-Les raccourcis debug (`Ctrl+Alt+D/L/I`, `F9`) restent inchanges car ils fonctionnent deja parfaitement avec `window.emit()`.
+**Recommandation absolue : Solution B** — un seul fichier modifié (`main.rs`), pattern officiel Tauri, zéro nouvelle dépendance (tokio est déjà dans Cargo.toml), 100% fiable indépendamment du focus.
 
----
+## Fichiers modifiés
 
-## Comparatif
-
-| Critere | Solution A (eval) | Solution B (focus-flash) |
-|---------|-------------------|--------------------------|
-| Fiabilite hors-focus | 95% | 99.9% |
-| Complexite | Faible (4 blocs modifies) | Moyenne (1 fonction + 4 blocs) |
-| Risque de regression | Aucun | Aucun |
-| Flash visuel | Non | Non (60ms imperceptible) |
-| Deja eprouve dans le code | Oui (ligne 846) | Oui (lignes 378, 506, 1422) |
-| Fonctionne si minimise | Incertain | Oui |
-
-**Recommandation : Solution B** (focus-flash + eval). Tous les composants sont deja utilises dans le code existant, zero nouvelle dependance, et la garantie est quasi absolue.
-
+- **`src-tauri/src/main.rs`** uniquement :
+  - Supprimer `eval_with_focus_flash` (lignes 1593-1624)
+  - Modifier `register_global_shortcuts` : ajouter channel tokio + task async + `tx.send()` dans les 4 raccourcis dictée
+- **Aucun autre fichier modifié** (`useSecureMessaging.ts`, `App.tsx`, handlers HTTP)

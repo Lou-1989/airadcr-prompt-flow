@@ -1,38 +1,34 @@
 
 
-# Correction de l'erreur de build -- keychain.rs
+# Correction du build CI -- SQLCipher sans OpenSSL externe
 
-## Diagnostic
+## Probleme
 
-Il y a **1 erreur** et **5 warnings**. Tout est trivial a corriger, zero raison de revenir a SQLite non chiffre.
+La feature `bundled-sqlcipher` de rusqlite necessite qu'OpenSSL soit installe sur la machine de build (variable `OPENSSL_DIR`). Le runner CI Windows (GitHub Actions) ne l'a pas pre-installe, d'ou l'echec.
 
-### Erreur (bloquante)
+## Solution
 
-| Fichier | Ligne | Probleme | Correction |
-|---------|-------|----------|------------|
-| `keychain.rs` | 94 | `delete_credential()` n'existe pas dans `keyring` v2 | Remplacer par `delete_password()` |
+Remplacer la feature `bundled-sqlcipher` par `bundled-sqlcipher-vendored-openssl`. Cette variante compile OpenSSL directement dans le binaire -- aucune dependance externe requise. Le chiffrement AES-256 reste identique.
 
-### Warnings (non bloquants mais a nettoyer)
+## Modification
 
-| Fichier | Ligne | Probleme | Correction |
-|---------|-------|----------|------------|
-| `keychain.rs` | 10 | Import `error` inutilise | Retirer `error` de la ligne d'import |
-| `main.rs` | 581 | Variables `x`, `y` inutilisees dans `get_window_at_point` | Prefixer avec `_` : `_x`, `_y` |
-| `main.rs` | 774 | Variables `x`, `y` inutilisees dans `get_window_client_rect_at_point` | Prefixer avec `_` : `_x`, `_y` |
+### Fichier : `src-tauri/Cargo.toml`, ligne 41
 
-## Modifications
+Remplacer :
+```toml
+rusqlite = { version = "0.31", features = ["bundled-sqlcipher"] }
+```
 
-### Fichier 1 : `src-tauri/src/database/keychain.rs`
+Par :
+```toml
+rusqlite = { version = "0.31", features = ["bundled-sqlcipher-vendored-openssl"] }
+```
 
-- Ligne 10 : changer `use log::{info, warn, error};` en `use log::{info, warn};`
-- Ligne 94 : changer `entry.delete_credential()` en `entry.delete_password()`
+## Impact
 
-### Fichier 2 : `src-tauri/src/main.rs`
-
-- Ligne 581 : changer `x: i32, y: i32` en `_x: i32, _y: i32`
-- Ligne 774 : changer `x: i32, y: i32` en `_x: i32, _y: i32`
-
-## Verdict
-
-4 lignes a modifier. SQLCipher + Keychain OS restent en place. Aucun impact fonctionnel.
+- Aucun changement fonctionnel (meme chiffrement AES-256)
+- Build CI Windows : corrige l'erreur `Missing environment variable OPENSSL_DIR`
+- Build CI macOS : fonctionne egalement (plus besoin de `brew install openssl`)
+- Taille du binaire : augmentation negligeable (~1-2 MB pour OpenSSL statique)
+- Une seule ligne a modifier
 

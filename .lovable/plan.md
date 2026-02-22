@@ -1,125 +1,205 @@
 
 
-# Raccourcis ergonomiques style Wispr Flow — Analyse et solution optimale
+# Audit macOS AIRADCR Desktop -- Corrections pour fonctionnement complet
 
-## Ce que font les leaders du marche (recherche confirmee)
+## Reponse a la question principale
 
-| Outil | Plateforme | Raccourci principal | Mode |
-|-------|-----------|---------------------|------|
-| **Wispr Flow** | Mac | **Fn** (maintenir) | Hold-to-talk |
-| **Wispr Flow** | Windows | **Ctrl+Win** (maintenir) | Hold-to-talk |
-| **Wispr Flow** | Mains-libres Mac | **Fn+Space** (toggle) | Toggle |
-| **Wispr Flow** | Mains-libres Win | **Ctrl+Win+Space** (toggle) | Toggle |
-| **SuperWhisper** | Mac | **Option+Space** (toggle) | Toggle |
-| **Windows natif** | Windows | **Win+H** | Toggle |
+**OUI**, le build macOS se met a jour automatiquement quand vous modifiez le code ici. Le fichier `.github/workflows/build.yml` (lignes 23-26) compile deja pour `macos-latest` en ARM64 et Intel a chaque push. Les DMG sont uploades comme artefacts GitHub Actions.
 
-**Point commun** : tous utilisent la **barre Espace** comme touche principale. C'est la touche la plus accessible du clavier — sous le pouce, aucun effort.
+**MAIS** le build macOS actuel **compile sans erreur** et **ne fonctionne PAS correctement** a cause de 3 bugs critiques identifies dans cet audit.
 
-## Pourquoi Ctrl+F8/F9/F11/F12 etait une mauvaise idee
+---
 
-Les touches F8-F12 sont en haut du clavier, a 15-20cm des doigts au repos. Pour un radiologue qui dicte toute la journee, c'est un mouvement repetitif non ergonomique. Wispr Flow et SuperWhisper ont choisi Space precisement pour cette raison.
+## Bugs critiques identifies
 
-## Contrainte Tauri v1
+### Bug 1 -- Injection impossible sur Mac (CRITIQUE)
 
-Tauri v1 `GlobalShortcutManager` ne detecte que le **key-down** (appui), pas le **key-up** (relachement). Le mode "hold-to-talk" de Wispr Flow (maintenir puis relacher) est donc impossible sans hook bas niveau. **Mais** le mode "mains-libres" (toggle) fonctionne parfaitement — c'est exactement ce que fait deja AIRADCR avec `Ctrl+Shift+D`.
+**Fichier** : `src-tauri/src/main.rs`, lignes 256-258 et 288-290
 
-## Solution : ajouter les raccourcis Espace (additif, zero casse)
-
-### Nouveaux raccourcis proposes
-
-| Raccourci | Action | Equivalent industrie | Position sur le clavier |
-|-----------|--------|---------------------|------------------------|
-| **Ctrl+Space** | Start/Stop dictee | SuperWhisper `Option+Space` | Main gauche : auriculaire sur Ctrl, pouce sur Space |
-| **Ctrl+Shift+Space** | Pause/Resume | Extension logique | Meme main, majeur sur Shift |
-
-### Pourquoi Ctrl+Space est sans conflit
-
-Objection possible : "Ctrl+Space dans Word supprime le formatage du texte".
-
-**Reponse** : `RegisterHotKey()` de Windows intercepte la combinaison **AVANT** qu'elle n'atteigne l'application active. Word ne recevra jamais `Ctrl+Space` — Tauri l'avale en premier. C'est le meme mecanisme qui fait que `Ctrl+Shift+D` ne declenche pas le "double soulignement" de Word actuellement.
-
-Objection possible : "Ctrl+Space change la langue de saisie (IME)".
-
-**Reponse** : uniquement si plusieurs methodes de saisie asiatiques sont installees. Dans un contexte radiologique francais, ce cas ne se presente pas. Et meme s'il se presentait, `RegisterHotKey()` intercepte avant l'IME.
-
-## Ce qui ne change PAS (zero casse)
-
-```text
-EXISTANT (100% conserve, aucune ligne modifiee) :
-  Ctrl+Shift+D → toggle_recording     (clavier physique)
-  Ctrl+Shift+P → toggle_pause         (clavier physique)
-  Ctrl+Shift+T → inject_raw           (clavier physique)
-  Ctrl+Shift+S → inject_structured    (clavier physique)
-  Ctrl+Alt+D   → debug panel
-  Ctrl+Alt+L   → log window
-  Ctrl+Alt+I   → test injection
-  F9           → anti-ghost
-
-AJOUTE (meme canal tokio, meme frontend) :
-  Ctrl+Space       → toggle_recording  (ergonomique)
-  Ctrl+Shift+Space → toggle_pause      (ergonomique)
+Le code actuel :
+```rust
+enigo.key(Key::Control, Direction::Press)  // Windows: Ctrl
+enigo.key(Key::Unicode('v'), Direction::Click)
+enigo.key(Key::Control, Direction::Release)
 ```
 
-Les nouveaux raccourcis envoient la **meme action** dans le **meme canal tokio** existant. Le receiver `rx` et tout le frontend (`useSecureMessaging.ts`) restent strictement identiques.
+Sur macOS, coller c'est **Cmd+V**, pas Ctrl+V. Ce code ne fait rien sur Mac.
 
-## Fichier modifie : `src-tauri/src/main.rs` uniquement
-
-### Dans `register_global_shortcuts()`, ajouter apres la ligne 1698 (avant F9)
+**Correction** : Utiliser `#[cfg(target_os = "macos")]` pour utiliser `Key::Meta` (= Cmd) sur Mac :
 
 ```rust
-// 🎯 ERGONOMIC: Ctrl+Space → toggle_recording (style Wispr Flow / SuperWhisper)
-// Touche la plus accessible : auriculaire Ctrl + pouce Space, une seule main
-let tx_space = tx.clone();
-shortcut_manager
-    .register("Ctrl+Space", move || {
-        debug!("[Shortcuts] Ctrl+Space pressé (ergonomic) → toggle_recording");
-        let _ = tx_space.send("toggle_recording");
-    })
-    .unwrap_or_else(|e| warn!("Erreur enregistrement Ctrl+Space: {}", e));
+#[cfg(target_os = "macos")]
+let paste_modifier = Key::Meta;
+#[cfg(not(target_os = "macos"))]
+let paste_modifier = Key::Control;
 
-// 🎯 ERGONOMIC: Ctrl+Shift+Space → toggle_pause
-let tx_shift_space = tx.clone();
-shortcut_manager
-    .register("Ctrl+Shift+Space", move || {
-        debug!("[Shortcuts] Ctrl+Shift+Space pressé (ergonomic) → toggle_pause");
-        let _ = tx_shift_space.send("toggle_pause");
-    })
-    .unwrap_or_else(|e| warn!("Erreur enregistrement Ctrl+Shift+Space: {}", e));
+enigo.key(paste_modifier, Direction::Press)?;
+enigo.key(Key::Unicode('v'), Direction::Click)?;
+enigo.key(paste_modifier, Direction::Release)?;
 ```
 
-### Mettre a jour le log final (ligne 1711)
+**Fonctions concernees** (3 endroits) :
+- `perform_injection()` (ligne 288)
+- `perform_injection_at_position()` (ligne 256)
+- `has_text_selection()` (ligne 331 -- utilise Ctrl+C, doit etre Cmd+C sur Mac)
+
+### Bug 2 -- 4 commandes retournent des erreurs au lieu de fallbacks
+
+Les fonctions suivantes retournent `Err("...uniquement Windows")` sur macOS, ce qui provoque des erreurs dans le frontend :
+
+| Fonction | Ligne | Erreur actuelle |
+|----------|-------|-----------------|
+| `get_window_at_point()` | 616-619 | `Err("non supporte")` |
+| `get_virtual_desktop_info()` | 657-660 | `Err("uniquement Windows")` |
+| `get_physical_window_rect()` | 706-709 | `Err("uniquement Windows")` |
+| `get_window_client_rect_at_point()` | 800-803 | `Err("uniquement Windows")` |
+
+**Correction** : Remplacer les `Err()` par des **valeurs par defaut raisonnables** :
+
+- `get_window_at_point` : utiliser `active_win_pos_rs::get_active_window()` (fonctionne sur Mac)
+- `get_virtual_desktop_info` : retourner `{ x: 0, y: 0, width: 1920, height: 1080 }` (valeur generique)
+- `get_physical_window_rect` : utiliser `get_active_window()` pour obtenir les dimensions
+- `get_window_client_rect_at_point` : utiliser `get_active_window()` avec les memes dimensions
+
+### Bug 3 -- Raccourcis non conventionnels (MINEUR)
+
+Les raccourcis actuels utilisent `Ctrl+` qui **fonctionne** sur Mac mais n'est pas naturel. Les utilisateurs Mac s'attendent a `Cmd+`. Cependant, Tauri v1 `GlobalShortcutManager` mappe `Ctrl+` correctement sur les deux plateformes pour les raccourcis globaux, donc ce n'est **pas bloquant** -- c'est un choix UX, pas un bug.
+
+---
+
+## Plan de corrections
+
+### Modification 1 : Injection cross-platform (`main.rs`)
+
+Creer une fonction helper pour determiner la touche de collage selon l'OS :
 
 ```rust
-info!("[Shortcuts] Raccourcis globaux enregistrés: Ctrl+Alt+D/L/I, F9, Ctrl+Shift+D/P/T/S, Ctrl+Space, Ctrl+Shift+Space");
+/// Retourne la touche modificateur pour copier/coller selon l'OS
+/// Windows/Linux: Ctrl, macOS: Cmd (Meta)
+fn clipboard_modifier() -> Key {
+    #[cfg(target_os = "macos")]
+    { Key::Meta }
+    #[cfg(not(target_os = "macos"))]
+    { Key::Control }
+}
 ```
 
-## Tableau recapitulatif complet apres modification
+Puis remplacer `Key::Control` par `clipboard_modifier()` dans les 3 fonctions :
+- `perform_injection()` (ligne 288) : 3 lignes modifiees
+- `perform_injection_at_position()` (ligne 256) : 3 lignes modifiees
+- `has_text_selection()` (ligne 331) : 3 lignes modifiees
 
-| Raccourci | Action | Type | Ergonomie |
-|-----------|--------|------|-----------|
-| **Ctrl+Space** | Start/Stop dictee | **NOUVEAU** | Excellent — 1 main, sous le pouce |
-| **Ctrl+Shift+Space** | Pause/Resume | **NOUVEAU** | Excellent — meme position |
-| Ctrl+Shift+D | Start/Stop dictee | Existant | Bon — 3 touches |
-| Ctrl+Shift+P | Pause/Resume | Existant | Bon — 3 touches |
-| Ctrl+Shift+T | Injecter texte brut | Existant | Bon — 3 touches |
-| Ctrl+Shift+S | Injecter rapport | Existant | Bon — 3 touches |
-| Ctrl+Alt+D/L/I | Debug | Existant | Correct |
-| F9 | Anti-ghost | Existant | Correct |
+### Modification 2 : Fallbacks macOS pour les 4 commandes (`main.rs`)
 
-## Risques
+Remplacer les 4 blocs `#[cfg(not(target_os = "windows"))] { Err(...) }` par des fallbacks fonctionnels :
 
-| Risque | Probabilite | Impact | Raison |
-|--------|------------|--------|--------|
-| Conflit avec Word/RIS | **Nulle** | Nul | `RegisterHotKey()` intercepte avant l'application |
-| Double declenchement | **Nulle** | Nul | `Ctrl+Space` et `Ctrl+Shift+D` sont des combinaisons differentes |
-| Echec d'enregistrement | Faible | Nul | `unwrap_or_else` logue un warning, les autres raccourcis fonctionnent |
-| Casse de l'existant | **Nulle** | Nul | Zero ligne existante modifiee, ajout pur |
+**`get_window_at_point`** (ligne 616) :
+```rust
+#[cfg(not(target_os = "windows"))]
+{
+    match get_active_window() {
+        Ok(win) => Ok(WindowInfo {
+            title: win.title,
+            app_name: win.app_name,
+            x: win.position.x as i32,
+            y: win.position.y as i32,
+            width: win.position.width as i32,
+            height: win.position.height as i32,
+        }),
+        Err(_) => Ok(WindowInfo {
+            title: "Unknown".to_string(),
+            app_name: "Unknown".to_string(),
+            x: 0, y: 0, width: 1920, height: 1080,
+        })
+    }
+}
+```
 
-## Resume
+**`get_virtual_desktop_info`** (ligne 657) :
+```rust
+#[cfg(not(target_os = "windows"))]
+{
+    Ok(VirtualDesktopInfo { x: 0, y: 0, width: 1920, height: 1080 })
+}
+```
 
-- **1 fichier modifie** : `src-tauri/src/main.rs`
-- **~14 lignes ajoutees** dans `register_global_shortcuts()`
-- **Zero ligne existante modifiee**
-- **Zero modification frontend**
-- Le radiologue peut desormais demarrer/arreter la dictee avec **Ctrl+Space** (pouce + auriculaire, une seule main) exactement comme SuperWhisper, tout en gardant les raccourcis `Ctrl+Shift+D/P/T/S` pour les utilisateurs habitues
+**`get_physical_window_rect`** (ligne 706) :
+```rust
+#[cfg(not(target_os = "windows"))]
+{
+    match get_active_window() {
+        Ok(win) => Ok(PhysicalRect {
+            left: win.position.x as i32,
+            top: win.position.y as i32,
+            right: (win.position.x + win.position.width) as i32,
+            bottom: (win.position.y + win.position.height) as i32,
+            width: win.position.width as i32,
+            height: win.position.height as i32,
+        }),
+        Err(_) => Ok(PhysicalRect {
+            left: 0, top: 0, right: 1920, bottom: 1080, width: 1920, height: 1080,
+        })
+    }
+}
+```
+
+**`get_window_client_rect_at_point`** (ligne 800) :
+```rust
+#[cfg(not(target_os = "windows"))]
+{
+    match get_active_window() {
+        Ok(win) => Ok(ClientRectInfo {
+            app_name: win.app_name,
+            title: win.title,
+            window_left: win.position.x as i32,
+            window_top: win.position.y as i32,
+            window_width: win.position.width as i32,
+            window_height: win.position.height as i32,
+            client_left: win.position.x as i32,
+            client_top: win.position.y as i32,
+            client_width: win.position.width as i32,
+            client_height: win.position.height as i32,
+            hwnd: 0,
+        }),
+        Err(_) => Ok(ClientRectInfo {
+            app_name: "Unknown".to_string(), title: "Unknown".to_string(),
+            window_left: 0, window_top: 0, window_width: 1920, window_height: 1080,
+            client_left: 0, client_top: 0, client_width: 1920, client_height: 1080,
+            hwnd: 0,
+        })
+    }
+}
+```
+
+### Modification 3 : Documentation (`KEYBOARD_SHORTCUTS_REFERENCE.md`)
+
+Ajouter une note indiquant que tous les raccourcis `Ctrl+` fonctionnent identiquement sur macOS via Tauri GlobalShortcutManager.
+
+---
+
+## Resume des modifications
+
+| Fichier | Changement | Impact |
+|---------|-----------|--------|
+| `src-tauri/src/main.rs` | Fonction `clipboard_modifier()` + remplacement dans 3 fonctions | Injection fonctionne sur Mac |
+| `src-tauri/src/main.rs` | 4 fallbacks macOS au lieu de `Err()` | Plus d'erreurs frontend sur Mac |
+| `KEYBOARD_SHORTCUTS_REFERENCE.md` | Note cross-platform | Documentation |
+
+**Lignes modifiees** : environ 60 lignes ajoutees/modifiees dans `main.rs`
+**Zero modification frontend** : aucun fichier TypeScript/React touche
+**Zero casse Windows** : toutes les modifications sont dans des blocs `#[cfg]`, le code Windows reste identique
+
+## Apres ces corrections
+
+| Fonction | Windows | macOS |
+|----------|---------|-------|
+| Raccourcis globaux (Ctrl+Space, Ctrl+Shift+D/P/T/S) | OK | OK |
+| Injection clipboard (Ctrl+V / Cmd+V) | OK | **CORRIGE** |
+| Detection selection (Ctrl+C / Cmd+C) | OK | **CORRIGE** |
+| Infos fenetre active | OK (Win32 API) | **CORRIGE** (fallback active-win) |
+| Bureau virtuel multi-ecrans | OK (GetSystemMetrics) | Fallback generique |
+| Build CI automatique | OK (signe SSL.com) | OK (non signe, DMG) |
+| System tray | OK | OK |
+| Always-on-top | OK | OK |
+| Deep links airadcr:// | OK | OK |
 

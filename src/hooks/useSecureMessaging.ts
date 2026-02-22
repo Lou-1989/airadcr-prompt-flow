@@ -26,7 +26,7 @@ export const useSecureMessaging = () => {
   const REQUEST_DEDUP_WINDOW = 2000; // 2 secondes
   
   // 🆕 QUEUE FIFO: Sérialisation des injections
-  const injectionQueueRef = useRef<Array<{ id: string; text: string; type: string }>>([]);
+  const injectionQueueRef = useRef<Array<{ id: string; text: string; type: string; html?: string }>>([]);
   const isProcessingRef = useRef<boolean>(false);
 
   // 🎤 FONCTION: Notifier Tauri de l'état d'enregistrement (désormais simplifié - pas de synchro d'état)
@@ -78,7 +78,7 @@ export const useSecureMessaging = () => {
     
     logger.debug(`[Queue] Traitement injection ${item.id} (reste: ${injectionQueueRef.current.length})`);
     
-    performInjection(item.text, item.type)
+    performInjection(item.text, item.type, item.html)
       .then(success => {
         sendSecureMessage('airadcr:injection_status', {
           id: item.id,
@@ -197,7 +197,8 @@ export const useSecureMessaging = () => {
           injectionQueueRef.current.push({
             id: requestId,
             text: payload.text,
-            type: injectionType
+            type: injectionType,
+            html: payload.html || undefined
           });
           
           logger.debug(`[Queue] Injection ${requestId} empilée (total: ${injectionQueueRef.current.length})`);

@@ -236,7 +236,7 @@ async fn check_app_focus(window: tauri::Window, state: State<'_, AppState>) -> R
 }
 
 #[tauri::command]
-async fn perform_injection_at_position(text: String, x: i32, y: i32, state: State<'_, AppState>) -> Result<(), String> {
+async fn perform_injection_at_position(text: String, html: Option<String>, x: i32, y: i32, state: State<'_, AppState>) -> Result<(), String> {
     // Thread-safe clipboard operations
     let _clipboard_guard = match state.clipboard_lock.lock() {
         Ok(guard) => guard,
@@ -249,7 +249,13 @@ async fn perform_injection_at_position(text: String, x: i32, y: i32, state: Stat
     let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
     let original_content = clipboard.get_text().unwrap_or_default();
     
-    clipboard.set_text(&text).map_err(|e| e.to_string())?;
+    // 🆕 Rich Text: utiliser set_html si du HTML est fourni, sinon set_text
+    if let Some(ref html_content) = html {
+        clipboard.set_html(html_content, Some(&text)).map_err(|e| e.to_string())?;
+        debug!("[Injection] Clipboard HTML: {} chars HTML + {} chars texte fallback", html_content.len(), text.len());
+    } else {
+        clipboard.set_text(&text).map_err(|e| e.to_string())?;
+    }
     
     // ⚡ OPTIMISATION: Délais réduits de 300ms → 60ms
     thread::sleep(Duration::from_millis(10));
@@ -277,7 +283,7 @@ async fn perform_injection_at_position(text: String, x: i32, y: i32, state: Stat
 }
 
 #[tauri::command]
-async fn perform_injection(text: String, state: State<'_, AppState>) -> Result<(), String> {
+async fn perform_injection(text: String, html: Option<String>, state: State<'_, AppState>) -> Result<(), String> {
     // Thread-safe clipboard operations
     let _clipboard_guard = match state.clipboard_lock.lock() {
         Ok(guard) => guard,
@@ -290,7 +296,13 @@ async fn perform_injection(text: String, state: State<'_, AppState>) -> Result<(
     let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
     let original_content = clipboard.get_text().unwrap_or_default();
     
-    clipboard.set_text(&text).map_err(|e| e.to_string())?;
+    // 🆕 Rich Text: utiliser set_html si du HTML est fourni, sinon set_text
+    if let Some(ref html_content) = html {
+        clipboard.set_html(html_content, Some(&text)).map_err(|e| e.to_string())?;
+        debug!("[Injection] Clipboard HTML: {} chars HTML + {} chars texte fallback", html_content.len(), text.len());
+    } else {
+        clipboard.set_text(&text).map_err(|e| e.to_string())?;
+    }
     
     thread::sleep(Duration::from_millis(50));
     
@@ -395,7 +407,7 @@ use winapi::um::winuser::WINDOWPLACEMENT;
 
 // 🆕 INJECTION WINDOWS ROBUSTE avec Win32 API pour multi-écrans
 #[tauri::command]
-async fn perform_injection_at_position_direct(x: i32, y: i32, text: String, state: State<'_, AppState>) -> Result<(), String> {
+async fn perform_injection_at_position_direct(x: i32, y: i32, text: String, html: Option<String>, state: State<'_, AppState>) -> Result<(), String> {
     let _clipboard_guard = match state.clipboard_lock.lock() {
         Ok(guard) => guard,
         Err(poisoned) => {
@@ -552,8 +564,14 @@ async fn perform_injection_at_position_direct(x: i32, y: i32, text: String, stat
     debug!("Clipboard sauvegardé : {} caractères", original_clipboard.len());
     
     // Injection via Ctrl+V (remplace la sélection manuelle utilisateur si présente)
-    clipboard.set_text(&text).map_err(|e| e.to_string())?;
-    debug!("Texte copié dans clipboard : {} caractères", text.len());
+    // 🆕 Rich Text: utiliser set_html si du HTML est fourni, sinon set_text
+    if let Some(ref html_content) = html {
+        clipboard.set_html(html_content, Some(&text)).map_err(|e| e.to_string())?;
+        debug!("HTML copié dans clipboard : {} chars HTML + {} chars texte fallback", html_content.len(), text.len());
+    } else {
+        clipboard.set_text(&text).map_err(|e| e.to_string())?;
+        debug!("Texte copié dans clipboard : {} caractères", text.len());
+    }
     thread::sleep(Duration::from_millis(10));
     
     debug!("Envoi Paste (va remplacer la sélection si présente, sinon coller)");

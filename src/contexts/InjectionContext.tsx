@@ -12,7 +12,7 @@ interface WindowInfo {
 
 interface InjectionContextType {
   getCursorPosition: () => Promise<{ x: number; y: number } | null>;
-  performInjection: (text: string, injectionType?: string) => Promise<boolean>;
+  performInjection: (text: string, injectionType?: string, html?: string) => Promise<boolean>;
   testInjectionAvailability: () => Promise<boolean>;
   externalPositions: Array<{ x: number; y: number; timestamp: number }>;
   isMonitoring: boolean;

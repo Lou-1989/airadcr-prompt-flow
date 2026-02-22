@@ -37,8 +37,11 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 once_cell = "1.19"
 urlencoding = "2"
 
-# 📦 Base de données SQLite
-rusqlite = { version = "0.31", features = ["bundled"] }
+# 📦 Base de données SQLite (SQLCipher = chiffrement AES-256 au repos)
+rusqlite = { version = "0.31", features = ["bundled-sqlcipher"] }
+
+# 🔐 Keychain OS (Windows Credential Manager / macOS Keychain / Linux Secret Service)
+keyring = "2"
 
 # 🔐 Hachage, UUID et génération aléatoire
 sha2 = "0.10"

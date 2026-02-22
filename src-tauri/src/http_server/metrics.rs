@@ -83,10 +83,23 @@ impl Metrics {
     }
 }
 
-/// GET /metrics - Endpoint Prometheus
+/// GET /metrics - Endpoint Prometheus (🔒 requiert clé admin)
 pub async fn metrics_handler(
+    req: actix_web::HttpRequest,
     state: web::Data<HttpServerState>,
 ) -> HttpResponse {
+    // 🔒 SÉCURITÉ: Exiger clé admin pour les métriques
+    let admin_key = req
+        .headers()
+        .get("x-admin-key")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    
+    if !super::middleware::validate_admin_key(admin_key) {
+        return HttpResponse::Unauthorized().json(serde_json::json!({
+            "error": "Admin key required for metrics endpoint"
+        }));
+    }
     let m = Metrics::get();
     
     // Récupérer les stats depuis la base de données
@@ -180,10 +193,23 @@ pub struct RequestsHealth {
     pub avg_duration_ms: f64,
 }
 
-/// GET /health/extended - Health check étendu
+/// GET /health/extended - Health check étendu (🔒 requiert clé admin)
 pub async fn extended_health_handler(
+    req: actix_web::HttpRequest,
     state: web::Data<HttpServerState>,
 ) -> HttpResponse {
+    // 🔒 SÉCURITÉ: Exiger clé admin pour le health check étendu
+    let admin_key = req
+        .headers()
+        .get("x-admin-key")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    
+    if !super::middleware::validate_admin_key(admin_key) {
+        return HttpResponse::Unauthorized().json(serde_json::json!({
+            "error": "Admin key required for extended health endpoint"
+        }));
+    }
     let m = Metrics::get();
     
     // Vérifier la connexion à la base de données

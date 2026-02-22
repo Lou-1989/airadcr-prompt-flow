@@ -39,6 +39,8 @@
 
 **🎯 PRINCIPE CLÉ:** Une seule couche de raccourcis, aucune complexité, aucun doublon.
 
+> **📱 Note macOS :** Tous les raccourcis `Ctrl+` fonctionnent identiquement sur macOS via Tauri GlobalShortcutManager. L'injection clipboard utilise automatiquement `Cmd+V` (au lieu de `Ctrl+V`) grâce à la fonction `clipboard_modifier()` dans `main.rs`. Les commandes de détection de fenêtre utilisent `active_win_pos_rs` comme fallback sur macOS au lieu des API Win32.
+
 ---
 
 ## 🎤 Raccourcis unifiés

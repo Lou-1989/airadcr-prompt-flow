@@ -578,7 +578,7 @@ async fn perform_injection_at_position_direct(x: i32, y: i32, text: String, stat
 
 // 🆕 Commande: Récupérer la fenêtre sous le curseur (même si AirADCR a le focus)
 #[tauri::command]
-async fn get_window_at_point(_x: i32, _y: i32) -> Result<WindowInfo, String> {
+async fn get_window_at_point(x: i32, y: i32) -> Result<WindowInfo, String> {
     #[cfg(target_os = "windows")]
     {
         use winapi::shared::windef::POINT;
@@ -771,7 +771,7 @@ pub struct ClientRectInfo {
 }
 
 #[tauri::command]
-async fn get_window_client_rect_at_point(_x: i32, _y: i32) -> Result<ClientRectInfo, String> {
+async fn get_window_client_rect_at_point(x: i32, y: i32) -> Result<ClientRectInfo, String> {
     #[cfg(target_os = "windows")]
     {
         unsafe {

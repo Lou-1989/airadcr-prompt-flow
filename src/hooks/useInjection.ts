@@ -168,7 +168,7 @@ export const useInjection = () => {
   // getCursorPosition déjà défini plus haut
   
   // 🔒 FONCTION PRINCIPALE: Injection sécurisée avec click-through professionnel
-  const performInjection = useCallback(async (text: string, injectionType?: string): Promise<boolean> => {
+  const performInjection = useCallback(async (text: string, injectionType?: string, html?: string): Promise<boolean> => {
     // 🔒 PROTECTION: Bloquer si injection en cours (la queue est gérée par useSecureMessaging)
     if (isInjecting) {
       logger.warn('[Injection] Injection déjà en cours, retour immédiat');
@@ -384,6 +384,7 @@ export const useInjection = () => {
           
           await invoke('perform_injection_at_position_direct', {
             text,
+            html: html || null,
             x: targetX,
             y: targetY
           });
@@ -435,6 +436,7 @@ export const useInjection = () => {
             
             await invoke('perform_injection_at_position_direct', {
               text,
+              html: html || null,
               x: extX,
               y: extY
             });
@@ -496,6 +498,7 @@ export const useInjection = () => {
         
         await invoke('perform_injection_at_position_direct', {
           text,
+          html: html || null,
           x: finalX,
           y: finalY
         });

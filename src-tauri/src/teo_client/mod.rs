@@ -102,13 +102,21 @@ fn mask_pii(patient_id: &str) -> String {
 }
 
 /// Ajoute le header d'authentification API_TOKEN
+/// 🔐 Phase 4 : Le token est lu depuis le keychain OS en priorité,
+/// avec fallback sur le config.toml pour rétrocompatibilité
 fn add_auth_headers(mut request: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
-    let config = get_config();
+    // 1. Essayer le keychain OS d'abord (sécurisé)
+    if let Ok(Some(token)) = crate::database::keychain::get_teo_token() {
+        request = request.header("API_TOKEN", &token);
+        debug!("[TÉO Client] Header API_TOKEN ajouté (source: keychain OS)");
+        return request;
+    }
     
-    // Header API_TOKEN (format TÉO Hub réel)
+    // 2. Fallback sur le config.toml (rétrocompatibilité, sera migré au prochain chargement)
+    let config = get_config();
     if !config.teo_hub.api_token.is_empty() {
         request = request.header("API_TOKEN", &config.teo_hub.api_token);
-        debug!("[TÉO Client] Header API_TOKEN ajouté");
+        debug!("[TÉO Client] Header API_TOKEN ajouté (source: config.toml - sera migré)");
     }
     
     request

@@ -8,38 +8,128 @@
 pub mod schema;
 pub mod queries;
 pub mod backup;
+pub mod keychain;
 
 use rusqlite::{Connection, Result as SqlResult};
 use std::sync::Mutex;
 use std::path::PathBuf;
+use log::{info, warn, error};
 
 /// Structure principale de la base de données thread-safe
 pub struct Database {
     conn: Mutex<Connection>,
 }
 
+/// Applique la clé de chiffrement SQLCipher sur une connexion ouverte
+fn apply_sqlcipher_key(conn: &Connection, encryption_key: &str) -> SqlResult<()> {
+    // PRAGMA key doit être la PREMIÈRE instruction après l'ouverture
+    conn.execute_batch(&format!("PRAGMA key = '{}';", encryption_key))?;
+    
+    // Vérifier que le chiffrement fonctionne en lisant une table système
+    conn.execute_batch("SELECT count(*) FROM sqlite_master;")?;
+    
+    Ok(())
+}
+
 impl Database {
-    /// Crée ou ouvre la base de données
+    /// Crée ou ouvre la base de données chiffrée avec SQLCipher
     pub fn new(app_data_dir: PathBuf) -> SqlResult<Self> {
         // Créer le répertoire si nécessaire
         std::fs::create_dir_all(&app_data_dir).ok();
         
         let db_path = app_data_dir.join("pending_reports.db");
-        println!("📂 [Database] Chemin: {:?}", db_path);
+        info!("[Database] Chemin: {:?}", db_path);
         
+        // Récupérer la clé de chiffrement depuis le keychain OS
+        let encryption_key = keychain::get_or_create_db_encryption_key()
+            .map_err(|e| {
+                error!("[Database] Erreur keychain: {}", e);
+                rusqlite::Error::SqliteFailure(
+                    rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_AUTH),
+                    Some(format!("Erreur keychain: {}", e)),
+                )
+            })?;
+        
+        let db_exists = db_path.exists();
         let conn = Connection::open(&db_path)?;
+        
+        if db_exists {
+            // Base existante : essayer d'abord avec la clé SQLCipher
+            match apply_sqlcipher_key(&conn, &encryption_key) {
+                Ok(_) => {
+                    info!("[Database] Base chiffrée SQLCipher ouverte avec succès");
+                }
+                Err(_) => {
+                    // La base existante n'est probablement pas chiffrée (migration)
+                    warn!("[Database] Base non chiffrée détectée, migration vers SQLCipher...");
+                    drop(conn);
+                    Self::migrate_to_encrypted(&db_path, &encryption_key)?;
+                    let conn = Connection::open(&db_path)?;
+                    apply_sqlcipher_key(&conn, &encryption_key)?;
+                    schema::initialize(&conn)?;
+                    info!("[Database] Migration SQLCipher terminée avec succès");
+                    return Ok(Self {
+                        conn: Mutex::new(conn),
+                    });
+                }
+            }
+        } else {
+            // Nouvelle base : appliquer directement la clé
+            apply_sqlcipher_key(&conn, &encryption_key)?;
+            info!("[Database] Nouvelle base SQLCipher créée");
+        }
         
         // Initialiser le schéma
         schema::initialize(&conn)?;
         
-        println!("✅ [Database] Base initialisée avec succès");
+        info!("[Database] Base initialisée avec succès (chiffrée AES-256)");
         
         Ok(Self {
             conn: Mutex::new(conn),
         })
     }
     
-    /// Crée une base en mémoire (pour les tests)
+    /// Migre une base non chiffrée vers SQLCipher
+    fn migrate_to_encrypted(db_path: &std::path::Path, encryption_key: &str) -> SqlResult<()> {
+        let backup_path = db_path.with_extension("db.unencrypted.bak");
+        let encrypted_path = db_path.with_extension("db.encrypted");
+        
+        // 1. Ouvrir la base non chiffrée
+        let plain_conn = Connection::open(db_path)?;
+        
+        // 2. Exporter vers une nouvelle base chiffrée via ATTACH + sqlcipher_export
+        plain_conn.execute_batch(&format!(
+            "ATTACH DATABASE '{}' AS encrypted KEY '{}';
+             SELECT sqlcipher_export('encrypted');
+             DETACH DATABASE encrypted;",
+            encrypted_path.display(),
+            encryption_key
+        ))?;
+        
+        drop(plain_conn);
+        
+        // 3. Renommer : ancien → backup, chiffré → principal
+        std::fs::rename(db_path, &backup_path).map_err(|e| {
+            rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_CANTOPEN),
+                Some(format!("Erreur rename backup: {}", e)),
+            )
+        })?;
+        
+        std::fs::rename(&encrypted_path, db_path).map_err(|e| {
+            // Restaurer le backup en cas d'erreur
+            let _ = std::fs::rename(&backup_path, db_path);
+            rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_CANTOPEN),
+                Some(format!("Erreur rename encrypted: {}", e)),
+            )
+        })?;
+        
+        info!("[Database] Migration SQLCipher: backup conservé à {:?}", backup_path);
+        Ok(())
+    }
+    
+    /// Crée une base en mémoire (pour les tests) — non chiffrée
     #[allow(dead_code)]
     pub fn new_in_memory() -> SqlResult<Self> {
         let conn = Connection::open_in_memory()?;

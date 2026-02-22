@@ -26,10 +26,10 @@
 13. **Faille #11** ✅ Migration `println!`/`eprintln!` → `log::info!`/`log::warn!`/`log::error!` (handlers.rs, middleware.rs)
 14. **macOS** ✅ `open_log_folder()` supporte macOS via `open` command
 
-### 🔲 Phase 4 — Chiffrement (non implémenté, changement majeur)
+### ✅ Phase 4 — Chiffrement (TERMINÉE)
 
-15. **Faille #2** — Migrer SQLite vers SQLCipher (nécessite `bundled-sqlcipher` + keyring)
-16. **Faille #16** — Stocker token TEO Hub dans keychain OS
+15. **Faille #2** ✅ Migration SQLite → SQLCipher (AES-256 au repos), clé stockée dans keychain OS
+16. **Faille #16** ✅ Token TEO Hub migré automatiquement du config.toml vers le keychain OS
 17. **Faille #8** — Rate limiting renforcé pour échecs 401 (tracking par IP)
 18. **Faille #15** — CSP nonces en production (complexe, nécessite build pipeline)
 

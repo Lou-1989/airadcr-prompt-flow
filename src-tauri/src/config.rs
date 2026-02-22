@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::OnceLock;
+use log::{info, warn};
 
 static CONFIG: OnceLock<AppConfig> = OnceLock::new();
 
@@ -189,14 +190,14 @@ impl AppConfig {
                         
                         // Migration automatique : corriger l'ancienne URL sans ?tori=true
                         if config.iframe_url == "https://airadcr.com/app" || config.iframe_url == "https://airadcr.com" {
-                            println!("🔄 [Config] Migration: ancienne iframe_url détectée, mise à jour vers ?tori=true");
+                            info!("[Config] Migration: ancienne iframe_url détectée, mise à jour vers ?tori=true");
                             config.iframe_url = "https://airadcr.com/app?tori=true".to_string();
                             needs_save = true;
                         }
                         
                         // Migration automatique : api_key → api_token
                         if !config.teo_hub.api_key.is_empty() && config.teo_hub.api_token.is_empty() {
-                            println!("🔄 [Config] Migration: api_key → api_token");
+                            info!("[Config] Migration: api_key → api_token");
                             config.teo_hub.api_token = config.teo_hub.api_key.clone();
                             config.teo_hub.api_key = String::new();
                             needs_save = true;
@@ -204,26 +205,39 @@ impl AppConfig {
                         
                         // Migration automatique : ancien host par défaut
                         if config.teo_hub.host == "192.168.1.36" {
-                            println!("🔄 [Config] Migration: host TÉO Hub 192.168.1.36 → 192.168.1.253");
+                            info!("[Config] Migration: host TÉO Hub 192.168.1.36 → 192.168.1.253");
                             config.teo_hub.host = "192.168.1.253".to_string();
                             needs_save = true;
+                        }
+                        
+                        // 🔐 Migration Phase 4 : déplacer api_token du fichier TOML vers le keychain OS
+                        if !config.teo_hub.api_token.is_empty() {
+                            info!("[Config] Migration: token TEO Hub → keychain OS");
+                            if let Err(e) = crate::database::keychain::store_teo_token(&config.teo_hub.api_token) {
+                                warn!("[Config] Erreur migration token vers keychain: {}", e);
+                            } else {
+                                // Effacer le token du fichier TOML après migration réussie
+                                config.teo_hub.api_token = String::new();
+                                needs_save = true;
+                                info!("[Config] Token TEO Hub migré vers keychain OS, supprimé du fichier TOML");
+                            }
                         }
                         
                         if needs_save {
                             let _ = config.save();
                         }
                         
-                        println!("📁 [Config] Chargé depuis {:?}", path);
+                        info!("[Config] Chargé depuis {:?}", path);
                         return config;
                     } else {
-                        eprintln!("⚠️ [Config] Erreur parsing {:?}, utilisation des valeurs par défaut", path);
+                        warn!("[Config] Erreur parsing {:?}, utilisation des valeurs par défaut", path);
                     }
                 }
             }
         }
         
         // 2. Utiliser les valeurs par défaut
-        println!("📁 [Config] Utilisation de la configuration par défaut");
+        info!("[Config] Utilisation de la configuration par défaut");
         Self::default()
     }
     
@@ -244,7 +258,7 @@ impl AppConfig {
         fs::write(&path, content)
             .map_err(|e| format!("Erreur écriture: {}", e))?;
         
-        println!("💾 [Config] Sauvegardé dans {:?}", path);
+        info!("[Config] Sauvegardé dans {:?}", path);
         Ok(())
     }
     
@@ -254,7 +268,7 @@ impl AppConfig {
             if !path.exists() {
                 let default_config = Self::default();
                 if default_config.save().is_ok() {
-                    println!("✅ [Config] Fichier de configuration créé: {:?}", path);
+                    info!("[Config] Fichier de configuration créé: {:?}", path);
                 }
             }
         }

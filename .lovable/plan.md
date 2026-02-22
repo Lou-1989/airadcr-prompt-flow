@@ -1,34 +1,44 @@
 
 
-# Correction du build CI -- SQLCipher sans OpenSSL externe
+# Correction des erreurs de build Rust -- variables `x` et `y` introuvables
 
 ## Probleme
 
-La feature `bundled-sqlcipher` de rusqlite necessite qu'OpenSSL soit installe sur la machine de build (variable `OPENSSL_DIR`). Le runner CI Windows (GitHub Actions) ne l'a pas pre-installe, d'ou l'echec.
+Deux fonctions Tauri utilisent des parametres prefixes par un underscore (`_x`, `_y`) mais les referencent sans underscore (`x`, `y`) dans le corps de la fonction, ce qui provoque l'erreur `cannot find value x/y in this scope`.
 
-## Solution
+## Corrections
 
-Remplacer la feature `bundled-sqlcipher` par `bundled-sqlcipher-vendored-openssl`. Cette variante compile OpenSSL directement dans le binaire -- aucune dependance externe requise. Le chiffrement AES-256 reste identique.
+### 1. Fichier `src-tauri/src/main.rs`, ligne 581
 
-## Modification
+Renommer les parametres de `_x, _y` en `x, y` :
 
-### Fichier : `src-tauri/Cargo.toml`, ligne 41
+```rust
+// Avant
+async fn get_window_at_point(_x: i32, _y: i32)
 
-Remplacer :
-```toml
-rusqlite = { version = "0.31", features = ["bundled-sqlcipher"] }
+// Apres
+async fn get_window_at_point(x: i32, y: i32)
 ```
 
-Par :
-```toml
-rusqlite = { version = "0.31", features = ["bundled-sqlcipher-vendored-openssl"] }
+### 2. Fichier `src-tauri/src/main.rs`, ligne 774
+
+Meme correction :
+
+```rust
+// Avant
+async fn get_window_client_rect_at_point(_x: i32, _y: i32)
+
+// Apres
+async fn get_window_client_rect_at_point(x: i32, y: i32)
 ```
+
+## Explication
+
+En Rust, le prefixe `_` sur un parametre indique au compilateur que la variable est intentionnellement inutilisee. Ici les parametres sont bien utilises (lignes 587 et 779), donc le prefixe doit etre retire.
 
 ## Impact
 
-- Aucun changement fonctionnel (meme chiffrement AES-256)
-- Build CI Windows : corrige l'erreur `Missing environment variable OPENSSL_DIR`
-- Build CI macOS : fonctionne egalement (plus besoin de `brew install openssl`)
-- Taille du binaire : augmentation negligeable (~1-2 MB pour OpenSSL statique)
-- Une seule ligne a modifier
+- Corrige les 4 erreurs de compilation (`E0425`)
+- Aucun changement fonctionnel
+- Deux lignes a modifier
 

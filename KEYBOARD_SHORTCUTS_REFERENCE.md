@@ -47,6 +47,8 @@
 
 | Raccourci | Action | Source | Événement Tauri | Message iframe |
 |-----------|--------|--------|-----------------|----------------|
+| **Ctrl+Space** | Démarrer/Terminer dictée | Clavier (ergonomique) | `airadcr:dictation_startstop` | `airadcr:toggle_recording` |
+| **Ctrl+Shift+Space** | Pause/Reprendre dictée | Clavier (ergonomique) | `airadcr:dictation_pause` | `airadcr:toggle_pause` |
 | **Ctrl+Shift+D** | Démarrer/Terminer dictée | Clavier **OU** SpeechMike Record | `airadcr:dictation_startstop` | `airadcr:toggle_recording` |
 | **Ctrl+Shift+P** | Pause/Reprendre dictée | Clavier **OU** SpeechMike Pause/Play | `airadcr:dictation_pause` | `airadcr:toggle_pause` |
 | **Ctrl+Shift+T** | Injecter texte brut (Insert) | Clavier **OU** SpeechMike Instruction | `airadcr:inject_raw` | `airadcr:request_injection` (type: 'brut') |

@@ -1697,6 +1697,25 @@ fn register_global_shortcuts(app_handle: tauri::AppHandle) {
         })
         .unwrap_or_else(|e| warn!("Erreur enregistrement Ctrl+Shift+S: {}", e));
 
+    // 🎯 ERGONOMIC: Ctrl+Space → toggle_recording (style Wispr Flow / SuperWhisper)
+    // Touche la plus accessible : auriculaire Ctrl + pouce Space, une seule main
+    let tx_space = tx.clone();
+    shortcut_manager
+        .register("Ctrl+Space", move || {
+            debug!("[Shortcuts] Ctrl+Space pressé (ergonomic) → toggle_recording");
+            let _ = tx_space.send("toggle_recording");
+        })
+        .unwrap_or_else(|e| warn!("Erreur enregistrement Ctrl+Space: {}", e));
+
+    // 🎯 ERGONOMIC: Ctrl+Shift+Space → toggle_pause
+    let tx_shift_space = tx.clone();
+    shortcut_manager
+        .register("Ctrl+Shift+Space", move || {
+            debug!("[Shortcuts] Ctrl+Shift+Space pressé (ergonomic) → toggle_pause");
+            let _ = tx_shift_space.send("toggle_pause");
+        })
+        .unwrap_or_else(|e| warn!("Erreur enregistrement Ctrl+Shift+Space: {}", e));
+
     // ANTI-GHOST: F9 (désactiver click-through)
     let handle_f9 = app_handle.clone();
     shortcut_manager
@@ -1708,5 +1727,5 @@ fn register_global_shortcuts(app_handle: tauri::AppHandle) {
         })
         .unwrap_or_else(|e| warn!("Erreur enregistrement F9: {}", e));
 
-    info!("[Shortcuts] Raccourcis globaux enregistrés (channel tokio): Ctrl+Alt+D/L/I, F9, Ctrl+Shift+D/P/T/S");
+    info!("[Shortcuts] Raccourcis globaux enregistrés (channel tokio): Ctrl+Alt+D/L/I, F9, Ctrl+Shift+D/P/T/S, Ctrl+Space, Ctrl+Shift+Space");
 }

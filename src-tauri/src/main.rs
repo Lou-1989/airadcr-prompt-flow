@@ -12,6 +12,15 @@ use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use active_win_pos_rs::get_active_window;
 use log::{info, warn, error, debug};
+
+/// Retourne la touche modificateur pour copier/coller selon l'OS
+/// Windows/Linux: Ctrl, macOS: Cmd (Meta)
+fn clipboard_modifier() -> Key {
+    #[cfg(target_os = "macos")]
+    { Key::Meta }
+    #[cfg(not(target_os = "macos"))]
+    { Key::Control }
+}
 use std::fs::{OpenOptions, create_dir_all};
 use std::io::Write;
 extern crate chrono;
@@ -252,10 +261,11 @@ async fn perform_injection_at_position(text: String, x: i32, y: i32, state: Stat
     enigo.button(Button::Left, Direction::Release).map_err(|e| e.to_string())?;
     thread::sleep(Duration::from_millis(30));
     
-    // Coller le texte à la position du curseur
-    enigo.key(Key::Control, Direction::Press).map_err(|e| e.to_string())?;
+    // Coller le texte à la position du curseur (Cmd+V sur macOS, Ctrl+V sur Windows/Linux)
+    let paste_key = clipboard_modifier();
+    enigo.key(paste_key, Direction::Press).map_err(|e| e.to_string())?;
     enigo.key(Key::Unicode('v'), Direction::Click).map_err(|e| e.to_string())?;
-    enigo.key(Key::Control, Direction::Release).map_err(|e| e.to_string())?;
+    enigo.key(paste_key, Direction::Release).map_err(|e| e.to_string())?;
     
     thread::sleep(Duration::from_millis(10));
     
@@ -285,9 +295,10 @@ async fn perform_injection(text: String, state: State<'_, AppState>) -> Result<(
     thread::sleep(Duration::from_millis(50));
     
     let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
-    enigo.key(Key::Control, Direction::Press).map_err(|e| e.to_string())?;
+    let paste_key = clipboard_modifier();
+    enigo.key(paste_key, Direction::Press).map_err(|e| e.to_string())?;
     enigo.key(Key::Unicode('v'), Direction::Click).map_err(|e| e.to_string())?;
-    enigo.key(Key::Control, Direction::Release).map_err(|e| e.to_string())?;
+    enigo.key(paste_key, Direction::Release).map_err(|e| e.to_string())?;
     
     thread::sleep(Duration::from_millis(100));
     
@@ -326,11 +337,12 @@ async fn has_text_selection(state: State<'_, AppState>) -> Result<bool, String> 
     let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
     let original = clipboard.get_text().unwrap_or_default();
     
-    // Simuler Ctrl+C pour copier la sélection (si elle existe)
+    // Simuler Ctrl+C (Windows/Linux) ou Cmd+C (macOS) pour copier la sélection
     let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
-    enigo.key(Key::Control, Direction::Press).map_err(|e| e.to_string())?;
+    let copy_key = clipboard_modifier();
+    enigo.key(copy_key, Direction::Press).map_err(|e| e.to_string())?;
     enigo.key(Key::Unicode('c'), Direction::Click).map_err(|e| e.to_string())?;
-    enigo.key(Key::Control, Direction::Release).map_err(|e| e.to_string())?;
+    enigo.key(copy_key, Direction::Release).map_err(|e| e.to_string())?;
     
     thread::sleep(Duration::from_millis(50));
     
@@ -615,7 +627,22 @@ async fn get_window_at_point(x: i32, y: i32) -> Result<WindowInfo, String> {
     
     #[cfg(not(target_os = "windows"))]
     {
-        Err("get_window_at_point non supporté sur cette plateforme".to_string())
+        // Fallback macOS/Linux: utiliser active_win_pos_rs
+        match get_active_window() {
+            Ok(win) => Ok(WindowInfo {
+                title: win.title,
+                app_name: win.app_name,
+                x: win.position.x as i32,
+                y: win.position.y as i32,
+                width: win.position.width as i32,
+                height: win.position.height as i32,
+            }),
+            Err(_) => Ok(WindowInfo {
+                title: "Unknown".to_string(),
+                app_name: "Unknown".to_string(),
+                x: 0, y: 0, width: 1920, height: 1080,
+            })
+        }
     }
 }
 
@@ -656,7 +683,8 @@ async fn get_virtual_desktop_info() -> Result<VirtualDesktopInfo, String> {
     
     #[cfg(not(target_os = "windows"))]
     {
-        Err("get_virtual_desktop_info: Supporté uniquement sur Windows".to_string())
+        // Fallback macOS/Linux: valeurs génériques du bureau principal
+        Ok(VirtualDesktopInfo { x: 0, y: 0, width: 1920, height: 1080 })
     }
 }
 
@@ -705,7 +733,20 @@ async fn get_physical_window_rect() -> Result<PhysicalRect, String> {
     
     #[cfg(not(target_os = "windows"))]
     {
-        Err("get_physical_window_rect supporté uniquement sur Windows".to_string())
+        // Fallback macOS/Linux: utiliser active_win_pos_rs
+        match get_active_window() {
+            Ok(win) => Ok(PhysicalRect {
+                left: win.position.x as i32,
+                top: win.position.y as i32,
+                right: (win.position.x + win.position.width) as i32,
+                bottom: (win.position.y + win.position.height) as i32,
+                width: win.position.width as i32,
+                height: win.position.height as i32,
+            }),
+            Err(_) => Ok(PhysicalRect {
+                left: 0, top: 0, right: 1920, bottom: 1080, width: 1920, height: 1080,
+            })
+        }
     }
 }
 
@@ -799,7 +840,28 @@ async fn get_window_client_rect_at_point(x: i32, y: i32) -> Result<ClientRectInf
     
     #[cfg(not(target_os = "windows"))]
     {
-        Err("get_window_client_rect_at_point supporté uniquement sur Windows".to_string())
+        // Fallback macOS/Linux: utiliser active_win_pos_rs
+        match get_active_window() {
+            Ok(win) => Ok(ClientRectInfo {
+                app_name: win.app_name,
+                title: win.title,
+                window_left: win.position.x as i32,
+                window_top: win.position.y as i32,
+                window_width: win.position.width as i32,
+                window_height: win.position.height as i32,
+                client_left: win.position.x as i32,
+                client_top: win.position.y as i32,
+                client_width: win.position.width as i32,
+                client_height: win.position.height as i32,
+                hwnd: 0,
+            }),
+            Err(_) => Ok(ClientRectInfo {
+                app_name: "Unknown".to_string(), title: "Unknown".to_string(),
+                window_left: 0, window_top: 0, window_width: 1920, window_height: 1080,
+                client_left: 0, client_top: 0, client_width: 1920, client_height: 1080,
+                hwnd: 0,
+            })
+        }
     }
 }
 

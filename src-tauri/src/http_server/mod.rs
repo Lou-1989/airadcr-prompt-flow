@@ -61,6 +61,7 @@ pub async fn start_server(port: u16, db: Arc<Database>) -> std::io::Result<()> {
             
             App::new()
                 .app_data(state_clone.clone())
+                .app_data(web::JsonConfig::default().limit(1_048_576)) // 🔒 1 MB max payload
                 .wrap(Governor::new(&governor_conf))
                 .wrap(cors)
                 .wrap(Logger::new("%a \"%r\" %s %b %Dms"))

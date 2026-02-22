@@ -117,7 +117,7 @@ pub fn validate_api_key(db: &Arc<Database>, api_key: &str) -> bool {
     match db.validate_api_key(key_prefix, &key_hash) {
         Ok(valid) => valid,
         Err(e) => {
-            eprintln!("❌ [Middleware] Erreur validation API key: {}", e);
+            log::error!("❌ [Middleware] Erreur validation API key: {}", e);
             false
         }
     }
@@ -293,11 +293,11 @@ impl RequestInfo {
             error_message,
         ) {
             Ok(id) => {
-                println!("📝 [Access Log] #{} {} {} {} → {} ({}ms)", 
+                log::info!("📝 [Access Log] #{} {} {} {} → {} ({}ms)", 
                     id, self.method, self.endpoint, self.ip_address, result, duration_ms);
             }
             Err(e) => {
-                eprintln!("❌ [Access Log] Erreur insertion: {}", e);
+                log::error!("❌ [Access Log] Erreur insertion: {}", e);
             }
         }
     }

@@ -556,10 +556,11 @@ async fn perform_injection_at_position_direct(x: i32, y: i32, text: String, stat
     debug!("Texte copié dans clipboard : {} caractères", text.len());
     thread::sleep(Duration::from_millis(10));
     
-    debug!("Envoi Ctrl+V (va remplacer la sélection si présente, sinon coller)");
-    enigo.key(Key::Control, Direction::Press).map_err(|e| e.to_string())?;
+    debug!("Envoi Paste (va remplacer la sélection si présente, sinon coller)");
+    let paste_key = clipboard_modifier();
+    enigo.key(paste_key, Direction::Press).map_err(|e| e.to_string())?;
     enigo.key(Key::Unicode('v'), Direction::Click).map_err(|e| e.to_string())?;
-    enigo.key(Key::Control, Direction::Release).map_err(|e| e.to_string())?;
+    enigo.key(paste_key, Direction::Release).map_err(|e| e.to_string())?;
     
     thread::sleep(Duration::from_millis(50));
     debug!("Injection Ctrl+V terminée");
@@ -871,11 +872,13 @@ async fn get_window_client_rect_at_point(x: i32, y: i32) -> Result<ClientRectInf
 // 🎤 Commande: Simuler une touche dans l'iframe airadcr.com (legacy pour compatibilité)
 #[tauri::command]
 async fn simulate_key_in_iframe(window: tauri::Window, key: String) -> Result<(), String> {
-    let key_code = get_key_code(&key);
-    
-    if key_code == 0 {
-        return Err(format!("Touche non supportée: {}", key));
+    // 🔒 SÉCURITÉ: Valider la touche contre une liste blanche AVANT insertion JS
+    let valid_keys = ["F10", "F11", "F12"];
+    if !valid_keys.contains(&key.as_str()) {
+        return Err(format!("Touche non autorisée: {}. Touches valides: {:?}", key, valid_keys));
     }
+    
+    let key_code = get_key_code(&key);
     
     debug!("[SpeechMike] Injection touche {} (code: {}) dans iframe", key, key_code);
     
@@ -913,9 +916,11 @@ async fn simulate_key_in_iframe(window: tauri::Window, key: String) -> Result<()
 // 🆕 COMMANDE DE LOGGING PERSISTANT
 #[tauri::command]
 async fn write_log(message: String, level: String) -> Result<(), String> {
-    // Obtenir le chemin du dossier de logs dans AppData
-    let app_data = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
-    let log_dir = format!("{}\\AIRADCR\\logs", app_data);
+    // Obtenir le chemin du dossier de logs (cross-platform)
+    let log_dir = dirs::data_local_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("AIRADCR")
+        .join("logs");
     
     // Créer le dossier si nécessaire
     if let Err(e) = create_dir_all(&log_dir) {
@@ -923,7 +928,7 @@ async fn write_log(message: String, level: String) -> Result<(), String> {
     }
     
     // Créer/ouvrir le fichier de log avec append
-    let log_path = format!("{}\\app.log", log_dir);
+    let log_path = log_dir.join("app.log");
     let mut file = match OpenOptions::new()
         .create(true)
         .append(true)
@@ -957,21 +962,34 @@ async fn write_log(message: String, level: String) -> Result<(), String> {
 // 🆕 COMMANDE POUR OBTENIR LE CHEMIN DES LOGS
 #[tauri::command]
 async fn get_log_path() -> Result<String, String> {
-    let app_data = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
-    let log_path = format!("{}\\AIRADCR\\logs\\app.log", app_data);
-    Ok(log_path)
+    let log_path = dirs::data_local_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("AIRADCR")
+        .join("logs")
+        .join("app.log");
+    Ok(log_path.to_string_lossy().to_string())
 }
 
 // 🆕 COMMANDE POUR OUVRIR LE DOSSIER DES LOGS
 #[tauri::command]
 async fn open_log_folder() -> Result<(), String> {
-    let app_data = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
-    let log_dir = format!("{}\\AIRADCR\\logs", app_data);
+    let log_dir = dirs::data_local_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("AIRADCR")
+        .join("logs");
     
     #[cfg(target_os = "windows")]
     {
         std::process::Command::new("explorer")
-            .arg(&log_dir)
+            .arg(log_dir.to_string_lossy().as_ref())
+            .spawn()
+            .map_err(|e| format!("Impossible d'ouvrir le dossier: {}", e))?;
+    }
+    
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(log_dir.to_string_lossy().as_ref())
             .spawn()
             .map_err(|e| format!("Impossible d'ouvrir le dossier: {}", e))?;
     }

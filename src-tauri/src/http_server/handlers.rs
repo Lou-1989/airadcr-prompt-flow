@@ -263,13 +263,12 @@ fn validate_api_key_name(name: &str) -> Result<(), String> {
 // Handlers
 // ============================================================================
 
-/// GET /health - Vérification de l'état du serveur
+/// GET /health - Vérification de l'état du serveur (minimal, sans info sensible)
 pub async fn health_check() -> HttpResponse {
     HttpResponse::Ok().json(HealthResponse {
         status: "ok".to_string(),
         timestamp: Utc::now().to_rfc3339(),
-        // 🆕 Version dynamique depuis Cargo.toml (Phase 1)
-        version: env!("CARGO_PKG_VERSION").to_string(),
+        version: "".to_string(), // 🔒 SÉCURITÉ: Ne pas exposer la version sans auth
     })
 }
 
@@ -289,7 +288,7 @@ pub async fn store_pending_report(
         .unwrap_or("");
     
     if !validate_api_key(&state.db, api_key) {
-        println!("❌ [HTTP] Clé API invalide");
+        log::warn!("❌ [HTTP] Clé API invalide");
         request_info.log_access(&state.db, 401, "unauthorized", Some("Invalid API key"));
         return HttpResponse::Unauthorized().json(ErrorResponse {
             error: "Invalid API key".to_string(),
@@ -299,7 +298,7 @@ pub async fn store_pending_report(
     
     // 2. Validation technical_id
     if let Err(msg) = validate_technical_id(&body.technical_id) {
-        println!("❌ [HTTP] Invalid technical_id: {}", msg);
+        log::warn!("❌ [HTTP] Invalid technical_id: {}", msg);
         request_info.log_access(&state.db, 400, "bad_request", Some(&msg));
         return HttpResponse::BadRequest().json(ErrorResponse {
             error: msg,
@@ -355,7 +354,7 @@ pub async fn store_pending_report(
             })
         }
         Err(e) => {
-            eprintln!("❌ [HTTP] Erreur insertion: {}", e);
+            log::error!("❌ [HTTP] Erreur insertion: {}", e);
             request_info.log_access(&state.db, 500, "error", Some(&format!("Database error: {}", e)));
             HttpResponse::InternalServerError().json(ErrorResponse {
                 error: format!("Database error: {}", e),
@@ -423,7 +422,7 @@ pub async fn get_pending_report(
             })
         }
         Ok(None) => {
-            println!("⚠️ [HTTP] Rapport non trouvé: tid={}", tid);
+            log::warn!("⚠️ [HTTP] Rapport non trouvé: tid={}", tid);
             request_info.log_access(&state.db, 404, "not_found", Some("Report not found or expired"));
             HttpResponse::NotFound().json(GetReportResponse {
                 success: false,
@@ -432,7 +431,7 @@ pub async fn get_pending_report(
             })
         }
         Err(e) => {
-            eprintln!("❌ [HTTP] Erreur lecture: {}", e);
+            log::error!("❌ [HTTP] Erreur lecture: {}", e);
             request_info.log_access(&state.db, 500, "error", Some(&format!("Database error: {}", e)));
             HttpResponse::InternalServerError().json(ErrorResponse {
                 error: format!("Database error: {}", e),
@@ -442,13 +441,29 @@ pub async fn get_pending_report(
     }
 }
 
-/// DELETE /pending-report?tid=XXX - Supprime un rapport
+/// DELETE /pending-report?tid=XXX - Supprime un rapport (🔒 requiert API key)
 pub async fn delete_pending_report(
     req: HttpRequest,
     query: web::Query<TidQuery>,
     state: web::Data<HttpServerState>,
 ) -> HttpResponse {
     let request_info = RequestInfo::from_request(&req);
+    
+    // 🔒 SÉCURITÉ: Exiger une clé API pour les suppressions
+    let api_key = req
+        .headers()
+        .get("x-api-key")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    
+    if !validate_api_key(&state.db, api_key) {
+        log::warn!("❌ [HTTP] DELETE sans API key valide");
+        request_info.log_access(&state.db, 401, "unauthorized", Some("Invalid API key for DELETE"));
+        return HttpResponse::Unauthorized().json(ErrorResponse {
+            error: "API key required for DELETE operations".to_string(),
+            field: None,
+        });
+    }
     
     let tid = match &query.tid {
         Some(tid) if !tid.is_empty() => tid,
@@ -463,7 +478,7 @@ pub async fn delete_pending_report(
     
     match state.db.delete_pending_report(tid) {
         Ok(deleted) => {
-            println!("🗑️ [HTTP] Rapport supprimé: tid={} (deleted={})", tid, deleted);
+            log::info!("🗑️ [HTTP] Rapport supprimé: tid={} (deleted={})", tid, deleted);
             request_info.log_access(&state.db, 200, "success", None);
             HttpResponse::Ok().json(DeleteResponse {
                 success: true,
@@ -471,7 +486,7 @@ pub async fn delete_pending_report(
             })
         }
         Err(e) => {
-            eprintln!("❌ [HTTP] Erreur suppression: {}", e);
+            log::error!("❌ [HTTP] Erreur suppression: {}", e);
             request_info.log_access(&state.db, 500, "error", Some(&format!("Database error: {}", e)));
             HttpResponse::InternalServerError().json(ErrorResponse {
                 error: format!("Database error: {}", e),
@@ -497,7 +512,7 @@ pub async fn create_api_key(
         .unwrap_or("");
     
     if !validate_admin_key(admin_key) {
-        println!("❌ [HTTP] Clé admin invalide pour création API key");
+        log::warn!("❌ [HTTP] Clé admin invalide pour création API key");
         request_info.log_access(&state.db, 401, "unauthorized", Some("Invalid admin key"));
         return HttpResponse::Unauthorized().json(ErrorResponse {
             error: "Invalid or missing admin key".to_string(),
@@ -540,7 +555,7 @@ pub async fn create_api_key(
     // 7. Insérer en base
     match state.db.add_api_key(&id, key_prefix, &key_hash, &body.name) {
         Ok(_) => {
-            println!("✅ [HTTP] Nouvelle clé API créée: name={}, prefix={}", body.name, key_prefix);
+            log::info!("✅ [HTTP] Nouvelle clé API créée: name={}, prefix={}", body.name, key_prefix);
             request_info.log_access(&state.db, 201, "success", None);
             HttpResponse::Created().json(CreateApiKeyResponse {
                 success: true,
@@ -551,7 +566,7 @@ pub async fn create_api_key(
             })
         }
         Err(e) => {
-            eprintln!("❌ [HTTP] Erreur création clé API: {}", e);
+            log::error!("❌ [HTTP] Erreur création clé API: {}", e);
             request_info.log_access(&state.db, 500, "error", Some(&format!("Database error: {}", e)));
             HttpResponse::InternalServerError().json(ErrorResponse {
                 error: format!("Database error: {}", e),
@@ -576,7 +591,7 @@ pub async fn list_api_keys(
         .unwrap_or("");
     
     if !validate_admin_key(admin_key) {
-        println!("❌ [HTTP] Clé admin invalide pour liste API keys");
+        log::warn!("❌ [HTTP] Clé admin invalide pour liste API keys");
         request_info.log_access(&state.db, 401, "unauthorized", Some("Invalid admin key"));
         return HttpResponse::Unauthorized().json(ErrorResponse {
             error: "Invalid or missing admin key".to_string(),
@@ -590,7 +605,7 @@ pub async fn list_api_keys(
                 ApiKeyInfo { id, name, prefix, is_active, created_at }
             }).collect();
             
-            println!("✅ [HTTP] Liste API keys: {} clé(s)", api_keys.len());
+            log::info!("✅ [HTTP] Liste API keys: {} clé(s)", api_keys.len());
             request_info.log_access(&state.db, 200, "success", None);
             HttpResponse::Ok().json(ListApiKeysResponse {
                 success: true,
@@ -598,7 +613,7 @@ pub async fn list_api_keys(
             })
         }
         Err(e) => {
-            eprintln!("❌ [HTTP] Erreur liste API keys: {}", e);
+            log::error!("❌ [HTTP] Erreur liste API keys: {}", e);
             request_info.log_access(&state.db, 500, "error", Some(&format!("Database error: {}", e)));
             HttpResponse::InternalServerError().json(ErrorResponse {
                 error: format!("Database error: {}", e),
@@ -624,7 +639,7 @@ pub async fn revoke_api_key(
         .unwrap_or("");
     
     if !validate_admin_key(admin_key) {
-        println!("❌ [HTTP] Clé admin invalide pour révocation API key");
+        log::warn!("❌ [HTTP] Clé admin invalide pour révocation API key");
         request_info.log_access(&state.db, 401, "unauthorized", Some("Invalid admin key"));
         return HttpResponse::Unauthorized().json(ErrorResponse {
             error: "Invalid or missing admin key".to_string(),
@@ -645,9 +660,9 @@ pub async fn revoke_api_key(
     match state.db.revoke_api_key(&prefix) {
         Ok(revoked) => {
             if revoked {
-                println!("✅ [HTTP] Clé API révoquée: prefix={}", prefix);
+                log::info!("✅ [HTTP] Clé API révoquée: prefix={}", prefix);
             } else {
-                println!("⚠️ [HTTP] Clé API non trouvée: prefix={}", prefix);
+                log::warn!("⚠️ [HTTP] Clé API non trouvée: prefix={}", prefix);
             }
             request_info.log_access(&state.db, 200, "success", None);
             HttpResponse::Ok().json(RevokeApiKeyResponse {
@@ -657,7 +672,7 @@ pub async fn revoke_api_key(
             })
         }
         Err(e) => {
-            eprintln!("❌ [HTTP] Erreur révocation API key: {}", e);
+            log::error!("❌ [HTTP] Erreur révocation API key: {}", e);
             request_info.log_access(&state.db, 500, "error", Some(&format!("Database error: {}", e)));
             HttpResponse::InternalServerError().json(ErrorResponse {
                 error: format!("Database error: {}", e),
@@ -688,7 +703,7 @@ pub async fn find_report(
         });
     }
     
-    println!("🔍 [HTTP] Recherche rapport: patient_id={:?}, accession={:?}, exam_uid={:?}",
+    log::info!("🔍 [HTTP] Recherche rapport: patient_id={:?}, accession={:?}, exam_uid={:?}",
              query.patient_id, query.accession_number, query.exam_uid);
     
     match state.db.find_pending_report_by_identifiers(
@@ -707,7 +722,7 @@ pub async fn find_report(
                 .as_ref()
                 .and_then(|s| serde_json::from_str(s).ok());
             
-            println!("✅ [HTTP] Rapport trouvé: tid={}", report.technical_id);
+            log::info!("✅ [HTTP] Rapport trouvé: tid={}", report.technical_id);
             let tid = report.technical_id.clone();
             request_info.log_access(&state.db, 200, "success", None);
             HttpResponse::Ok().json(FindReportResponse {
@@ -731,7 +746,7 @@ pub async fn find_report(
             })
         }
         Ok(None) => {
-            println!("⚠️ [HTTP] Aucun rapport trouvé pour ces identifiants");
+            log::warn!("⚠️ [HTTP] Aucun rapport trouvé pour ces identifiants");
             request_info.log_access(&state.db, 404, "not_found", Some("No report found"));
             HttpResponse::NotFound().json(FindReportResponse {
                 success: false,
@@ -741,7 +756,7 @@ pub async fn find_report(
             })
         }
         Err(e) => {
-            eprintln!("❌ [HTTP] Erreur recherche: {}", e);
+            log::error!("❌ [HTTP] Erreur recherche: {}", e);
             request_info.log_access(&state.db, 500, "error", Some(&format!("Database error: {}", e)));
             HttpResponse::InternalServerError().json(ErrorResponse {
                 error: format!("Database error: {}", e),
@@ -752,6 +767,7 @@ pub async fn find_report(
 }
 
 /// POST /open-report - Ouvre un rapport dans l'iframe AIRADCR (navigation depuis RIS)
+/// 🔒 Requiert une clé API valide
 /// Recherche par tid OU par identifiants RIS (accession_number, patient_id, exam_uid)
 pub async fn open_report(
     req: HttpRequest,
@@ -759,6 +775,22 @@ pub async fn open_report(
     state: web::Data<HttpServerState>,
 ) -> HttpResponse {
     let request_info = RequestInfo::from_request(&req);
+    
+    // 🔒 SÉCURITÉ: Exiger une clé API pour la navigation
+    let api_key = req
+        .headers()
+        .get("x-api-key")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    
+    if !validate_api_key(&state.db, api_key) {
+        log::warn!("❌ [HTTP] POST /open-report sans API key valide");
+        request_info.log_access(&state.db, 401, "unauthorized", Some("Invalid API key for open-report"));
+        return HttpResponse::Unauthorized().json(ErrorResponse {
+            error: "API key required for open-report".to_string(),
+            field: None,
+        });
+    }
     
     // Déterminer le technical_id à utiliser
     let technical_id: Option<String> = if let Some(tid) = &query.tid {
@@ -782,7 +814,7 @@ pub async fn open_report(
                 Ok(Some(report)) => Some(report.technical_id),
                 Ok(None) => None,
                 Err(e) => {
-                    eprintln!("❌ [HTTP] Erreur recherche pour open-report: {}", e);
+                    log::error!("❌ [HTTP] Erreur recherche pour open-report: {}", e);
                     request_info.log_access(&state.db, 500, "error", Some(&format!("Database error: {}", e)));
                     return HttpResponse::InternalServerError().json(ErrorResponse {
                         error: format!("Database error: {}", e),
@@ -810,13 +842,26 @@ pub async fn open_report(
         }
     };
     
+    // 🔒 SÉCURITÉ: Valider le TID avant émission dans l'événement Tauri
+    if let Err(msg) = validate_technical_id(&tid) {
+        log::warn!("❌ [HTTP] TID invalide dans open-report: {}", msg);
+        request_info.log_access(&state.db, 400, "bad_request", Some(&msg));
+        return HttpResponse::BadRequest().json(OpenReportResponse {
+            success: false,
+            message: None,
+            technical_id: Some(tid),
+            navigated_to: None,
+            error: Some(format!("Invalid technical_id: {}", msg)),
+        });
+    }
+    
     // Émettre l'événement Tauri pour naviguer vers le rapport
     if let Some(app_handle) = APP_HANDLE.get() {
         if let Some(window) = app_handle.get_window("main") {
             // Émettre l'événement avec le tid
             match window.emit("airadcr:navigate_to_report", &tid) {
                 Ok(_) => {
-                    println!("✅ [HTTP] Navigation émise: tid={}", tid);
+                    log::info!("✅ [HTTP] Navigation émise: tid={}", tid);
                     
                     // Afficher et focus la fenêtre
                     let _ = window.show();
@@ -832,7 +877,7 @@ pub async fn open_report(
                     })
                 }
                 Err(e) => {
-                    eprintln!("❌ [HTTP] Erreur émission événement: {}", e);
+                    log::error!("❌ [HTTP] Erreur émission événement: {}", e);
                     request_info.log_access(&state.db, 500, "error", Some(&format!("Event emit error: {}", e)));
                     HttpResponse::InternalServerError().json(OpenReportResponse {
                         success: false,
@@ -844,7 +889,7 @@ pub async fn open_report(
                 }
             }
         } else {
-            eprintln!("❌ [HTTP] Fenêtre main non trouvée");
+            log::error!("❌ [HTTP] Fenêtre main non trouvée");
             request_info.log_access(&state.db, 500, "error", Some("Main window not found"));
             HttpResponse::InternalServerError().json(OpenReportResponse {
                 success: false,
@@ -855,7 +900,7 @@ pub async fn open_report(
             })
         }
     } else {
-        eprintln!("❌ [HTTP] AppHandle non disponible (app pas encore démarrée)");
+        log::error!("❌ [HTTP] AppHandle non disponible (app pas encore démarrée)");
         request_info.log_access(&state.db, 503, "error", Some("Application not yet ready"));
         HttpResponse::ServiceUnavailable()
             .insert_header(("Retry-After", "2"))

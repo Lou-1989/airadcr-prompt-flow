@@ -181,7 +181,7 @@ pub fn initialize(conn: &Connection) -> SqlResult<()> {
                 let generated_key = generate_secure_api_key();
                 println!("⚠️  [Database] ATTENTION: Aucune clé de production configurée!");
                 println!("⚠️  [Database] Variable AIRADCR_PROD_API_KEY non définie");
-                println!("🔑 [Database] Clé de développement générée: {}", generated_key);
+                println!("🔑 [Database] Clé de développement générée: {}...", &generated_key[..16]);
                 println!("💡 [Database] En production, définissez AIRADCR_PROD_API_KEY");
                 (generated_key, "generated")
             }

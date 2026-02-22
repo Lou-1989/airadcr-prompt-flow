@@ -7,7 +7,7 @@
 // - Linux   : Secret Service (GNOME Keyring / KWallet)
 // ============================================================================
 
-use log::{info, warn, error};
+use log::{info, warn};
 use rand::Rng;
 
 const SERVICE_NAME: &str = "airadcr-desktop";
@@ -91,7 +91,7 @@ fn delete_keychain_value(entry_name: &str) -> Result<(), String> {
     let entry = keyring::Entry::new(SERVICE_NAME, entry_name)
         .map_err(|e| format!("Erreur création entrée keychain: {}", e))?;
     
-    match entry.delete_credential() {
+    match entry.delete_password() {
         Ok(_) => {
             info!("[Keychain] Entrée '{}' supprimée", entry_name);
             Ok(())

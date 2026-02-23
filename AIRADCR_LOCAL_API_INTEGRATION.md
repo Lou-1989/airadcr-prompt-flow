@@ -1,653 +1,371 @@
 # 📋 Documentation API Locale AIRADCR Desktop
 
+**Version** : 2.0.0  
+**Dernière mise à jour** : Février 2026  
+**Base URL** : `http://127.0.0.1:8741`
+
+---
+
 ## Vue d'ensemble
 
-Le serveur HTTP local Tauri (`localhost:8741`) permet aux RIS/PACS d'envoyer des rapports pré-structurés **avec identifiants patients** car les données ne quittent jamais la machine.
+Le serveur HTTP local Tauri (`127.0.0.1:8741`) permet aux systèmes RIS/PACS et à TÉO Hub d'envoyer des rapports radiologiques pré-structurés **avec identifiants patients** car les données ne quittent jamais la machine.
 
 ```
-┌──────────────┐     POST /pending-report     ┌──────────────────┐
-│   RIS/PACS   │ ─────────────────────────────▶│  Tauri Desktop   │
-│   (Local)    │  patient_id, exam_uid, ...   │  localhost:8741  │
-└──────────────┘                               └────────┬─────────┘
-                                                        │ SQLite
-       ┌────────────────────────────────────────────────▼─────────┐
-       │                                                          │
-       │  GET /pending-report?tid=XXX                             │
-       │                                                          │
-       ▼                                                          │
-┌──────────────┐                               ┌──────────────────┘
-│ airadcr.com  │ ◀────────────────────────────▶│
-│   (iframe)   │   postMessage → Injection     │
-└──────────────┘                               │
+┌──────────────┐                                  ┌──────────────────┐
+│   TÉO Hub    │  1. POST /pending-report          │  AIRADCR Desktop │
+│   (IA)       │ ────────────────────────────────▶ │  127.0.0.1:8741  │
+└──────────────┘  (patient_id, structured, IA)     └────────┬─────────┘
+                                                            │ SQLite
+┌──────────────┐                                            │
+│     RIS      │  2. POST /open-report                      │
+│  (Xplore…)   │ ──────────────────────────────────────────▶│
+└──────────────┘  ?accession_number=XXX                     │
+                                                            │
+                  3. Événement Tauri → iframe navigue        │
+                     https://airadcr.com/app?tori=true&tid=…│
+                                                            │
+┌──────────────┐  4. GET /pending-report?tid=XXX            │
+│ airadcr.com  │ ◀─────────────────────────────────────────│
+│  (iframe)    │  → Formulaire pré-rempli                   │
+└──────────────┘                                            │
+                  5. Radiologue dicte → Injection RIS       │
 ```
 
 ---
 
 ## 🔑 Différence Cloud vs Local
 
-| Champ | Cloud (Supabase) | Local (Tauri) |
-|-------|------------------|---------------|
+| Champ | Cloud | Local (Tauri) |
+|-------|-------|---------------|
 | `patient_id` | ❌ Interdit | ✅ **Accepté** |
 | `exam_uid` | ❌ Interdit | ✅ **Accepté** |
 | `accession_number` | ❌ Interdit | ✅ **Accepté** |
 | `study_instance_uid` | ❌ Interdit | ✅ **Accepté** |
-| **Sécurité** | Internet (HTTPS) | localhost uniquement |
-| **Stockage** | AWS Cloud | SQLite local |
+| **Transit** | Internet (HTTPS) | localhost uniquement |
+| **Stockage** | Cloud | SQLite chiffré local |
+
+> ⚠️ **Important** : Les identifiants patients sont acceptés car les données ne quittent jamais la machine locale (serveur sur `127.0.0.1` uniquement).
+
+---
+
+## 🔐 Authentification
+
+### Clés API
+
+| Header | Usage | Endpoints protégés |
+|--------|-------|--------------------|
+| `X-API-Key` | Opérations de données | `POST /pending-report`, `DELETE /pending-report`, `POST /open-report` |
+| `X-Admin-Key` | Administration | `POST /api-keys`, `GET /api-keys`, `DELETE /api-keys/{prefix}` |
+
+La clé API est hashée en **SHA-256** côté serveur avec comparaison en temps constant. Aucune clé n'est stockée en clair.
+
+### Endpoints sans authentification
+
+| Endpoint | Raison |
+|----------|--------|
+| `GET /health` | Vérification de disponibilité |
+| `GET /pending-report?tid=XXX` | Lecture par airadcr.com (configurable) |
+| `GET /find-report` | Recherche RIS (configurable) |
+
+> 💡 Pour exiger une API key sur les endpoints GET, définissez `require_auth_for_reads = true` dans le fichier de configuration (`%APPDATA%/airadcr-desktop/config.toml`).
+
+### Créer une clé API
+
+```bash
+curl -X POST http://127.0.0.1:8741/api-keys \
+  -H "Content-Type: application/json" \
+  -H "X-Admin-Key: VOTRE_CLE_ADMIN" \
+  -d '{"name": "RIS Production"}'
+```
+
+Réponse :
+```json
+{
+  "success": true,
+  "id": "uuid",
+  "key": "airadcr_xxxxxxxxxxxxxxxxxxxxxxxxx",
+  "name": "RIS Production",
+  "message": "API key created successfully. Store this key securely - it won't be shown again."
+}
+```
+
+> ⚠️ **La clé complète n'est affichée qu'une seule fois.** Sauvegardez-la immédiatement.
 
 ---
 
 ## 📡 Endpoints API
 
-### 1. Vérification disponibilité
+### 1. `GET /health` — Vérification de disponibilité
 
 ```http
-GET http://localhost:8741/health
+GET http://127.0.0.1:8741/health
+```
 
-Response 200:
+Réponse `200` :
+```json
 {
   "status": "ok",
-  "version": "1.0.0",
-  "timestamp": "2024-12-16T10:00:00Z"
+  "version": "",
+  "timestamp": "2026-02-23T10:00:00Z"
 }
 ```
 
-### 2. Stocker un rapport (RIS → Desktop)
+> ℹ️ Le champ `version` est volontairement masqué sans authentification pour raisons de sécurité.
+
+---
+
+### 2. `POST /pending-report` — Stocker un rapport ⭐
+
+**Authentification** : `X-API-Key` obligatoire.
 
 ```http
-POST http://localhost:8741/pending-report
+POST http://127.0.0.1:8741/pending-report
 Content-Type: application/json
-X-API-Key: airadcr_prod_7f3k9m2x5p8w1q4v6n0z
+X-API-Key: airadcr_xxxxxxxxx
+```
 
+**Corps de la requête :**
+
+```json
 {
-  "technical_id": "EXAM_2024_001",
-  
-  // ✅ Identifiants patients ACCEPTÉS en local
+  "technical_id": "TEO_ACC2024001_MR",
+
   "patient_id": "PAT123456",
-  "exam_uid": "1.2.3.4.5.6.7.8.9",
+  "exam_uid": "1.2.840.113619.2.XXX.YYY.ZZZ",
   "accession_number": "ACC2024001",
-  "study_instance_uid": "1.2.840.10008.xxx",
-  
-  // Données structurées du rapport
+  "study_instance_uid": "1.2.840.10008.5.1.4.1.1.2.XXX",
+
   "structured": {
     "title": "IRM Cérébrale",
-    "indication": "Céphalées persistantes depuis 3 mois",
+    "indication": "Céphalées chroniques depuis 3 mois",
     "technique": "IRM 3T avec injection gadolinium",
-    "results": "",
+    "results": "Analyse IA TÉO Hub :\n- Volumétrie : normale\n- Aucune lésion détectée",
     "conclusion": ""
   },
-  
-  // Métadonnées optionnelles
-  "source_type": "ris_local",
-  "ai_modules": ["nodule_detection", "volumetry"],
+
+  "source_type": "teo_hub",
+  "ai_modules": ["brain_volumetry", "lesion_detection"],
   "modality": "MR",
   "metadata": {
-    "ris_name": "RIS Hospital",
-    "priority": "routine",
-    "referring_physician": "Dr. Martin"
+    "teo_version": "2.1.0",
+    "confidence_score": 0.94,
+    "site_id": "SITE_001"
   },
   "expires_in_hours": 24
 }
 ```
 
-**Réponse succès (201):**
+#### Champs obligatoires
+
+| Champ | Type | Contraintes | Description |
+|-------|------|-------------|-------------|
+| `technical_id` | string | **Max 64 chars**, `[a-zA-Z0-9_-]` uniquement | Identifiant unique du rapport |
+| `structured` | object | Requis | Contenu structuré du rapport |
+
+#### Champs identifiants patients (✅ acceptés en local)
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `patient_id` | string | ID patient RIS |
+| `exam_uid` | string | UID DICOM de l'examen |
+| `accession_number` | string | Numéro d'accession DICOM |
+| `study_instance_uid` | string | Study Instance UID DICOM |
+
+#### Champs optionnels
+
+| Champ | Type | Défaut | Description |
+|-------|------|--------|-------------|
+| `source_type` | string | `"tauri_local"` | Source (recommandé : `"teo_hub"`) |
+| `ai_modules` | string[] | `null` | Modules IA utilisés |
+| `modality` | string | `null` | Modalité DICOM (MR, CT, US…) |
+| `metadata` | object | `null` | Métadonnées libres (JSON) |
+| `expires_in_hours` | int | `24` | Durée de vie en heures |
+
+#### Structure `structured`
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `title` | string | Titre du rapport (ex : "IRM Cérébrale") |
+| `indication` | string | Indication clinique |
+| `technique` | string | Protocole technique |
+| `results` | string | Résultats IA pré-remplis |
+| `conclusion` | string | Conclusion (vide, à compléter par radiologue) |
+
+**Réponse succès `200` :**
 ```json
 {
   "success": true,
-  "technical_id": "EXAM_2024_001",
-  "retrieval_url": "https://airadcr.com/app?tid=EXAM_2024_001",
-  "expires_at": "2024-12-17T10:00:00Z"
+  "technical_id": "TEO_ACC2024001_MR",
+  "retrieval_url": "https://airadcr.com/app?tori=true&tid=TEO_ACC2024001_MR",
+  "expires_at": "2026-02-24T10:00:00Z"
 }
 ```
 
-### 3. Récupérer un rapport (airadcr.com → Desktop)
+**Erreurs :**
+
+| Code | Cause | Exemple |
+|------|-------|---------|
+| `400` | Validation échouée | `{"error": "technical_id must contain only alphanumeric characters, hyphens, and underscores", "field": "technical_id"}` |
+| `401` | Clé API invalide | `{"error": "Invalid API key"}` |
+| `500` | Erreur serveur | `{"error": "Database error: ..."}` |
+
+---
+
+### 3. `GET /pending-report?tid=XXX` — Récupérer un rapport
+
+**Authentification** : Aucune par défaut (configurable via `require_auth_for_reads`).
 
 ```http
-GET http://localhost:8741/pending-report?tid=EXAM_2024_001
+GET http://127.0.0.1:8741/pending-report?tid=TEO_ACC2024001_MR
+```
 
-Response 200:
+**Réponse `200` :**
+```json
 {
   "success": true,
   "data": {
-    "technical_id": "EXAM_2024_001",
+    "technical_id": "TEO_ACC2024001_MR",
     "patient_id": "PAT123456",
-    "exam_uid": "1.2.3.4.5.6.7.8.9",
+    "exam_uid": "1.2.840.113619.2.XXX.YYY.ZZZ",
     "accession_number": "ACC2024001",
-    "study_instance_uid": "1.2.840.10008.xxx",
+    "study_instance_uid": "1.2.840.10008.5.1.4.1.1.2.XXX",
     "structured": {
       "title": "IRM Cérébrale",
-      "indication": "Céphalées persistantes depuis 3 mois",
-      "technique": "IRM 3T avec injection gadolinium",
-      "results": "",
+      "indication": "Céphalées chroniques",
+      "technique": "IRM 3T avec injection",
+      "results": "Analyse IA...",
       "conclusion": ""
     },
-    "source_type": "ris_local",
-    "ai_modules": ["nodule_detection", "volumetry"],
+    "source_type": "teo_hub",
+    "ai_modules": ["brain_volumetry", "lesion_detection"],
     "modality": "MR",
-    "metadata": {
-      "ris_name": "RIS Hospital",
-      "priority": "routine"
-    },
+    "metadata": { "teo_version": "2.1.0" },
     "status": "retrieved",
-    "created_at": "2024-12-16T10:00:00Z"
+    "created_at": "2026-02-23T10:00:00Z"
   }
 }
 ```
 
-### 4. Supprimer un rapport
+> ℹ️ Le statut passe automatiquement à `"retrieved"` après le premier GET.
+
+**Erreurs** : `400` (tid manquant), `404` (rapport non trouvé ou expiré).
+
+---
+
+### 4. `DELETE /pending-report?tid=XXX` — Supprimer un rapport
+
+**Authentification** : `X-API-Key` obligatoire.
 
 ```http
-DELETE http://localhost:8741/pending-report?tid=EXAM_2024_001
-
-Response 200:
-{
-  "success": true,
-  "deleted": true
-}
+DELETE http://127.0.0.1:8741/pending-report?tid=TEO_ACC2024001_MR
+X-API-Key: airadcr_xxxxxxxxx
 ```
 
-### 5. 🔍 Rechercher un rapport par identifiants RIS (NEW)
+Réponse `200` : `{"success": true, "deleted": true}`
 
-Le RIS peut rechercher un rapport sans connaître le `technical_id`, en utilisant ses propres identifiants.
+---
+
+### 5. `GET /find-report` — Rechercher par identifiants RIS 🔍
+
+**Authentification** : Aucune par défaut (configurable via `require_auth_for_reads`).
+
+Permet au RIS de chercher un rapport **sans connaître le `technical_id`**.
 
 ```http
-GET http://localhost:8741/find-report?accession_number=ACC2024001
-
-# Ou combinaison d'identifiants
-GET http://localhost:8741/find-report?patient_id=PAT123&accession_number=ACC2024001
-GET http://localhost:8741/find-report?exam_uid=1.2.3.4.5.6.7.8.9
+GET http://127.0.0.1:8741/find-report?accession_number=ACC2024001
+GET http://127.0.0.1:8741/find-report?patient_id=PAT123&accession_number=ACC2024001
+GET http://127.0.0.1:8741/find-report?exam_uid=1.2.3.4.5.6.7.8.9
 ```
 
-**Paramètres de recherche** (au moins un requis) :
-- `accession_number` - Numéro d'accession DICOM
-- `patient_id` - ID patient RIS
-- `exam_uid` - UID DICOM de l'examen
+**Paramètres** (au moins un requis) :
 
-**Réponse succès (200):**
+| Paramètre | Type | Description |
+|-----------|------|-------------|
+| `accession_number` | string | Numéro d'accession DICOM |
+| `patient_id` | string | ID patient RIS |
+| `exam_uid` | string | UID DICOM de l'examen |
+
+**Réponse `200` :**
 ```json
 {
   "success": true,
-  "data": {
-    "technical_id": "EXAM_2024_001",
-    "patient_id": "PAT123456",
-    "exam_uid": "1.2.3.4.5.6.7.8.9",
-    "accession_number": "ACC2024001",
-    "study_instance_uid": "1.2.840.10008.xxx",
-    "structured": {
-      "title": "IRM Cérébrale",
-      "indication": "Céphalées",
-      "technique": "IRM 3T avec injection",
-      "results": "Analyse IA: Normal...",
-      "conclusion": ""
-    },
-    "source_type": "ris_local",
-    "ai_modules": ["nodule_detection", "volumetry"],
-    "modality": "MR",
-    "status": "pending",
-    "created_at": "2024-12-16T10:00:00Z"
-  },
-  "retrieval_url": "http://localhost:8741/pending-report?tid=EXAM_2024_001"
+  "data": { "technical_id": "...", "...": "..." },
+  "retrieval_url": "http://127.0.0.1:8741/pending-report?tid=TEO_ACC2024001_MR"
 }
 ```
 
-**Réponses d'erreur :**
+**Erreurs** : `400` (aucun identifiant fourni), `404` (aucun rapport trouvé).
 
-| Code | Description | Corps |
-|------|-------------|-------|
-| 400 | Aucun identifiant fourni | `{"success": false, "error": "At least one identifier required: accession_number, patient_id, or exam_uid"}` |
-| 404 | Rapport non trouvé | `{"success": false, "error": "No report found matching the provided identifiers"}` |
+---
 
-### 6. 🚀 Ouvrir un rapport dans AIRADCR (RIS → Navigation) (NEW)
+### 6. `POST /open-report` — Ouvrir un rapport dans AIRADCR 🚀
 
-Le RIS peut déclencher l'ouverture d'un rapport directement dans l'interface AIRADCR.
+**Authentification** : `X-API-Key` obligatoire.
+
+Déclenche automatiquement la navigation de l'iframe AIRADCR vers le rapport ET met la fenêtre au premier plan.
 
 ```http
-# Par technical_id direct
-POST http://localhost:8741/open-report?tid=EXAM_2024_001
+POST http://127.0.0.1:8741/open-report?accession_number=ACC2024001
+X-API-Key: airadcr_xxxxxxxxx
 
-# Ou par identifiants RIS (recherche automatique)
-POST http://localhost:8741/open-report?accession_number=ACC2024001
-POST http://localhost:8741/open-report?patient_id=PAT123&accession_number=ACC2024001
+# Ou directement par technical_id
+POST http://127.0.0.1:8741/open-report?tid=TEO_ACC2024001_MR
+X-API-Key: airadcr_xxxxxxxxx
 ```
 
-**Comportement** :
-1. Si `tid` fourni : utilise directement ce technical_id
-2. Sinon : recherche par identifiants RIS (accession_number, patient_id, exam_uid)
-3. Émet un événement Tauri vers le frontend
-4. L'iframe navigue vers `https://airadcr.com/app?tid=XXX`
-5. La fenêtre AIRADCR s'affiche et prend le focus
+**Paramètres** (au moins un requis, `tid` prioritaire) :
 
-**Réponse succès (200):**
+| Paramètre | Type | Priorité | Description |
+|-----------|------|----------|-------------|
+| `tid` | string | 1 (direct) | `technical_id` du rapport |
+| `accession_number` | string | 2 (recherche) | Numéro d'accession |
+| `patient_id` | string | 2 | ID patient |
+| `exam_uid` | string | 2 | UID examen |
+
+**Comportement interne :**
+
+1. Si `tid` fourni → utilisation directe
+2. Sinon → recherche SQLite par identifiants RIS
+3. Validation du TID (max 64 chars, `[a-zA-Z0-9_-]`)
+4. Émission événement Tauri `airadcr:navigate_to_report`
+5. L'iframe navigue vers `https://airadcr.com/app?tori=true&tid=XXX`
+6. La fenêtre AIRADCR passe au premier plan (show + focus)
+
+**Réponse `200` :**
 ```json
 {
   "success": true,
   "message": "Navigation triggered successfully",
-  "technical_id": "EXAM_2024_001",
-  "navigated_to": "https://airadcr.com/app?tid=EXAM_2024_001"
+  "technical_id": "TEO_ACC2024001_MR",
+  "navigated_to": "https://airadcr.com/app?tori=true&tid=TEO_ACC2024001_MR"
 }
 ```
 
-**Réponses d'erreur :**
-
-| Code | Description | Corps |
-|------|-------------|-------|
-| 400 | Aucun identifiant fourni | `{"success": false, "error": "At least one identifier required: tid, accession_number, patient_id, or exam_uid"}` |
-| 404 | Rapport non trouvé | `{"success": false, "error": "No report found matching the provided identifiers"}` |
-| 500 | Erreur de navigation | `{"success": false, "error": "Failed to trigger navigation event"}` |
-
----
-
-## 💻 Intégration TypeScript (airadcr.com)
-
-### Hook React pour récupérer les rapports
-
-```typescript
-// hooks/useLocalDesktopReport.ts
-import { useState, useEffect } from 'react';
-
-interface LocalReport {
-  technical_id: string;
-  patient_id?: string;
-  exam_uid?: string;
-  accession_number?: string;
-  study_instance_uid?: string;
-  structured: {
-    title?: string;
-    indication?: string;
-    technique?: string;
-    results?: string;
-    conclusion?: string;
-  };
-  source_type: string;
-  ai_modules?: string[];
-  modality?: string;
-  metadata?: Record<string, unknown>;
-  status: string;
-  created_at: string;
-}
-
-const TAURI_LOCAL_URL = 'http://localhost:8741';
-
-export function useLocalDesktopReport(technicalId: string | null) {
-  const [report, setReport] = useState<LocalReport | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [isDesktopAvailable, setIsDesktopAvailable] = useState(false);
-
-  // Vérifier disponibilité du desktop
-  useEffect(() => {
-    async function checkDesktop() {
-      try {
-        const response = await fetch(`${TAURI_LOCAL_URL}/health`, {
-          method: 'GET',
-          signal: AbortSignal.timeout(2000),
-        });
-        setIsDesktopAvailable(response.ok);
-      } catch {
-        setIsDesktopAvailable(false);
-      }
-    }
-    checkDesktop();
-  }, []);
-
-  // Récupérer le rapport si desktop disponible et tid présent
-  useEffect(() => {
-    if (!technicalId || !isDesktopAvailable) return;
-
-    async function fetchReport() {
-      setLoading(true);
-      setError(null);
-
-      try {
-        const response = await fetch(
-          `${TAURI_LOCAL_URL}/pending-report?tid=${encodeURIComponent(technicalId)}`
-        );
-
-        if (!response.ok) {
-          if (response.status === 404) {
-            setError('Rapport non trouvé ou expiré');
-          } else {
-            setError(`Erreur ${response.status}`);
-          }
-          return;
-        }
-
-        const data = await response.json();
-        if (data.success && data.data) {
-          setReport(data.data);
-        }
-      } catch (err) {
-        setError('Impossible de contacter le desktop AIRADCR');
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchReport();
-  }, [technicalId, isDesktopAvailable]);
-
-  return { report, loading, error, isDesktopAvailable };
-}
-
-/**
- * Hook pour rechercher un rapport par identifiants RIS
- */
-export function useFindReport() {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const findReport = async (params: {
-    accession_number?: string;
-    patient_id?: string;
-    exam_uid?: string;
-  }): Promise<LocalReport | null> => {
-    const queryParams = new URLSearchParams();
-    if (params.accession_number) queryParams.set('accession_number', params.accession_number);
-    if (params.patient_id) queryParams.set('patient_id', params.patient_id);
-    if (params.exam_uid) queryParams.set('exam_uid', params.exam_uid);
-
-    if (!queryParams.toString()) {
-      setError('Au moins un identifiant requis');
-      return null;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const response = await fetch(
-        `${TAURI_LOCAL_URL}/find-report?${queryParams}`,
-        { signal: AbortSignal.timeout(5000) }
-      );
-
-      const data = await response.json();
-
-      if (response.ok && data.success && data.data) {
-        return data.data;
-      } else if (response.status === 404) {
-        setError('Aucun rapport trouvé');
-        return null;
-      } else {
-        setError(data.error || 'Erreur de recherche');
-        return null;
-      }
-    } catch (err) {
-      setError('Impossible de contacter le desktop');
-      return null;
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return { findReport, loading, error };
-}
-
-/**
- * Hook pour ouvrir un rapport dans l'interface AIRADCR
- */
-export function useOpenReport() {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const openReport = async (params: {
-    tid?: string;
-    accession_number?: string;
-    patient_id?: string;
-    exam_uid?: string;
-  }): Promise<{ success: boolean; technical_id?: string; navigated_to?: string }> => {
-    const queryParams = new URLSearchParams();
-    if (params.tid) queryParams.set('tid', params.tid);
-    if (params.accession_number) queryParams.set('accession_number', params.accession_number);
-    if (params.patient_id) queryParams.set('patient_id', params.patient_id);
-    if (params.exam_uid) queryParams.set('exam_uid', params.exam_uid);
-
-    if (!queryParams.toString()) {
-      setError('Au moins un identifiant requis');
-      return { success: false };
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const response = await fetch(
-        `${TAURI_LOCAL_URL}/open-report?${queryParams}`,
-        { method: 'POST', signal: AbortSignal.timeout(5000) }
-      );
-
-      const data = await response.json();
-
-      if (response.ok && data.success) {
-        return {
-          success: true,
-          technical_id: data.technical_id,
-          navigated_to: data.navigated_to
-        };
-      } else {
-        setError(data.error || 'Erreur de navigation');
-        return { success: false };
-      }
-    } catch (err) {
-      setError('Impossible de contacter le desktop');
-      return { success: false };
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return { openReport, loading, error };
-}
-```
-
-### Utilisation dans un composant
-
-```tsx
-// components/DictationInterface.tsx
-import { useLocalDesktopReport, useFindReport, useOpenReport } from '@/hooks/useLocalDesktopReport';
-import { useSearchParams } from 'react-router-dom';
-
-export function DictationInterface() {
-  const [searchParams] = useSearchParams();
-  const tid = searchParams.get('tid');
-  
-  const { report, loading, error, isDesktopAvailable } = useLocalDesktopReport(tid);
-
-  // Pré-remplir le formulaire avec les données du rapport
-  useEffect(() => {
-    if (report?.structured) {
-      setTitle(report.structured.title || '');
-      setIndication(report.structured.indication || '');
-      setTechnique(report.structured.technique || '');
-      // ... autres champs
-    }
-  }, [report]);
-
-  return (
-    <div>
-      {/* Indicateur de source */}
-      {isDesktopAvailable && (
-        <Badge variant="outline" className="text-green-600">
-          🖥️ Desktop connecté
-        </Badge>
-      )}
-      
-      {/* Identifiants patients (LOCAL uniquement) */}
-      {report?.patient_id && (
-        <div className="bg-blue-50 p-2 rounded">
-          <span className="font-medium">Patient:</span> {report.patient_id}
-          {report.accession_number && (
-            <span className="ml-4">Accession: {report.accession_number}</span>
-          )}
-        </div>
-      )}
-      
-      {/* Formulaire de dictée */}
-      {/* ... */}
-    </div>
-  );
-}
-```
-
-### Composant de recherche RIS
-
-```tsx
-// components/RISReportSearch.tsx
-import { useFindReport, useOpenReport } from '@/hooks/useLocalDesktopReport';
-import { useState } from 'react';
-
-export function RISReportSearch() {
-  const [accessionNumber, setAccessionNumber] = useState('');
-  const [foundReport, setFoundReport] = useState(null);
-  
-  const { findReport, loading: findLoading, error: findError } = useFindReport();
-  const { openReport, loading: openLoading, error: openError } = useOpenReport();
-
-  const handleSearch = async () => {
-    const report = await findReport({ accession_number: accessionNumber });
-    setFoundReport(report);
-  };
-
-  const handleOpen = async () => {
-    if (foundReport?.technical_id) {
-      const result = await openReport({ tid: foundReport.technical_id });
-      if (result.success) {
-        console.log('Navigation vers:', result.navigated_to);
-      }
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="flex gap-2">
-        <Input
-          placeholder="Numéro d'accession"
-          value={accessionNumber}
-          onChange={(e) => setAccessionNumber(e.target.value)}
-        />
-        <Button onClick={handleSearch} disabled={findLoading}>
-          {findLoading ? 'Recherche...' : 'Rechercher'}
-        </Button>
-      </div>
-
-      {findError && <Alert variant="destructive">{findError}</Alert>}
-      {openError && <Alert variant="destructive">{openError}</Alert>}
-
-      {foundReport && (
-        <Card>
-          <CardHeader>
-            <CardTitle>{foundReport.structured?.title}</CardTitle>
-            <CardDescription>
-              Patient: {foundReport.patient_id} | Accession: {foundReport.accession_number}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              {foundReport.structured?.indication}
-            </p>
-          </CardContent>
-          <CardFooter>
-            <Button onClick={handleOpen} disabled={openLoading}>
-              {openLoading ? 'Ouverture...' : 'Ouvrir dans AIRADCR'}
-            </Button>
-          </CardFooter>
-        </Card>
-      )}
-    </div>
-  );
-}
-```
-
----
-
-## 🔐 Authentification API Keys
-
-### Clé de production
-
-```
-X-API-Key: airadcr_prod_7f3k9m2x5p8w1q4v6n0z
-```
-
-### Créer une nouvelle clé (Admin)
-
-```http
-POST http://localhost:8741/api-keys
-X-Admin-Key: [votre-clé-admin]
-Content-Type: application/json
-
-{
-  "name": "RIS Hospital XYZ"
-}
-```
-
-### Lister les clés
-
-```http
-GET http://localhost:8741/api-keys
-X-Admin-Key: [votre-clé-admin]
-```
-
-### Révoquer une clé
-
-```http
-DELETE http://localhost:8741/api-keys/{prefix}
-X-Admin-Key: [votre-clé-admin]
-```
+**Erreurs** : `400` (aucun identifiant / TID invalide), `401` (API key manquante), `404` (rapport non trouvé), `503` (application pas encore prête, `Retry-After: 2`).
 
 ---
 
 ## 🔒 Sécurité
 
-### Configuration CORS
-
-Les origines autorisées sont :
-- `http://localhost:*` (tous ports)
-- `https://airadcr.com`
-- `https://www.airadcr.com`
-
 ### Rate Limiting
+- **60 requêtes/minute** par IP (burst de 60 autorisé)
 
-- **60 requêtes/minute** par IP
-- Burst autorisé de 60 requêtes
+### CORS
+Origines autorisées : `http://localhost:*`, `https://airadcr.com`, `https://www.airadcr.com`
 
-### Expiration automatique
+### Payload maximum
+- **1 MB** maximum par requête JSON
 
+### Masquage des PII dans les logs
+Les identifiants patients sont masqués : `PAT123456` → `PAT1****`
+
+### Expiration et nettoyage
 - Rapports expirés après **24 heures** (configurable)
-- Nettoyage automatique toutes les heures
+- Nettoyage automatique toutes les **heures** (configurable via `cleanup_interval_secs`)
 
 ---
 
-## 🧪 Tests avec cURL
-
-```bash
-# 1. Vérifier le desktop
-curl http://localhost:8741/health
-
-# 2. Stocker un rapport avec identifiants patients
-curl -X POST http://localhost:8741/pending-report \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: airadcr_prod_7f3k9m2x5p8w1q4v6n0z" \
-  -d '{
-    "technical_id": "TEST_001",
-    "patient_id": "PAT123456",
-    "exam_uid": "1.2.3.4.5",
-    "accession_number": "ACC001",
-    "structured": {
-      "title": "Radio Thorax",
-      "indication": "Toux persistante"
-    },
-    "source_type": "ris_local",
-    "modality": "CR"
-  }'
-
-# 3. Récupérer le rapport
-curl "http://localhost:8741/pending-report?tid=TEST_001"
-
-# 4. Supprimer
-curl -X DELETE "http://localhost:8741/pending-report?tid=TEST_001"
-```
-
----
-
-## 📊 Schéma SQLite
+## 🗄️ Schéma SQLite
 
 ```sql
 CREATE TABLE pending_reports (
@@ -667,74 +385,146 @@ CREATE TABLE pending_reports (
     modality TEXT,
     metadata TEXT,
     
-    -- Statut
-    status TEXT DEFAULT 'pending',
+    -- Statut et timing
+    status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'retrieved', 'expired')),
     created_at TEXT NOT NULL,
     expires_at TEXT NOT NULL,
     retrieved_at TEXT
 );
 
--- Index pour recherche rapide
-CREATE INDEX idx_pending_patient_id ON pending_reports(patient_id);
+CREATE TABLE api_keys (
+    id TEXT PRIMARY KEY,
+    key_prefix TEXT NOT NULL,
+    key_hash TEXT NOT NULL,
+    name TEXT,
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE access_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT NOT NULL,
+    ip_address TEXT NOT NULL,
+    method TEXT NOT NULL,
+    endpoint TEXT NOT NULL,
+    status_code INTEGER NOT NULL,
+    result TEXT NOT NULL CHECK (result IN ('success', 'unauthorized', 'not_found', 'error', 'bad_request')),
+    api_key_prefix TEXT,
+    user_agent TEXT,
+    request_id TEXT NOT NULL,
+    duration_ms INTEGER NOT NULL,
+    error_message TEXT
+);
+
+-- Index de performance
 CREATE INDEX idx_pending_technical_id ON pending_reports(technical_id);
+CREATE INDEX idx_pending_patient_id ON pending_reports(patient_id);
 CREATE INDEX idx_pending_accession ON pending_reports(accession_number);
 CREATE INDEX idx_pending_exam_uid ON pending_reports(exam_uid);
+CREATE INDEX idx_pending_status ON pending_reports(status);
+CREATE INDEX idx_pending_expires ON pending_reports(expires_at);
+CREATE INDEX idx_pending_created_at ON pending_reports(created_at);
+CREATE INDEX idx_api_keys_prefix ON api_keys(key_prefix);
+CREATE INDEX idx_access_logs_timestamp ON access_logs(timestamp);
+CREATE INDEX idx_access_logs_endpoint ON access_logs(endpoint);
+CREATE INDEX idx_access_logs_result ON access_logs(result);
+CREATE INDEX idx_access_logs_ip ON access_logs(ip_address);
+CREATE INDEX idx_access_logs_timestamp_result ON access_logs(timestamp, result);
 ```
 
 ---
 
-## 🔄 Workflow Complet RIS ↔ TÉO Hub ↔ AIRADCR
+## ⚙️ Configuration
 
-### Architecture des acteurs
+Fichier : `%APPDATA%/airadcr-desktop/config.toml`
 
-```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────────────┐
-│      RIS        │     │    TÉO Hub      │     │   AIRADCR Desktop       │
-│  (Xplore, etc.) │     │   (AI Server)   │     │   (Tauri + localhost)   │
-└────────┬────────┘     └────────┬────────┘     └────────────┬────────────┘
-         │                       │                           │
-         │  1. Envoie DICOM      │                           │
-         │ ─────────────────────▶│                           │
-         │                       │                           │
-         │                       │  2. POST /pending-report  │
-         │                       │ ─────────────────────────▶│
-         │                       │                           │ SQLite
-         │                       │  3. Retourne technical_id │
-         │                       │ ◀─────────────────────────│
-         │                       │                           │
-         │  4. Notifie RIS       │                           │
-         │ ◀─────────────────────│                           │
-         │  (accession + tid)    │                           │
-         │                       │                           │
-         │  5. Bouton "Ouvrir"   │                           │
-         │ ─────────────────────────────────────────────────▶│
-         │  POST /open-report?accession_number=XXX           │
-         │                       │                           │
-         │                       │           6. Navigation   │
-         │                       │              iframe       │
-         │                       │              airadcr.com  │
-         │                       │              ?tid=XXX     │
-         │                       │                           │
-         │  7. GET /pending-report?tid=XXX                   │
-         │                       │ ◀─────────────────────────│
-         │                       │                           │
-         │  8. Formulaire pré-rempli avec données patient    │
-         │                       │                           │
-         │  9. Radiologiste dicte → Injection dans RIS       │
-         │ ◀─────────────────────────────────────────────────│
+```toml
+http_port = 8741
+log_level = "info"
+log_retention_days = 30
+report_retention_hours = 24
+iframe_url = "https://airadcr.com/app?tori=true"
+backup_enabled = true
+backup_retention_days = 7
+cleanup_interval_secs = 3600
+
+[teo_hub]
+enabled = false
+host = "192.168.1.253"
+port = 54489
+health_endpoint = "th_health"
+get_report_endpoint = "th_get_ai_report"
+post_report_endpoint = "th_post_approved_report"
+timeout_secs = 30
+retry_count = 3
+retry_delay_ms = 1000
+tls_enabled = false
 ```
 
-### Étapes détaillées
+> ⚠️ Le token TÉO Hub (`api_token`) est stocké dans le **keychain OS** (Windows Credential Manager / macOS Keychain), pas dans le fichier TOML. Si un token est trouvé dans le fichier, il est automatiquement migré vers le keychain et supprimé du fichier.
 
-#### Étape 1-3 : TÉO Hub analyse et stocke
+---
 
-TÉO Hub reçoit les images DICOM, effectue l'analyse IA, et envoie le rapport pré-rempli à AIRADCR Desktop :
+## 🔄 Workflow Complet : TÉO Hub → RIS → AIRADCR
+
+```
+┌──────────┐     ┌─────────────────┐     ┌──────────────┐     ┌─────────────┐
+│ TÉO Hub  │     │ AIRADCR Desktop │     │ airadcr.com  │     │     RIS     │
+│   (IA)   │     │ 127.0.0.1:8741  │     │   (iframe)   │     │  (cible)    │
+└────┬─────┘     └────────┬────────┘     └──────┬───────┘     └──────┬──────┘
+     │                    │                     │                    │
+     │ 1. POST /pending-report                  │                    │
+     │ X-API-Key: airadcr_xxx                   │                    │
+     │ {technical_id, patient_id, structured}   │                    │
+     │──────────────────>│                      │                    │
+     │                   │ SQLite               │                    │
+     │ 2. 200 OK         │                      │                    │
+     │ {technical_id, retrieval_url}            │                    │
+     │<──────────────────│                      │                    │
+     │                   │                      │                    │
+     │ 3. Notifier RIS (accession + tid)        │                    │
+     │─────────────────────────────────────────────────────────────>│
+     │                   │                      │                    │
+     │                   │                      │ 4. POST /open-report│
+     │                   │                      │ X-API-Key: xxx      │
+     │                   │                      │ ?accession=ACC001   │
+     │                   │◀─────────────────────────────────────────│
+     │                   │                      │                    │
+     │                   │ 5. Événement Tauri   │                    │
+     │                   │ airadcr:navigate     │                    │
+     │                   │─────────────────────>│                    │
+     │                   │                      │                    │
+     │                   │ 6. GET /pending-report?tid=XXX            │
+     │                   │◀─────────────────────│                    │
+     │                   │                      │                    │
+     │                   │ 7. Données rapport   │                    │
+     │                   │─────────────────────>│                    │
+     │                   │                      │                    │
+     │                   │                      │ 8. Formulaire      │
+     │                   │                      │    pré-rempli      │
+     │                   │                      │    IA + patient     │
+     │                   │                      │                    │
+     │                   │                      │ 9. Dictée →        │
+     │                   │                      │    Validation      │
+     │                   │                      │                    │
+     │                   │ 10. postMessage      │                    │
+     │                   │     airadcr:inject   │                    │
+     │                   │◀─────────────────────│                    │
+     │                   │                      │                    │
+     │                   │ 11. Injection clavier─────────────────────>│
+     │                   │     (Ctrl+V dans RIS)│                    │
+```
+
+### Étapes en détail
+
+#### Étape 1-2 : TÉO Hub stocke le rapport IA
+
+TÉO Hub analyse les images DICOM et envoie le rapport structuré :
 
 ```bash
-# TÉO Hub → AIRADCR Desktop
-curl -X POST http://localhost:8741/pending-report \
+curl -X POST http://127.0.0.1:8741/pending-report \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: airadcr_prod_7f3k9m2x5p8w1q4v6n0z" \
+  -H "X-API-Key: VOTRE_CLE_API" \
   -d '{
     "technical_id": "TEO_ACC2024001_MR",
     "patient_id": "PAT123456",
@@ -744,7 +534,7 @@ curl -X POST http://localhost:8741/pending-report \
       "title": "IRM Cérébrale",
       "indication": "Céphalées chroniques",
       "technique": "IRM 3T séquences T1, T2, FLAIR, diffusion",
-      "results": "VOLUMÉTRIE HIPPOCAMPIQUE:\n- Hippocampe droit: 3.2 cm³ (normal)\n- Hippocampe gauche: 3.1 cm³ (normal)\n\nANALYSE LÉSIONNELLE:\n- Aucune lésion focale détectée",
+      "results": "VOLUMÉTRIE HIPPOCAMPIQUE:\n- Droit: 3.2 cm³ (normal)\n- Gauche: 3.1 cm³ (normal)\n\nANALYSE LÉSIONNELLE:\n- Aucune lésion focale détectée",
       "conclusion": ""
     },
     "source_type": "teo_hub",
@@ -753,43 +543,28 @@ curl -X POST http://localhost:8741/pending-report \
   }'
 ```
 
-#### Étape 4 : TÉO Hub notifie le RIS
+#### Étape 3 : TÉO Hub notifie le RIS
 
 TÉO Hub informe le RIS que le rapport est prêt (via HL7, API, ou webhook selon intégration).
 
-#### Étape 5-6 : RIS ouvre AIRADCR
+#### Étape 4-5 : Le RIS ouvre le rapport
 
-Quand l'utilisateur clique sur "Ouvrir dans AIRADCR" dans le RIS :
-
-```bash
-# RIS → AIRADCR Desktop (recherche par accession_number)
-curl -X POST "http://localhost:8741/open-report?accession_number=ACC2024001"
-
-# Réponse
-{
-  "success": true,
-  "message": "Navigation triggered successfully",
-  "technical_id": "TEO_ACC2024001_MR",
-  "navigated_to": "https://airadcr.com/app?tid=TEO_ACC2024001_MR"
-}
-```
-
-#### Étape 7-8 : airadcr.com récupère les données
-
-L'iframe navigue vers `https://airadcr.com/app?tid=TEO_ACC2024001_MR` qui appelle automatiquement :
+Quand le radiologue clique "Ouvrir dans AIRADCR" dans le RIS :
 
 ```bash
-GET http://localhost:8741/pending-report?tid=TEO_ACC2024001_MR
+curl -X POST "http://127.0.0.1:8741/open-report?accession_number=ACC2024001" \
+  -H "X-API-Key: VOTRE_CLE_API"
 ```
 
-Le formulaire de dictée est pré-rempli avec :
-- Identifiants patient (patient_id, accession_number)
-- Données structurées (titre, indication, technique, résultats IA)
-- Métadonnées (modalité, modules IA utilisés)
+→ AIRADCR passe automatiquement au premier plan et l'iframe navigue vers l'examen.
 
-#### Étape 9 : Injection du rapport final
+#### Étape 6-8 : airadcr.com récupère et pré-remplit
 
-Après dictée et validation, le rapport est injecté dans le RIS via le système d'injection existant (Ctrl+Shift+S ou SpeechMike).
+L'iframe navigue vers `https://airadcr.com/app?tori=true&tid=TEO_ACC2024001_MR` qui appelle automatiquement `GET /pending-report?tid=...` et pré-remplit le formulaire.
+
+#### Étape 9-11 : Dictée et injection
+
+Le radiologue dicte, valide, puis le rapport est injecté dans le RIS via le système d'injection clavier.
 
 ---
 
@@ -797,12 +572,12 @@ Après dictée et validation, le rapport est injecté dans le RIS via le systèm
 
 ```bash
 # 1. Vérifier le desktop
-curl http://localhost:8741/health
+curl http://127.0.0.1:8741/health
 
 # 2. TÉO Hub stocke un rapport
-curl -X POST http://localhost:8741/pending-report \
+curl -X POST http://127.0.0.1:8741/pending-report \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: airadcr_prod_7f3k9m2x5p8w1q4v6n0z" \
+  -H "X-API-Key: VOTRE_CLE_API" \
   -d '{
     "technical_id": "TEST_001",
     "patient_id": "PAT123456",
@@ -812,17 +587,51 @@ curl -X POST http://localhost:8741/pending-report \
   }'
 
 # 3. RIS recherche par accession_number
-curl "http://localhost:8741/find-report?accession_number=ACC001"
+curl "http://127.0.0.1:8741/find-report?accession_number=ACC001"
 
 # 4. RIS ouvre le rapport dans AIRADCR
-curl -X POST "http://localhost:8741/open-report?accession_number=ACC001"
+curl -X POST "http://127.0.0.1:8741/open-report?accession_number=ACC001" \
+  -H "X-API-Key: VOTRE_CLE_API"
 
 # 5. Récupérer le rapport (fait automatiquement par airadcr.com)
-curl "http://localhost:8741/pending-report?tid=TEST_001"
+curl "http://127.0.0.1:8741/pending-report?tid=TEST_001"
 
-# 6. Nettoyer
-curl -X DELETE "http://localhost:8741/pending-report?tid=TEST_001"
+# 6. Supprimer
+curl -X DELETE "http://127.0.0.1:8741/pending-report?tid=TEST_001" \
+  -H "X-API-Key: VOTRE_CLE_API"
 ```
+
+---
+
+## 🔗 Deep Links (protocole `airadcr://`)
+
+L'application supporte aussi le lancement via protocole URL enregistré dans Windows :
+
+```
+airadcr://open?tid=TEO_ACC2024001_MR
+airadcr://open/TEO_ACC2024001_MR
+airadcr://TEO_ACC2024001_MR
+```
+
+Le TID est validé : max 64 caractères, `[a-zA-Z0-9_-]` uniquement.
+
+---
+
+## 📋 Résumé des authentifications par endpoint
+
+| Endpoint | Méthode | Auth requise | Header |
+|----------|---------|--------------|--------|
+| `/health` | GET | ❌ Non | — |
+| `/health/extended` | GET | ❌ Non | — |
+| `/metrics` | GET | ❌ Non | — |
+| `/pending-report` | POST | ✅ Oui | `X-API-Key` |
+| `/pending-report` | GET | ⚙️ Configurable | `X-API-Key` (si `require_auth_for_reads`) |
+| `/pending-report` | DELETE | ✅ Oui | `X-API-Key` |
+| `/find-report` | GET | ⚙️ Configurable | `X-API-Key` (si `require_auth_for_reads`) |
+| `/open-report` | POST | ✅ Oui | `X-API-Key` |
+| `/api-keys` | POST | ✅ Admin | `X-Admin-Key` |
+| `/api-keys` | GET | ✅ Admin | `X-Admin-Key` |
+| `/api-keys/{prefix}` | DELETE | ✅ Admin | `X-Admin-Key` |
 
 ---
 
@@ -830,28 +639,25 @@ curl -X DELETE "http://localhost:8741/pending-report?tid=TEST_001"
 
 ### Q: Les identifiants patients sont-ils sécurisés ?
 
-**Oui**, en local les données ne quittent jamais la machine :
-- Stockage SQLite local uniquement
-- Aucune transmission réseau externe
-- Le serveur écoute uniquement sur `127.0.0.1`
+**Oui** : le serveur écoute uniquement sur `127.0.0.1`, les données sont en SQLite chiffré local, et les identifiants sont masqués dans les logs (`PAT1****`).
 
-### Q: Que se passe-t-il si le desktop n'est pas lancé ?
+### Q: Le RIS doit-il connaître le `technical_id` de TÉO Hub ?
 
-Le hook `useLocalDesktopReport` détecte automatiquement l'indisponibilité et peut basculer vers le fallback Supabase (sans identifiants patients).
+**Non.** Le RIS peut utiliser `accession_number`, `patient_id` ou `exam_uid` pour rechercher (`/find-report`) et ouvrir (`/open-report`).
 
-### Q: Comment migrer depuis la version cloud ?
+### Q: Quelle différence entre `/find-report` et `/open-report` ?
 
-Aucune migration nécessaire - les deux systèmes coexistent. Le frontend détecte automatiquement le desktop et l'utilise en priorité.
+- **`/find-report`** (GET) : recherche et retourne les données (lecture seule)
+- **`/open-report`** (POST) : recherche ET déclenche la navigation + focus fenêtre
 
-### Q: Le RIS doit-il connaître le technical_id de TÉO Hub ?
+### Q: Que se passe-t-il si le port 8741 est occupé ?
 
-**Non !** Le RIS peut utiliser ses propres identifiants (accession_number, patient_id, exam_uid) pour rechercher (`/find-report`) et ouvrir (`/open-report`) un rapport. AIRADCR fait la correspondance automatiquement.
+Le serveur tente automatiquement les ports `8742` et `8743` en fallback.
 
-### Q: Quelle est la différence entre `/find-report` et `/open-report` ?
+### Q: Plusieurs rapports pour le même patient ?
 
-- **`/find-report`** : Recherche et retourne les données du rapport (lecture seule)
-- **`/open-report`** : Recherche ET déclenche la navigation dans l'interface AIRADCR
+La recherche retourne le rapport le plus récent. Utilisez des identifiants plus spécifiques pour cibler un examen précis.
 
-### Q: Plusieurs rapports peuvent-ils exister pour le même patient ?
+---
 
-Oui. La recherche retourne le rapport le plus récent correspondant aux critères. Utilisez des identifiants plus spécifiques (accession_number + exam_uid) pour cibler un examen précis.
+*Document mis à jour le 2026-02-23 — Version 2.0.0*

@@ -1,9 +1,9 @@
 # 📋 Spécification API AIRADCR Desktop pour TÉO Hub
 
-**Version** : 1.0.0  
-**Date** : Décembre 2024  
+**Version** : 2.0.0  
+**Date** : Février 2026  
 **Contact** : contact@airadcr.com  
-**Base URL** : `http://localhost:8741`
+**Base URL** : `http://127.0.0.1:8741`
 
 ---
 
@@ -15,10 +15,12 @@
 4. [Endpoints API](#4-endpoints-api)
 5. [Exemples de Code Python](#5-exemples-de-code-python)
 6. [Exemples de Code C#](#6-exemples-de-code-c)
-7. [Gestion des Erreurs](#7-gestion-des-erreurs)
-8. [Bonnes Pratiques](#8-bonnes-pratiques)
-9. [Tests et Validation](#9-tests-et-validation)
-10. [Annexes](#10-annexes)
+7. [Script Orthanc (Lua)](#7-script-orthanc-lua)
+8. [Gestion des Erreurs](#8-gestion-des-erreurs)
+9. [Bonnes Pratiques](#9-bonnes-pratiques)
+10. [Tests et Validation](#10-tests-et-validation)
+11. [Configuration](#11-configuration)
+12. [Annexes](#12-annexes)
 
 ---
 
@@ -26,19 +28,19 @@
 
 ### 1.1 Objectif
 
-Cette API permet à TÉO Hub d'envoyer des rapports radiologiques pré-traités par IA au desktop AIRADCR. Les rapports sont stockés localement en SQLite et automatiquement chargés dans l'interface de dictée airadcr.com.
+Cette API permet à TÉO Hub et aux systèmes RIS/PACS d'envoyer des rapports radiologiques pré-traités par IA au desktop AIRADCR. Les rapports sont stockés localement en SQLite chiffré et automatiquement chargés dans l'interface de dictée airadcr.com.
 
 ### 1.2 Avantages du Mode Local
 
-| Aspect | Cloud (Supabase) | Local (Tauri Desktop) |
-|--------|------------------|----------------------|
+| Aspect | Cloud | Local (Tauri Desktop) |
+|--------|-------|----------------------|
 | **patient_id** | ❌ Interdit | ✅ **Accepté** |
 | **exam_uid** | ❌ Interdit | ✅ **Accepté** |
 | **accession_number** | ❌ Interdit | ✅ **Accepté** |
 | **study_instance_uid** | ❌ Interdit | ✅ **Accepté** |
-| **Stockage** | Cloud AWS | SQLite local |
+| **Stockage** | Cloud | SQLite chiffré local |
 | **Transit** | Internet (HTTPS) | localhost uniquement |
-| **Sécurité** | RLS + API Key | API Key locale |
+| **Sécurité** | RLS + API Key | API Key + SHA-256 |
 
 > ⚠️ **Important** : Les identifiants patients sont acceptés car les données ne quittent jamais la machine locale.
 
@@ -50,81 +52,108 @@ Cette API permet à TÉO Hub d'envoyer des rapports radiologiques pré-traités 
 
 ```
 ┌──────────┐     ┌─────────────────┐     ┌──────────────┐     ┌─────────────┐
-│ TÉO Hub  │     │ Tauri Desktop   │     │ airadcr.com  │     │     RIS     │
-│   (IA)   │     │ localhost:8741  │     │   (iframe)   │     │  (cible)    │
+│ TÉO Hub  │     │ AIRADCR Desktop │     │ airadcr.com  │     │     RIS     │
+│   (IA)   │     │ 127.0.0.1:8741  │     │   (iframe)   │     │  (cible)    │
 └────┬─────┘     └────────┬────────┘     └──────┬───────┘     └──────┬──────┘
      │                    │                     │                    │
      │ 1. POST /pending-report                  │                    │
+     │ X-API-Key: airadcr_xxx                   │                    │
      │ (patient_id, structured, ai_modules)     │                    │
      │──────────────────>│                      │                    │
-     │                   │                      │                    │
-     │ 2. 201 Created    │                      │                    │
+     │                   │ SQLite               │                    │
+     │ 2. 200 OK         │                      │                    │
      │ (technical_id, retrieval_url)            │                    │
      │<──────────────────│                      │                    │
      │                   │                      │                    │
-     │ 3. Notifier RIS avec technical_id        │                    │
+     │ 3. Notifier RIS avec accession_number    │                    │
      │─────────────────────────────────────────────────────────────>│
      │                   │                      │                    │
-     │                   │                      │ 4. Ouvrir URL      │
-     │                   │                      │ ?tid=XXX           │
-     │                   │                      │<───────────────────│
+     │                   │                      │ 4. POST /open-report│
+     │                   │                      │ X-API-Key: xxx      │
+     │                   │                      │ ?accession=ACC001   │
+     │                   │<─────────────────────────────────────────│
      │                   │                      │                    │
-     │                   │ 5. GET /pending-report?tid=XXX            │
-     │                   │<─────────────────────│                    │
-     │                   │                      │                    │
-     │                   │ 6. 200 + données     │                    │
+     │                   │ 5. Événement Tauri   │                    │
+     │                   │    navigate_to_report│                    │
      │                   │─────────────────────>│                    │
      │                   │                      │                    │
-     │                   │                      │ 7. Pré-remplir     │
-     │                   │                      │    formulaire      │
+     │                   │ 6. GET /pending-report?tid=XXX            │
+     │                   │<─────────────────────│                    │
+     │                   │ 7. Données complètes │                    │
+     │                   │─────────────────────>│                    │
      │                   │                      │                    │
-     │                   │                      │ 8. Radiologue dicte│
-     │                   │                      │    et valide       │
+     │                   │                      │ 8. Formulaire      │
+     │                   │                      │    pré-rempli      │
      │                   │                      │                    │
-     │                   │ 9. postMessage       │                    │
-     │                   │    airadcr:inject    │                    │
+     │                   │                      │ 9. Dictée + Valid. │
+     │                   │                      │                    │
+     │                   │ 10. postMessage      │                    │
+     │                   │     airadcr:inject   │                    │
      │                   │<─────────────────────│                    │
      │                   │                      │                    │
-     │                   │ 10. Injection clavier ──────────────────>│
-     │                   │                      │                    │
+     │                   │ 11. Injection clavier─────────────────────>│
+     │                   │     (Ctrl+V → RIS)   │                    │
 ```
 
 ### 2.2 Stockage Local
 
-- **Base de données** : SQLite chiffré
+- **Base de données** : SQLite chiffré (SQLCipher AES-256)
 - **Emplacement** : `%APPDATA%/airadcr-desktop/pending_reports.db`
 - **Expiration** : 24 heures par défaut (configurable)
-- **Nettoyage** : Automatique toutes les 10 minutes
+- **Nettoyage** : Automatique toutes les heures (configurable via `cleanup_interval_secs`)
+- **Backup** : Automatique quotidien (configurable)
 
 ---
 
 ## 3. Authentification
 
-### 3.1 Clé API de Production
+### 3.1 Types de clés
 
-```
-X-API-Key: airadcr_prod_7f3k9m2x5p8w1q4v6n0z
-```
+| Type | Header | Usage |
+|------|--------|-------|
+| **API Key** | `X-API-Key` | Opérations de données (POST, DELETE) |
+| **Admin Key** | `X-Admin-Key` | Gestion des clés API |
 
-### 3.2 Format de Clé
+### 3.2 Matrice d'authentification
 
-```
-airadcr_prod_[32 caractères alphanumériques]
-```
+| Endpoint | Méthode | Auth | Header |
+|----------|---------|------|--------|
+| `/health` | GET | ❌ | — |
+| `/pending-report` | POST | ✅ | `X-API-Key` |
+| `/pending-report` | GET | ⚙️ | `X-API-Key` si `require_auth_for_reads` |
+| `/pending-report` | DELETE | ✅ | `X-API-Key` |
+| `/find-report` | GET | ⚙️ | `X-API-Key` si `require_auth_for_reads` |
+| `/open-report` | POST | ✅ | `X-API-Key` |
+| `/api-keys` | POST/GET/DELETE | ✅ | `X-Admin-Key` |
 
-### 3.3 Utilisation
-
-Toute requête `POST` doit inclure le header :
-
-```http
-X-API-Key: airadcr_prod_7f3k9m2x5p8w1q4v6n0z
-```
-
-### 3.4 Sécurité
+### 3.3 Sécurité des clés
 
 - Clé hashée en **SHA-256** côté serveur
-- Validation contre base SQLite locale
-- Aucune clé stockée en clair
+- Comparaison en **temps constant** (protection timing attacks)
+- Seul le **préfixe** (8 chars) est stocké en clair pour recherche rapide
+- Le hash complet est comparé pour validation finale
+
+### 3.4 Créer une clé API
+
+```bash
+curl -X POST http://127.0.0.1:8741/api-keys \
+  -H "Content-Type: application/json" \
+  -H "X-Admin-Key: VOTRE_CLE_ADMIN" \
+  -d '{"name": "TÉO Hub Production"}'
+```
+
+Réponse `201` :
+```json
+{
+  "success": true,
+  "id": "uuid-auto-genere",
+  "key": "airadcr_xxxxxxxxxxxxxxxxxxxxxxxxx",
+  "name": "TÉO Hub Production",
+  "message": "API key created successfully. Store this key securely - it won't be shown again."
+}
+```
+
+> ⚠️ **La clé complète n'est retournée qu'une seule fois.** Sauvegardez-la immédiatement.
 
 ---
 
@@ -134,21 +163,22 @@ X-API-Key: airadcr_prod_7f3k9m2x5p8w1q4v6n0z
 
 Vérifie la disponibilité du desktop AIRADCR.
 
-**Requête :**
 ```http
-GET http://localhost:8741/health
+GET http://127.0.0.1:8741/health
 ```
 
-**Réponse 200 :**
+Réponse `200` :
 ```json
 {
   "status": "ok",
-  "version": "1.0.0",
-  "timestamp": "2024-12-16T10:30:00Z"
+  "version": "",
+  "timestamp": "2026-02-23T10:30:00Z"
 }
 ```
 
-**Usage recommandé :** Toujours appeler avant `POST /pending-report`.
+> ℹ️ La version est masquée sans authentification (sécurité).
+
+**Usage recommandé :** Toujours appeler avant `POST /pending-report` pour vérifier que le desktop est lancé.
 
 ---
 
@@ -156,11 +186,12 @@ GET http://localhost:8741/health
 
 Stocke un rapport pré-traité par TÉO Hub.
 
-**Requête :**
+**Authentification** : `X-API-Key` obligatoire.
+
 ```http
-POST http://localhost:8741/pending-report
+POST http://127.0.0.1:8741/pending-report
 Content-Type: application/json
-X-API-Key: airadcr_prod_7f3k9m2x5p8w1q4v6n0z
+X-API-Key: airadcr_xxxxxxxxx
 ```
 
 **Corps de la requête :**
@@ -197,10 +228,10 @@ X-API-Key: airadcr_prod_7f3k9m2x5p8w1q4v6n0z
 
 #### Champs Obligatoires
 
-| Champ | Type | Description |
-|-------|------|-------------|
-| `technical_id` | string | Identifiant unique du rapport (max 100 chars) |
-| `structured` | object | Contenu structuré du rapport |
+| Champ | Type | Contraintes | Description |
+|-------|------|-------------|-------------|
+| `technical_id` | string | **Max 64 chars**, regex `[a-zA-Z0-9_-]` | Identifiant unique du rapport |
+| `structured` | object | Requis, JSON libre | Contenu structuré du rapport |
 
 #### Champs Identifiants Patients (✅ Acceptés en Local)
 
@@ -215,10 +246,10 @@ X-API-Key: airadcr_prod_7f3k9m2x5p8w1q4v6n0z
 
 | Champ | Type | Défaut | Description |
 |-------|------|--------|-------------|
-| `source_type` | string | `"ris_local"` | Source du rapport (recommandé: `"teo_hub"`) |
-| `ai_modules` | string[] | `[]` | Modules IA utilisés |
-| `modality` | string | `null` | Modalité DICOM (MR, CT, US, etc.) |
-| `metadata` | object | `{}` | Métadonnées libres |
+| `source_type` | string | `"tauri_local"` | Source du rapport (recommandé : `"teo_hub"`) |
+| `ai_modules` | string[] | `null` | Modules IA utilisés |
+| `modality` | string | `null` | Modalité DICOM (MR, CT, US, CR, etc.) |
+| `metadata` | object | `null` | Métadonnées libres (JSON) |
 | `expires_in_hours` | int | `24` | Durée de vie en heures |
 
 #### Structure `structured`
@@ -228,28 +259,26 @@ X-API-Key: airadcr_prod_7f3k9m2x5p8w1q4v6n0z
 | `title` | string | Titre du rapport (ex: "IRM Cérébrale") |
 | `indication` | string | Indication clinique |
 | `technique` | string | Protocole technique utilisé |
-| `results` | string | Résultats de l'analyse IA (pré-rempli) |
-| `conclusion` | string | Conclusion (souvent vide, à compléter par radiologue) |
+| `results` | string | Résultats de l'analyse IA (pré-rempli par TÉO Hub) |
+| `conclusion` | string | Conclusion (vide = à compléter par le radiologue) |
 
-**Réponse 201 (Succès) :**
+**Réponse `200` (Succès) :**
 ```json
 {
   "success": true,
   "technical_id": "TEO_2024_12345",
-  "retrieval_url": "http://localhost:8741/pending-report?tid=TEO_2024_12345",
-  "expires_at": "2024-12-17T10:30:00Z",
-  "message": "Report stored successfully"
+  "retrieval_url": "https://airadcr.com/app?tori=true&tid=TEO_2024_12345",
+  "expires_at": "2026-02-24T10:30:00Z"
 }
 ```
 
 **Réponses d'erreur :**
 
-| Code | Description | Corps |
-|------|-------------|-------|
-| 400 | Validation échouée | `{"success": false, "error": "Missing required field: technical_id"}` |
-| 401 | Clé API invalide | `{"success": false, "error": "Invalid or missing API key"}` |
-| 409 | ID déjà existant | `{"success": false, "error": "Report with this technical_id already exists"}` |
-| 500 | Erreur serveur | `{"success": false, "error": "Internal server error"}` |
+| Code | Description | Exemple |
+|------|-------------|---------|
+| `400` | Validation échouée | `{"error": "technical_id must be 64 characters or less", "field": "technical_id"}` |
+| `401` | Clé API invalide | `{"error": "Invalid API key"}` |
+| `500` | Erreur serveur | `{"error": "Database error: ..."}` |
 
 ---
 
@@ -257,107 +286,15 @@ X-API-Key: airadcr_prod_7f3k9m2x5p8w1q4v6n0z
 
 Récupère un rapport par son `technical_id`.
 
-> ℹ️ **Note** : Cet endpoint est principalement utilisé par airadcr.com, pas par TÉO Hub.
+> ℹ️ Cet endpoint est principalement utilisé par airadcr.com (iframe), pas directement par TÉO Hub.
 
-**Requête :**
+**Authentification** : Aucune par défaut (configurable via `require_auth_for_reads`).
+
 ```http
-GET http://localhost:8741/pending-report?tid=TEO_2024_12345
+GET http://127.0.0.1:8741/pending-report?tid=TEO_2024_12345
 ```
 
-**Réponse 200 :**
-```json
-{
-  "success": true,
-  "data": {
-    "technical_id": "TEO_2024_12345",
-    "patient_id": "PAT123456",
-    "exam_uid": "1.2.840.113619.2.XXX.YYY.ZZZ",
-    "accession_number": "ACC2024001",
-    "study_instance_uid": "1.2.840.10008.5.1.4.1.1.2.XXX",
-    "structured": {
-      "title": "IRM Cérébrale",
-      "indication": "Céphalées chroniques depuis 3 mois",
-      "technique": "IRM 3T avec injection de gadolinium",
-      "results": "Analyse IA TÉO Hub : Volumétrie normale...",
-      "conclusion": ""
-    },
-    "source_type": "teo_hub",
-    "ai_modules": ["brain_volumetry", "lesion_detection"],
-    "modality": "MR",
-    "metadata": {
-      "teo_version": "2.1.0",
-      "confidence_score": 0.94
-    },
-    "status": "retrieved",
-    "created_at": "2024-12-16T10:30:00Z"
-  }
-}
-```
-
-**Réponse 404 :**
-```json
-{
-  "success": false,
-  "error": "Report not found or expired"
-}
-```
-
----
-
-### 4.4 DELETE /pending-report?tid=XXX
-
-Supprime un rapport après utilisation.
-
-**Requête :**
-```http
-DELETE http://localhost:8741/pending-report?tid=TEO_2024_12345
-```
-
-**Réponse 200 :**
-```json
-{
-  "success": true,
-  "message": "Report deleted successfully"
-}
-```
-
----
-
-### 4.5 GET /find-report 🔍 (Recherche RIS)
-
-Recherche un rapport par identifiants RIS (sans connaître le `technical_id`).
-
-> 💡 **Cas d'usage** : Le RIS possède l'`accession_number` mais pas le `technical_id` généré par TÉO Hub.
-
-**Requête :**
-```http
-GET http://localhost:8741/find-report?accession_number=ACC2024001
-```
-
-**Paramètres de requête (au moins un requis) :**
-
-| Paramètre | Type | Description |
-|-----------|------|-------------|
-| `accession_number` | string | Numéro d'accession DICOM |
-| `patient_id` | string | ID patient local/RIS |
-| `exam_uid` | string | UID DICOM de l'examen |
-
-**Exemples de recherche :**
-```http
-# Par accession_number seul
-GET /find-report?accession_number=ACC2024001
-
-# Par patient_id seul
-GET /find-report?patient_id=PAT123456
-
-# Par exam_uid seul
-GET /find-report?exam_uid=1.2.840.113619.2.XXX.YYY.ZZZ
-
-# Combinaison (plus précise)
-GET /find-report?patient_id=PAT123456&accession_number=ACC2024001
-```
-
-**Réponse 200 (Succès) :**
+**Réponse `200` :**
 ```json
 {
   "success": true,
@@ -377,88 +314,107 @@ GET /find-report?patient_id=PAT123456&accession_number=ACC2024001
     "source_type": "teo_hub",
     "ai_modules": ["brain_volumetry", "lesion_detection"],
     "modality": "MR",
-    "metadata": {
-      "teo_version": "2.1.0",
-      "confidence_score": 0.94
-    },
-    "status": "pending",
-    "created_at": "2024-12-16T10:30:00Z"
-  },
-  "retrieval_url": "http://localhost:8741/pending-report?tid=TEO_2024_12345"
+    "metadata": { "teo_version": "2.1.0", "confidence_score": 0.94 },
+    "status": "retrieved",
+    "created_at": "2026-02-23T10:30:00Z"
+  }
 }
 ```
 
-**Réponses d'erreur :**
+> Le statut passe automatiquement de `"pending"` à `"retrieved"` après le premier GET.
 
-| Code | Description | Corps |
-|------|-------------|-------|
-| 400 | Aucun identifiant fourni | `{"success": false, "error": "At least one identifier required: accession_number, patient_id, or exam_uid"}` |
-| 404 | Rapport non trouvé | `{"success": false, "error": "No report found matching the provided identifiers"}` |
+---
+
+### 4.4 DELETE /pending-report?tid=XXX
+
+**Authentification** : `X-API-Key` obligatoire.
+
+```http
+DELETE http://127.0.0.1:8741/pending-report?tid=TEO_2024_12345
+X-API-Key: airadcr_xxxxxxxxx
+```
+
+Réponse `200` : `{"success": true, "deleted": true}`
+
+---
+
+### 4.5 GET /find-report 🔍 (Recherche RIS)
+
+Recherche un rapport par identifiants RIS sans connaître le `technical_id`.
+
+**Authentification** : Aucune par défaut (configurable).
+
+```http
+GET http://127.0.0.1:8741/find-report?accession_number=ACC2024001
+GET http://127.0.0.1:8741/find-report?patient_id=PAT123456
+GET http://127.0.0.1:8741/find-report?patient_id=PAT123&accession_number=ACC2024001
+```
+
+**Paramètres** (au moins un requis) :
+
+| Paramètre | Type | Description |
+|-----------|------|-------------|
+| `accession_number` | string | Numéro d'accession DICOM |
+| `patient_id` | string | ID patient local/RIS |
+| `exam_uid` | string | UID DICOM de l'examen |
+
+**Réponse `200` :**
+```json
+{
+  "success": true,
+  "data": { "technical_id": "TEO_2024_12345", "...": "..." },
+  "retrieval_url": "http://127.0.0.1:8741/pending-report?tid=TEO_2024_12345"
+}
+```
 
 ---
 
 ### 4.6 POST /open-report 🚀 (Ouverture Contextuelle)
 
-Ouvre AIRADCR et navigue automatiquement vers un rapport spécifique.
+Ouvre AIRADCR et navigue automatiquement vers un rapport.
 
-> 💡 **Cas d'usage** : Le RIS veut ouvrir directement AIRADCR sur un patient spécifique sans que l'utilisateur ait à chercher.
+**Authentification** : `X-API-Key` obligatoire.
 
-**Requête (par technical_id) :**
 ```http
-POST http://localhost:8741/open-report?tid=TEO_2024_12345
+POST http://127.0.0.1:8741/open-report?accession_number=ACC2024001
+X-API-Key: airadcr_xxxxxxxxx
 ```
 
-**Requête (par identifiants RIS - recherche automatique) :**
-```http
-POST http://localhost:8741/open-report?accession_number=ACC2024001
-```
+**Paramètres** (au moins un requis, `tid` prioritaire) :
 
-**Paramètres de requête (au moins un requis) :**
-
-| Paramètre | Type | Description |
-|-----------|------|-------------|
-| `tid` | string | `technical_id` direct (prioritaire) |
-| `accession_number` | string | Numéro d'accession DICOM |
-| `patient_id` | string | ID patient local/RIS |
-| `exam_uid` | string | UID DICOM de l'examen |
-
-**Exemples d'appel :**
-```http
-# Par technical_id (le plus direct)
-POST /open-report?tid=TEO_2024_12345
-
-# Par accession_number (recherche automatique)
-POST /open-report?accession_number=ACC2024001
-
-# Combinaison d'identifiants
-POST /open-report?patient_id=PAT123456&accession_number=ACC2024001
-```
+| Paramètre | Priorité | Description |
+|-----------|----------|-------------|
+| `tid` | 1 (direct) | `technical_id` du rapport |
+| `accession_number` | 2 (recherche) | Numéro d'accession |
+| `patient_id` | 2 | ID patient |
+| `exam_uid` | 2 | UID examen |
 
 **Comportement :**
+1. Si `tid` → utilisation directe
+2. Sinon → recherche SQLite par identifiants
+3. Validation du TID (max 64 chars, `[a-zA-Z0-9_-]`)
+4. Émission événement Tauri `airadcr:navigate_to_report`
+5. Navigation iframe → `https://airadcr.com/app?tori=true&tid=XXX`
+6. Fenêtre AIRADCR → premier plan (show + focus)
 
-1. Si `tid` fourni → utilisation directe
-2. Sinon → recherche dans la base par identifiants RIS
-3. Émission d'un événement Tauri `airadcr:navigate_to_report`
-4. L'iframe AIRADCR navigue vers `https://airadcr.com/app?tid=XXX`
-5. La fenêtre AIRADCR passe au premier plan
-
-**Réponse 200 (Succès) :**
+**Réponse `200` :**
 ```json
 {
   "success": true,
   "message": "Navigation triggered successfully",
   "technical_id": "TEO_2024_12345",
-  "navigated_to": "https://airadcr.com/app?tid=TEO_2024_12345"
+  "navigated_to": "https://airadcr.com/app?tori=true&tid=TEO_2024_12345"
 }
 ```
 
-**Réponses d'erreur :**
+**Erreurs** :
 
-| Code | Description | Corps |
-|------|-------------|-------|
-| 400 | Aucun identifiant fourni | `{"success": false, "error": "At least one identifier required: tid, accession_number, patient_id, or exam_uid"}` |
-| 404 | Rapport non trouvé | `{"success": false, "error": "No report found matching the provided identifiers"}` |
-| 500 | Erreur de navigation | `{"success": false, "error": "Failed to trigger navigation event"}` |
+| Code | Cause |
+|------|-------|
+| `400` | Aucun identifiant / TID invalide |
+| `401` | API key manquante ou invalide |
+| `404` | Rapport non trouvé |
+| `503` | Application pas encore prête (`Retry-After: 2`) |
 
 ---
 
@@ -470,28 +426,15 @@ POST /open-report?patient_id=PAT123456&accession_number=ACC2024001
 """
 AIRADCR Desktop Client pour TÉO Hub
 ===================================
-Client Python pour l'intégration avec l'API AIRADCR Desktop.
-
-Installation:
-    pip install requests
-
-Usage:
-    from airadcr_client import AiradcrDesktopClient
-    
-    client = AiradcrDesktopClient("airadcr_prod_7f3k9m2x5p8w1q4v6n0z")
-    if client.is_desktop_available():
-        result = client.store_report(...)
+pip install requests
 """
 
 import requests
-import json
 import logging
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass, asdict
 from datetime import datetime
 
-# Configuration du logging
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("airadcr_client")
 
 
@@ -505,44 +448,10 @@ class StructuredReport:
     conclusion: str = ""
 
 
-@dataclass
-class StoreReportResponse:
-    """Réponse du stockage de rapport."""
-    success: bool
-    technical_id: str = ""
-    retrieval_url: str = ""
-    expires_at: str = ""
-    message: str = ""
-    error: str = ""
-
-
 class AiradcrDesktopClient:
-    """
-    Client Python pour l'API AIRADCR Desktop.
+    """Client Python pour l'API AIRADCR Desktop."""
     
-    Permet à TÉO Hub d'envoyer des rapports pré-traités par IA
-    au desktop AIRADCR pour pré-remplissage automatique.
-    
-    Attributes:
-        api_key: Clé API de production
-        base_url: URL du serveur local (défaut: http://localhost:8741)
-        timeout: Timeout des requêtes en secondes
-    """
-    
-    def __init__(
-        self, 
-        api_key: str, 
-        base_url: str = "http://localhost:8741",
-        timeout: int = 10
-    ):
-        """
-        Initialise le client AIRADCR.
-        
-        Args:
-            api_key: Clé API (format: airadcr_prod_XXXXX)
-            base_url: URL du serveur Tauri local
-            timeout: Timeout des requêtes HTTP
-        """
+    def __init__(self, api_key: str, base_url: str = "http://127.0.0.1:8741", timeout: int = 10):
         self.api_key = api_key
         self.base_url = base_url.rstrip('/')
         self.timeout = timeout
@@ -553,29 +462,11 @@ class AiradcrDesktopClient:
         })
     
     def is_desktop_available(self) -> bool:
-        """
-        Vérifie si le desktop AIRADCR est disponible.
-        
-        Returns:
-            True si le desktop répond, False sinon.
-            
-        Example:
-            >>> client = AiradcrDesktopClient("airadcr_prod_xxx")
-            >>> if client.is_desktop_available():
-            ...     print("Desktop prêt!")
-        """
+        """Vérifie si le desktop AIRADCR est lancé."""
         try:
-            response = self._session.get(
-                f"{self.base_url}/health",
-                timeout=2
-            )
-            if response.status_code == 200:
-                data = response.json()
-                logger.info(f"Desktop disponible - Version: {data.get('version', 'unknown')}")
-                return True
-            return False
-        except requests.exceptions.RequestException as e:
-            logger.warning(f"Desktop non disponible: {e}")
+            r = self._session.get(f"{self.base_url}/health", timeout=2)
+            return r.status_code == 200
+        except requests.exceptions.RequestException:
             return False
     
     def store_report(
@@ -591,261 +482,63 @@ class AiradcrDesktopClient:
         modality: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
         expires_in_hours: int = 24
-    ) -> StoreReportResponse:
+    ) -> Dict[str, Any]:
         """
-        Stocke un rapport pré-rempli sur le desktop AIRADCR.
+        Stocke un rapport pré-rempli sur le desktop.
         
-        Args:
-            technical_id: Identifiant unique du rapport
-            structured: Contenu structuré du rapport
-            patient_id: ID patient (accepté en local)
-            exam_uid: UID DICOM de l'examen
-            accession_number: Numéro d'accession DICOM
-            study_instance_uid: Study Instance UID DICOM
-            source_type: Source du rapport (défaut: "teo_hub")
-            ai_modules: Liste des modules IA utilisés
-            modality: Modalité DICOM (MR, CT, US, etc.)
-            metadata: Métadonnées additionnelles
-            expires_in_hours: Durée de vie en heures
-            
         Returns:
-            StoreReportResponse avec le résultat de l'opération
-            
-        Raises:
-            requests.exceptions.RequestException: Si erreur réseau
-            
-        Example:
-            >>> result = client.store_report(
-            ...     technical_id="TEO_2024_001",
-            ...     structured=StructuredReport(
-            ...         title="IRM Cérébrale",
-            ...         indication="Céphalées",
-            ...         results="Analyse IA: Normal"
-            ...     ),
-            ...     patient_id="PAT123",
-            ...     ai_modules=["brain_volumetry"]
-            ... )
-            >>> print(result.retrieval_url)
+            {"success": True, "technical_id": "...", "retrieval_url": "...", "expires_at": "..."}
+            ou {"success": False, "error": "..."}
         """
-        # Construction du payload
-        payload: Dict[str, Any] = {
+        payload = {
             "technical_id": technical_id,
             "structured": asdict(structured),
             "source_type": source_type,
             "expires_in_hours": expires_in_hours
         }
-        
-        # Identifiants patients (acceptés en LOCAL uniquement)
-        if patient_id:
-            payload["patient_id"] = patient_id
-        if exam_uid:
-            payload["exam_uid"] = exam_uid
-        if accession_number:
-            payload["accession_number"] = accession_number
-        if study_instance_uid:
-            payload["study_instance_uid"] = study_instance_uid
-        
-        # Champs optionnels
-        if ai_modules:
-            payload["ai_modules"] = ai_modules
-        if modality:
-            payload["modality"] = modality
-        if metadata:
-            payload["metadata"] = metadata
-        
-        logger.info(f"Envoi rapport {technical_id} vers desktop...")
+        for key, val in [("patient_id", patient_id), ("exam_uid", exam_uid),
+                         ("accession_number", accession_number), 
+                         ("study_instance_uid", study_instance_uid),
+                         ("ai_modules", ai_modules), ("modality", modality),
+                         ("metadata", metadata)]:
+            if val is not None:
+                payload[key] = val
         
         try:
-            response = self._session.post(
-                f"{self.base_url}/pending-report",
-                json=payload,
-                timeout=self.timeout
-            )
-            
-            data = response.json()
-            
-            if response.status_code == 201:
-                logger.info(f"Rapport stocké: {data.get('retrieval_url')}")
-                return StoreReportResponse(
-                    success=True,
-                    technical_id=data.get("technical_id", ""),
-                    retrieval_url=data.get("retrieval_url", ""),
-                    expires_at=data.get("expires_at", ""),
-                    message=data.get("message", "")
-                )
+            r = self._session.post(f"{self.base_url}/pending-report", json=payload, timeout=self.timeout)
+            data = r.json()
+            if r.status_code == 200:
+                logger.info(f"✅ Rapport stocké: {data.get('retrieval_url')}")
+                return {**data, "success": True}
             else:
-                logger.error(f"Erreur {response.status_code}: {data.get('error')}")
-                return StoreReportResponse(
-                    success=False,
-                    error=data.get("error", f"HTTP {response.status_code}")
-                )
-                
-        except requests.exceptions.Timeout:
-            logger.error("Timeout lors de l'envoi du rapport")
-            return StoreReportResponse(success=False, error="Request timeout")
+                logger.error(f"❌ Erreur {r.status_code}: {data.get('error')}")
+                return {"success": False, "error": data.get("error", f"HTTP {r.status_code}")}
         except requests.exceptions.RequestException as e:
-            logger.error(f"Erreur réseau: {e}")
-            return StoreReportResponse(success=False, error=str(e))
+            return {"success": False, "error": str(e)}
     
-    def get_report(self, technical_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Récupère un rapport par son technical_id.
-        
-        Args:
-            technical_id: Identifiant du rapport
-            
-        Returns:
-            Données du rapport ou None si non trouvé
-        """
-        try:
-            response = self._session.get(
-                f"{self.base_url}/pending-report",
-                params={"tid": technical_id},
-                timeout=self.timeout
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                return data.get("data")
+    def find_report(self, accession_number: str = None, patient_id: str = None, exam_uid: str = None) -> Optional[Dict]:
+        """Recherche un rapport par identifiants RIS."""
+        params = {k: v for k, v in [("accession_number", accession_number),
+                                     ("patient_id", patient_id), ("exam_uid", exam_uid)] if v}
+        if not params:
             return None
-            
+        try:
+            r = self._session.get(f"{self.base_url}/find-report", params=params, timeout=self.timeout)
+            return r.json() if r.status_code == 200 else None
         except requests.exceptions.RequestException:
             return None
     
-    def delete_report(self, technical_id: str) -> bool:
-        """
-        Supprime un rapport.
-        
-        Args:
-            technical_id: Identifiant du rapport
-            
-        Returns:
-            True si supprimé, False sinon
-        """
-        try:
-            response = self._session.delete(
-                f"{self.base_url}/pending-report",
-                params={"tid": technical_id},
-                timeout=self.timeout
-            )
-            return response.status_code == 200
-        except requests.exceptions.RequestException:
-            return False
-    
-    def find_report(
-        self,
-        accession_number: Optional[str] = None,
-        patient_id: Optional[str] = None,
-        exam_uid: Optional[str] = None
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Recherche un rapport par identifiants RIS (sans connaître le technical_id).
-        
-        Args:
-            accession_number: Numéro d'accession DICOM
-            patient_id: ID patient local/RIS
-            exam_uid: UID DICOM de l'examen
-            
-        Returns:
-            Données du rapport avec technical_id, ou None si non trouvé
-            
-        Example:
-            >>> result = client.find_report(accession_number="ACC2024001")
-            >>> if result:
-            ...     print(f"Technical ID: {result['data']['technical_id']}")
-        """
-        params = {}
-        if accession_number:
-            params["accession_number"] = accession_number
-        if patient_id:
-            params["patient_id"] = patient_id
-        if exam_uid:
-            params["exam_uid"] = exam_uid
-        
+    def open_report(self, tid: str = None, accession_number: str = None, 
+                    patient_id: str = None, exam_uid: str = None) -> Dict[str, Any]:
+        """Ouvre AIRADCR et navigue vers un rapport. La fenêtre passe au premier plan."""
+        params = {k: v for k, v in [("tid", tid), ("accession_number", accession_number),
+                                     ("patient_id", patient_id), ("exam_uid", exam_uid)] if v}
         if not params:
-            logger.error("Au moins un identifiant requis pour find_report")
-            return None
-        
-        try:
-            response = self._session.get(
-                f"{self.base_url}/find-report",
-                params=params,
-                timeout=self.timeout
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                logger.info(f"Rapport trouvé: {data.get('data', {}).get('technical_id')}")
-                return data
-            elif response.status_code == 404:
-                logger.warning("Aucun rapport trouvé pour ces identifiants")
-                return None
-            else:
-                logger.error(f"Erreur {response.status_code}: {response.json().get('error')}")
-                return None
-                
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Erreur réseau find_report: {e}")
-            return None
-    
-    def open_report(
-        self,
-        technical_id: Optional[str] = None,
-        accession_number: Optional[str] = None,
-        patient_id: Optional[str] = None,
-        exam_uid: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """
-        Ouvre AIRADCR et navigue automatiquement vers un rapport spécifique.
-        
-        La fenêtre AIRADCR passe au premier plan automatiquement.
-        
-        Args:
-            technical_id: Technical ID direct (prioritaire)
-            accession_number: Numéro d'accession DICOM
-            patient_id: ID patient local/RIS
-            exam_uid: UID DICOM de l'examen
-            
-        Returns:
-            Dictionnaire avec success, message, technical_id, navigated_to
-            
-        Example:
-            >>> result = client.open_report(accession_number="ACC2024001")
-            >>> if result["success"]:
-            ...     print(f"Navigation vers: {result['navigated_to']}")
-        """
-        params = {}
-        if technical_id:
-            params["tid"] = technical_id
-        if accession_number:
-            params["accession_number"] = accession_number
-        if patient_id:
-            params["patient_id"] = patient_id
-        if exam_uid:
-            params["exam_uid"] = exam_uid
-        
-        if not params:
-            logger.error("Au moins un identifiant requis pour open_report")
             return {"success": False, "error": "At least one identifier required"}
-        
         try:
-            response = self._session.post(
-                f"{self.base_url}/open-report",
-                params=params,
-                timeout=self.timeout
-            )
-            
-            data = response.json()
-            
-            if response.status_code == 200:
-                logger.info(f"Navigation déclenchée: {data.get('navigated_to')}")
-                return data
-            else:
-                logger.error(f"Erreur open_report: {data.get('error')}")
-                return data
-                
+            r = self._session.post(f"{self.base_url}/open-report", params=params, timeout=self.timeout)
+            return r.json()
         except requests.exceptions.RequestException as e:
-            logger.error(f"Erreur réseau open_report: {e}")
             return {"success": False, "error": str(e)}
 
 
@@ -854,1124 +547,315 @@ class AiradcrDesktopClient:
 # =============================================================================
 
 if __name__ == "__main__":
-    # Initialisation du client
-    client = AiradcrDesktopClient(
-        api_key="airadcr_prod_7f3k9m2x5p8w1q4v6n0z"
-    )
+    client = AiradcrDesktopClient(api_key="VOTRE_CLE_API")
     
-    # Vérifier la disponibilité du desktop
     if not client.is_desktop_available():
         print("❌ Desktop AIRADCR non disponible")
         exit(1)
     
-    print("✅ Desktop AIRADCR disponible")
-    
-    # Créer un rapport structuré
-    report = StructuredReport(
-        title="IRM Cérébrale",
-        indication="Céphalées chroniques depuis 3 mois, recherche de lésion expansive",
-        technique="IRM 3T avec injection de gadolinium. Séquences T1, T2, FLAIR, diffusion, perfusion",
-        results="""Analyse IA TÉO Hub (v2.1.0) :
-
-VOLUMÉTRIE CÉRÉBRALE :
-- Volume cérébral total : 1450 cm³ (percentile 55 pour l'âge)
-- Ratio ventricules/cerveau : 2.1% (normal < 3%)
-
-ANALYSE DES LÉSIONS :
-- Score de confiance : 94%
-- Aucune lésion suspecte détectée
-- Substance blanche : aspect normal
-- Pas d'effet de masse
-
-STRUCTURES MÉDIANES :
-- Ligne médiane non déviée
-- Ventricules symétriques""",
-        conclusion=""  # À compléter par le radiologue
-    )
-    
-    # Envoyer le rapport
+    # 1. TÉO Hub stocke le rapport IA
     result = client.store_report(
         technical_id=f"TEO_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-        structured=report,
+        structured=StructuredReport(
+            title="IRM Cérébrale",
+            indication="Céphalées chroniques",
+            technique="IRM 3T séquences T1, T2, FLAIR, diffusion",
+            results="Volumétrie normale. Aucune lésion détectée.",
+            conclusion=""
+        ),
         patient_id="PAT123456",
-        exam_uid="1.2.840.113619.2.55.3.604688.12345",
         accession_number="ACC2024001",
-        study_instance_uid="1.2.840.10008.5.1.4.1.1.2.12345",
-        ai_modules=["brain_volumetry", "lesion_detection", "white_matter_analysis"],
+        ai_modules=["brain_volumetry", "lesion_detection"],
         modality="MR",
-        metadata={
-            "teo_version": "2.1.0",
-            "processing_time_ms": 1523,
-            "confidence_score": 0.94,
-            "site_id": "HOPITAL_CENTRAL"
-        }
+        metadata={"teo_version": "2.1.0", "confidence_score": 0.94}
     )
     
-    if result.success:
-        print(f"✅ Rapport stocké avec succès!")
-        print(f"   Technical ID: {result.technical_id}")
-        print(f"   URL de récupération: {result.retrieval_url}")
-        print(f"   Expire le: {result.expires_at}")
-    else:
-        print(f"❌ Erreur: {result.error}")
-```
-
-### 5.2 Intégration dans Pipeline TÉO Hub
-
-```python
-"""
-Exemple d'intégration dans le pipeline de traitement TÉO Hub.
-"""
-
-from airadcr_client import AiradcrDesktopClient, StructuredReport
-
-class TeoHubPipeline:
-    """Pipeline de traitement TÉO Hub avec intégration AIRADCR."""
-    
-    def __init__(self):
-        self.airadcr_client = AiradcrDesktopClient(
-            api_key="airadcr_prod_7f3k9m2x5p8w1q4v6n0z"
-        )
-    
-    def process_study(self, dicom_study: dict) -> dict:
-        """
-        Traite une étude DICOM et envoie le résultat à AIRADCR.
+    if result["success"]:
+        print(f"✅ Rapport stocké: {result['retrieval_url']}")
         
-        Args:
-            dicom_study: Métadonnées DICOM de l'étude
-            
-        Returns:
-            Résultat du traitement avec URL AIRADCR
-        """
-        # 1. Extraction des métadonnées DICOM
-        patient_id = dicom_study.get("PatientID")
-        study_uid = dicom_study.get("StudyInstanceUID")
-        accession = dicom_study.get("AccessionNumber")
-        modality = dicom_study.get("Modality")
-        
-        # 2. Traitement IA (votre logique existante)
-        ai_results = self._run_ai_analysis(dicom_study)
-        
-        # 3. Construction du rapport structuré
-        structured = StructuredReport(
-            title=self._generate_title(dicom_study),
-            indication=dicom_study.get("StudyDescription", ""),
-            technique=self._format_technique(dicom_study),
-            results=ai_results["formatted_results"],
-            conclusion=""
-        )
-        
-        # 4. Envoi vers AIRADCR Desktop (si disponible)
-        airadcr_url = None
-        if self.airadcr_client.is_desktop_available():
-            result = self.airadcr_client.store_report(
-                technical_id=f"TEO_{accession}",
-                structured=structured,
-                patient_id=patient_id,
-                exam_uid=study_uid,
-                accession_number=accession,
-                study_instance_uid=study_uid,
-                ai_modules=ai_results["modules_used"],
-                modality=modality,
-                metadata={
-                    "confidence": ai_results["confidence"],
-                    "processing_time": ai_results["processing_time"]
-                }
-            )
-            
-            if result.success:
-                airadcr_url = f"https://airadcr.com/app?tid=TEO_{accession}"
-        
-        return {
-            "status": "completed",
-            "ai_results": ai_results,
-            "airadcr_url": airadcr_url,
-            "accession_number": accession
-        }
-    
-    def _run_ai_analysis(self, study: dict) -> dict:
-        """Votre logique d'analyse IA existante."""
-        # ... implémentation ...
-        pass
-    
-    def _generate_title(self, study: dict) -> str:
-        """Génère le titre du rapport."""
-        modality = study.get("Modality", "")
-        description = study.get("StudyDescription", "")
-        return f"{modality} {description}".strip()
-    
-    def _format_technique(self, study: dict) -> str:
-        """Formate la description technique."""
-        # ... implémentation ...
-        pass
+        # 2. RIS ouvre le rapport (par accession_number)
+        nav = client.open_report(accession_number="ACC2024001")
+        if nav["success"]:
+            print(f"✅ AIRADCR ouvert: {nav['navigated_to']}")
 ```
 
 ---
 
 ## 6. Exemples de Code C#
 
-### 6.1 Client C# Complet
-
 ```csharp
-/*
- * AIRADCR Desktop Client pour TÉO Hub
- * ====================================
- * Client C# pour l'intégration avec l'API AIRADCR Desktop.
- * 
- * Dépendances NuGet:
- *   - System.Net.Http.Json
- *   - System.Text.Json
- * 
- * Usage:
- *   var client = new AiradcrDesktopClient("airadcr_prod_xxx");
- *   if (await client.IsDesktopAvailableAsync())
- *   {
- *       var result = await client.StoreReportAsync(...);
- *   }
- */
-
-using System;
 using System.Net.Http;
-using System.Net.Http.Json;
-using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
-using System.Threading.Tasks;
-using System.Collections.Generic;
 
-namespace TeoHub.AiradcrIntegration
+public class AiradcrClient
 {
-    #region Data Models
+    private readonly HttpClient _http;
+    private readonly string _baseUrl;
 
-    /// <summary>
-    /// Structure du rapport radiologique.
-    /// </summary>
-    public class StructuredReport
+    public AiradcrClient(string apiKey, string baseUrl = "http://127.0.0.1:8741")
     {
-        [JsonPropertyName("title")]
-        public string Title { get; set; } = "";
-
-        [JsonPropertyName("indication")]
-        public string Indication { get; set; } = "";
-
-        [JsonPropertyName("technique")]
-        public string Technique { get; set; } = "";
-
-        [JsonPropertyName("results")]
-        public string Results { get; set; } = "";
-
-        [JsonPropertyName("conclusion")]
-        public string Conclusion { get; set; } = "";
+        _baseUrl = baseUrl;
+        _http = new HttpClient();
+        _http.DefaultRequestHeaders.Add("X-API-Key", apiKey);
+        _http.Timeout = TimeSpan.FromSeconds(10);
     }
 
-    /// <summary>
-    /// Requête de stockage de rapport.
-    /// </summary>
-    public class PendingReportRequest
+    public async Task<bool> IsAvailableAsync()
     {
-        [JsonPropertyName("technical_id")]
-        public string TechnicalId { get; set; } = "";
-
-        [JsonPropertyName("patient_id")]
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public string? PatientId { get; set; }
-
-        [JsonPropertyName("exam_uid")]
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public string? ExamUid { get; set; }
-
-        [JsonPropertyName("accession_number")]
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public string? AccessionNumber { get; set; }
-
-        [JsonPropertyName("study_instance_uid")]
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public string? StudyInstanceUid { get; set; }
-
-        [JsonPropertyName("structured")]
-        public StructuredReport Structured { get; set; } = new();
-
-        [JsonPropertyName("source_type")]
-        public string SourceType { get; set; } = "teo_hub";
-
-        [JsonPropertyName("ai_modules")]
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public string[]? AiModules { get; set; }
-
-        [JsonPropertyName("modality")]
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public string? Modality { get; set; }
-
-        [JsonPropertyName("metadata")]
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public Dictionary<string, object>? Metadata { get; set; }
-
-        [JsonPropertyName("expires_in_hours")]
-        public int ExpiresInHours { get; set; } = 24;
+        try
+        {
+            var r = await _http.GetAsync($"{_baseUrl}/health");
+            return r.IsSuccessStatusCode;
+        }
+        catch { return false; }
     }
 
-    /// <summary>
-    /// Réponse du stockage de rapport.
-    /// </summary>
-    public class StoreReportResponse
+    public async Task<JsonElement?> StoreReportAsync(object report)
     {
-        [JsonPropertyName("success")]
-        public bool Success { get; set; }
-
-        [JsonPropertyName("technical_id")]
-        public string TechnicalId { get; set; } = "";
-
-        [JsonPropertyName("retrieval_url")]
-        public string RetrievalUrl { get; set; } = "";
-
-        [JsonPropertyName("expires_at")]
-        public string ExpiresAt { get; set; } = "";
-
-        [JsonPropertyName("message")]
-        public string Message { get; set; } = "";
-
-        [JsonPropertyName("error")]
-        public string Error { get; set; } = "";
+        var content = new StringContent(
+            JsonSerializer.Serialize(report), 
+            System.Text.Encoding.UTF8, 
+            "application/json"
+        );
+        var r = await _http.PostAsync($"{_baseUrl}/pending-report", content);
+        var json = await r.Content.ReadAsStringAsync();
+        return JsonSerializer.Deserialize<JsonElement>(json);
     }
 
-    /// <summary>
-    /// Réponse du health check.
-    /// </summary>
-    public class HealthResponse
+    public async Task<JsonElement?> OpenReportAsync(string accessionNumber)
     {
-        [JsonPropertyName("status")]
-        public string Status { get; set; } = "";
-
-        [JsonPropertyName("version")]
-        public string Version { get; set; } = "";
-
-        [JsonPropertyName("timestamp")]
-        public string Timestamp { get; set; } = "";
-    }
-
-    /// <summary>
-    /// Réponse de recherche de rapport.
-    /// </summary>
-    public class FindReportResponse
-    {
-        [JsonPropertyName("success")]
-        public bool Success { get; set; }
-
-        [JsonPropertyName("data")]
-        public ReportData? Data { get; set; }
-
-        [JsonPropertyName("retrieval_url")]
-        public string RetrievalUrl { get; set; } = "";
-
-        [JsonPropertyName("error")]
-        public string Error { get; set; } = "";
-    }
-
-    /// <summary>
-    /// Données du rapport trouvé.
-    /// </summary>
-    public class ReportData
-    {
-        [JsonPropertyName("technical_id")]
-        public string TechnicalId { get; set; } = "";
-
-        [JsonPropertyName("patient_id")]
-        public string? PatientId { get; set; }
-
-        [JsonPropertyName("accession_number")]
-        public string? AccessionNumber { get; set; }
-
-        [JsonPropertyName("exam_uid")]
-        public string? ExamUid { get; set; }
-
-        [JsonPropertyName("structured")]
-        public StructuredReport? Structured { get; set; }
-
-        [JsonPropertyName("source_type")]
-        public string SourceType { get; set; } = "";
-
-        [JsonPropertyName("ai_modules")]
-        public string[]? AiModules { get; set; }
-
-        [JsonPropertyName("modality")]
-        public string? Modality { get; set; }
-
-        [JsonPropertyName("status")]
-        public string Status { get; set; } = "";
-
-        [JsonPropertyName("created_at")]
-        public string CreatedAt { get; set; } = "";
-    }
-
-    /// <summary>
-    /// Réponse d'ouverture de rapport.
-    /// </summary>
-    public class OpenReportResponse
-    {
-        [JsonPropertyName("success")]
-        public bool Success { get; set; }
-
-        [JsonPropertyName("message")]
-        public string Message { get; set; } = "";
-
-        [JsonPropertyName("technical_id")]
-        public string TechnicalId { get; set; } = "";
-
-        [JsonPropertyName("navigated_to")]
-        public string NavigatedTo { get; set; } = "";
-
-        [JsonPropertyName("error")]
-        public string Error { get; set; } = "";
-    }
-
-    #endregion
-
-    /// <summary>
-    /// Client C# pour l'API AIRADCR Desktop.
-    /// </summary>
-    public class AiradcrDesktopClient : IDisposable
-    {
-        private readonly HttpClient _httpClient;
-        private readonly string _baseUrl;
-        private readonly JsonSerializerOptions _jsonOptions;
-
-        /// <summary>
-        /// Initialise le client AIRADCR.
-        /// </summary>
-        /// <param name="apiKey">Clé API de production</param>
-        /// <param name="baseUrl">URL du serveur local</param>
-        /// <param name="timeoutSeconds">Timeout en secondes</param>
-        public AiradcrDesktopClient(
-            string apiKey,
-            string baseUrl = "http://localhost:8741",
-            int timeoutSeconds = 10)
-        {
-            _baseUrl = baseUrl.TrimEnd('/');
-            _httpClient = new HttpClient
-            {
-                Timeout = TimeSpan.FromSeconds(timeoutSeconds)
-            };
-            _httpClient.DefaultRequestHeaders.Add("X-API-Key", apiKey);
-
-            _jsonOptions = new JsonSerializerOptions
-            {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-            };
-        }
-
-        /// <summary>
-        /// Vérifie si le desktop AIRADCR est disponible.
-        /// </summary>
-        public async Task<bool> IsDesktopAvailableAsync()
-        {
-            try
-            {
-                using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(2));
-                var response = await _httpClient.GetAsync($"{_baseUrl}/health", cts.Token);
-                
-                if (response.IsSuccessStatusCode)
-                {
-                    var health = await response.Content.ReadFromJsonAsync<HealthResponse>();
-                    Console.WriteLine($"[AIRADCR] Desktop disponible - Version: {health?.Version}");
-                    return true;
-                }
-                return false;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[AIRADCR] Desktop non disponible: {ex.Message}");
-                return false;
-            }
-        }
-
-        /// <summary>
-        /// Stocke un rapport pré-rempli sur le desktop AIRADCR.
-        /// </summary>
-        public async Task<StoreReportResponse> StoreReportAsync(PendingReportRequest request)
-        {
-            try
-            {
-                Console.WriteLine($"[AIRADCR] Envoi rapport {request.TechnicalId}...");
-
-                var json = JsonSerializer.Serialize(request, _jsonOptions);
-                var content = new StringContent(json, Encoding.UTF8, "application/json");
-
-                var response = await _httpClient.PostAsync($"{_baseUrl}/pending-report", content);
-                var responseJson = await response.Content.ReadAsStringAsync();
-
-                var result = JsonSerializer.Deserialize<StoreReportResponse>(responseJson, _jsonOptions)
-                    ?? new StoreReportResponse { Success = false, Error = "Désérialisation échouée" };
-
-                if (result.Success)
-                {
-                    Console.WriteLine($"[AIRADCR] Rapport stocké: {result.RetrievalUrl}");
-                }
-                else
-                {
-                    Console.WriteLine($"[AIRADCR] Erreur: {result.Error}");
-                }
-
-                return result;
-            }
-            catch (TaskCanceledException)
-            {
-                return new StoreReportResponse { Success = false, Error = "Request timeout" };
-            }
-            catch (Exception ex)
-            {
-                return new StoreReportResponse { Success = false, Error = ex.Message };
-            }
-        }
-
-        /// <summary>
-        /// Raccourci pour créer et envoyer un rapport.
-        /// </summary>
-        public async Task<StoreReportResponse> StoreReportAsync(
-            string technicalId,
-            StructuredReport structured,
-            string? patientId = null,
-            string? examUid = null,
-            string? accessionNumber = null,
-            string? studyInstanceUid = null,
-            string[]? aiModules = null,
-            string? modality = null,
-            Dictionary<string, object>? metadata = null,
-            int expiresInHours = 24)
-        {
-            var request = new PendingReportRequest
-            {
-                TechnicalId = technicalId,
-                Structured = structured,
-                PatientId = patientId,
-                ExamUid = examUid,
-                AccessionNumber = accessionNumber,
-                StudyInstanceUid = studyInstanceUid,
-                AiModules = aiModules,
-                Modality = modality,
-                Metadata = metadata,
-                ExpiresInHours = expiresInHours
-            };
-
-            return await StoreReportAsync(request);
-        }
-
-        /// <summary>
-        /// Recherche un rapport par identifiants RIS (sans connaître le technical_id).
-        /// </summary>
-        /// <param name="accessionNumber">Numéro d'accession DICOM</param>
-        /// <param name="patientId">ID patient local/RIS</param>
-        /// <param name="examUid">UID DICOM de l'examen</param>
-        /// <returns>Données du rapport ou null si non trouvé</returns>
-        public async Task<FindReportResponse?> FindReportAsync(
-            string? accessionNumber = null,
-            string? patientId = null,
-            string? examUid = null)
-        {
-            var queryParams = new List<string>();
-            if (!string.IsNullOrEmpty(accessionNumber))
-                queryParams.Add($"accession_number={Uri.EscapeDataString(accessionNumber)}");
-            if (!string.IsNullOrEmpty(patientId))
-                queryParams.Add($"patient_id={Uri.EscapeDataString(patientId)}");
-            if (!string.IsNullOrEmpty(examUid))
-                queryParams.Add($"exam_uid={Uri.EscapeDataString(examUid)}");
-
-            if (queryParams.Count == 0)
-            {
-                Console.WriteLine("[AIRADCR] Erreur: Au moins un identifiant requis");
-                return new FindReportResponse { Success = false, Error = "At least one identifier required" };
-            }
-
-            var url = $"{_baseUrl}/find-report?{string.Join("&", queryParams)}";
-
-            try
-            {
-                var response = await _httpClient.GetAsync(url);
-                var responseJson = await response.Content.ReadAsStringAsync();
-
-                var result = JsonSerializer.Deserialize<FindReportResponse>(responseJson, _jsonOptions);
-
-                if (result?.Success == true)
-                {
-                    Console.WriteLine($"[AIRADCR] Rapport trouvé: {result.Data?.TechnicalId}");
-                }
-                else
-                {
-                    Console.WriteLine($"[AIRADCR] Rapport non trouvé: {result?.Error}");
-                }
-
-                return result;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[AIRADCR] Erreur find_report: {ex.Message}");
-                return new FindReportResponse { Success = false, Error = ex.Message };
-            }
-        }
-
-        /// <summary>
-        /// Ouvre AIRADCR et navigue automatiquement vers un rapport spécifique.
-        /// </summary>
-        /// <param name="technicalId">Technical ID direct (prioritaire)</param>
-        /// <param name="accessionNumber">Numéro d'accession DICOM</param>
-        /// <param name="patientId">ID patient local/RIS</param>
-        /// <param name="examUid">UID DICOM de l'examen</param>
-        /// <returns>Résultat de la navigation</returns>
-        public async Task<OpenReportResponse> OpenReportAsync(
-            string? technicalId = null,
-            string? accessionNumber = null,
-            string? patientId = null,
-            string? examUid = null)
-        {
-            var queryParams = new List<string>();
-            if (!string.IsNullOrEmpty(technicalId))
-                queryParams.Add($"tid={Uri.EscapeDataString(technicalId)}");
-            if (!string.IsNullOrEmpty(accessionNumber))
-                queryParams.Add($"accession_number={Uri.EscapeDataString(accessionNumber)}");
-            if (!string.IsNullOrEmpty(patientId))
-                queryParams.Add($"patient_id={Uri.EscapeDataString(patientId)}");
-            if (!string.IsNullOrEmpty(examUid))
-                queryParams.Add($"exam_uid={Uri.EscapeDataString(examUid)}");
-
-            if (queryParams.Count == 0)
-            {
-                Console.WriteLine("[AIRADCR] Erreur: Au moins un identifiant requis");
-                return new OpenReportResponse { Success = false, Error = "At least one identifier required" };
-            }
-
-            var url = $"{_baseUrl}/open-report?{string.Join("&", queryParams)}";
-
-            try
-            {
-                var response = await _httpClient.PostAsync(url, null);
-                var responseJson = await response.Content.ReadAsStringAsync();
-
-                var result = JsonSerializer.Deserialize<OpenReportResponse>(responseJson, _jsonOptions)
-                    ?? new OpenReportResponse { Success = false, Error = "Désérialisation échouée" };
-
-                if (result.Success)
-                {
-                    Console.WriteLine($"[AIRADCR] Navigation déclenchée: {result.NavigatedTo}");
-                }
-                else
-                {
-                    Console.WriteLine($"[AIRADCR] Erreur open_report: {result.Error}");
-                }
-
-                return result;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[AIRADCR] Erreur open_report: {ex.Message}");
-                return new OpenReportResponse { Success = false, Error = ex.Message };
-            }
-        }
-
-        public void Dispose()
-        {
-            _httpClient?.Dispose();
-        }
-    }
-
-    // =========================================================================
-    // EXEMPLE D'UTILISATION
-    // =========================================================================
-
-    class Program
-    {
-        static async Task Main(string[] args)
-        {
-            using var client = new AiradcrDesktopClient(
-                apiKey: "airadcr_prod_7f3k9m2x5p8w1q4v6n0z"
-            );
-
-            // Vérifier la disponibilité
-            if (!await client.IsDesktopAvailableAsync())
-            {
-                Console.WriteLine("❌ Desktop AIRADCR non disponible");
-                return;
-            }
-
-            Console.WriteLine("✅ Desktop AIRADCR disponible");
-
-            // Créer le rapport structuré
-            var structured = new StructuredReport
-            {
-                Title = "IRM Cérébrale",
-                Indication = "Céphalées chroniques depuis 3 mois",
-                Technique = "IRM 3T avec injection de gadolinium. Séquences T1, T2, FLAIR, diffusion",
-                Results = @"Analyse IA TÉO Hub (v2.1.0) :
-
-VOLUMÉTRIE CÉRÉBRALE :
-- Volume cérébral total : 1450 cm³ (percentile 55)
-- Ratio ventricules/cerveau : 2.1% (normal)
-
-ANALYSE DES LÉSIONS :
-- Score de confiance : 94%
-- Aucune lésion suspecte détectée",
-                Conclusion = "" // À compléter par le radiologue
-            };
-
-            // Envoyer le rapport
-            var result = await client.StoreReportAsync(
-                technicalId: $"TEO_{DateTime.Now:yyyyMMdd_HHmmss}",
-                structured: structured,
-                patientId: "PAT123456",
-                examUid: "1.2.840.113619.2.55.3.12345",
-                accessionNumber: "ACC2024001",
-                studyInstanceUid: "1.2.840.10008.5.1.4.1.1.2.12345",
-                aiModules: new[] { "brain_volumetry", "lesion_detection" },
-                modality: "MR",
-                metadata: new Dictionary<string, object>
-                {
-                    { "teo_version", "2.1.0" },
-                    { "confidence_score", 0.94 },
-                    { "site_id", "HOPITAL_CENTRAL" }
-                }
-            );
-
-            if (result.Success)
-            {
-                Console.WriteLine($"✅ Rapport stocké!");
-                Console.WriteLine($"   Technical ID: {result.TechnicalId}");
-                Console.WriteLine($"   URL: {result.RetrievalUrl}");
-                Console.WriteLine($"   Expire: {result.ExpiresAt}");
-            }
-            else
-            {
-                Console.WriteLine($"❌ Erreur: {result.Error}");
-            }
-        }
-    }
-}
-```
-
-### 6.2 Intégration ASP.NET Core
-
-```csharp
-/*
- * Service d'intégration pour ASP.NET Core / .NET 6+
- */
-
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-
-namespace TeoHub.Services
-{
-    /// <summary>
-    /// Service injectable pour l'intégration AIRADCR.
-    /// </summary>
-    public interface IAiradcrService
-    {
-        Task<bool> IsAvailableAsync();
-        Task<string?> SendReportAsync(DicomStudy study, AiAnalysisResult aiResult);
-    }
-
-    public class AiradcrService : IAiradcrService
-    {
-        private readonly AiradcrDesktopClient _client;
-        private readonly ILogger<AiradcrService> _logger;
-
-        public AiradcrService(ILogger<AiradcrService> logger)
-        {
-            _logger = logger;
-            _client = new AiradcrDesktopClient(
-                apiKey: Environment.GetEnvironmentVariable("AIRADCR_API_KEY") 
-                    ?? "airadcr_prod_7f3k9m2x5p8w1q4v6n0z"
-            );
-        }
-
-        public async Task<bool> IsAvailableAsync()
-        {
-            return await _client.IsDesktopAvailableAsync();
-        }
-
-        public async Task<string?> SendReportAsync(DicomStudy study, AiAnalysisResult aiResult)
-        {
-            if (!await IsAvailableAsync())
-            {
-                _logger.LogWarning("AIRADCR Desktop non disponible");
-                return null;
-            }
-
-            var result = await _client.StoreReportAsync(
-                technicalId: $"TEO_{study.AccessionNumber}",
-                structured: new StructuredReport
-                {
-                    Title = $"{study.Modality} {study.StudyDescription}",
-                    Indication = study.StudyDescription,
-                    Technique = study.ProtocolName,
-                    Results = aiResult.FormattedReport,
-                    Conclusion = ""
-                },
-                patientId: study.PatientId,
-                examUid: study.StudyInstanceUid,
-                accessionNumber: study.AccessionNumber,
-                studyInstanceUid: study.StudyInstanceUid,
-                aiModules: aiResult.ModulesUsed,
-                modality: study.Modality
-            );
-
-            if (result.Success)
-            {
-                _logger.LogInformation("Rapport envoyé: {Url}", result.RetrievalUrl);
-                return $"https://airadcr.com/app?tid=TEO_{study.AccessionNumber}";
-            }
-
-            _logger.LogError("Erreur envoi rapport: {Error}", result.Error);
-            return null;
-        }
-    }
-
-    // Enregistrement dans Program.cs / Startup.cs
-    public static class ServiceCollectionExtensions
-    {
-        public static IServiceCollection AddAiradcrIntegration(this IServiceCollection services)
-        {
-            services.AddSingleton<IAiradcrService, AiradcrService>();
-            return services;
-        }
+        var r = await _http.PostAsync(
+            $"{_baseUrl}/open-report?accession_number={Uri.EscapeDataString(accessionNumber)}", 
+            null
+        );
+        var json = await r.Content.ReadAsStringAsync();
+        return JsonSerializer.Deserialize<JsonElement>(json);
     }
 }
 ```
 
 ---
 
-## 7. Gestion des Erreurs
+## 7. Script Orthanc (Lua)
 
-### 7.1 Codes HTTP
+Pour intégration directe Orthanc (PACS) → AIRADCR :
 
-| Code | Signification | Action Recommandée |
-|------|---------------|-------------------|
-| **200** | Succès (GET/DELETE) | Traiter la réponse |
-| **201** | Créé (POST) | Stocker `technical_id` et `retrieval_url` |
-| **400** | Requête invalide | Vérifier le payload JSON |
-| **401** | Non autorisé | Vérifier la clé API |
-| **404** | Non trouvé | Rapport expiré ou ID incorrect |
-| **409** | Conflit | `technical_id` déjà utilisé |
-| **500** | Erreur serveur | Retry après délai |
-
-### 7.2 Messages d'Erreur
-
-```json
-// 400 - Champ manquant
-{"success": false, "error": "Missing required field: technical_id"}
-
-// 400 - Format invalide
-{"success": false, "error": "Invalid technical_id format"}
-
-// 401 - Authentification
-{"success": false, "error": "Invalid or missing API key"}
-
-// 404 - Non trouvé
-{"success": false, "error": "Report not found or expired"}
-
-// 409 - Doublon
-{"success": false, "error": "Report with this technical_id already exists"}
-
-// 500 - Erreur interne
-{"success": false, "error": "Database error: ..."}
+```lua
+-- Hook déclenché quand une étude est stable dans Orthanc
+function OnStableStudy(studyId, tags, metadata)
+    local study = ParseJson(RestApiGet('/studies/' .. studyId))
+    local mainDicomTags = study['MainDicomTags']
+    
+    local accessionNumber = mainDicomTags['AccessionNumber'] or ''
+    local patientId = mainDicomTags['PatientID'] or ''
+    local studyDescription = mainDicomTags['StudyDescription'] or ''
+    local modality = mainDicomTags['ModalitiesInStudy'] or ''
+    local studyInstanceUID = mainDicomTags['StudyInstanceUID'] or ''
+    
+    -- 1. POST /pending-report
+    local report = {
+        technical_id = 'ORTHANC_' .. accessionNumber,
+        patient_id = patientId,
+        accession_number = accessionNumber,
+        study_instance_uid = studyInstanceUID,
+        structured = {
+            title = modality .. ' - ' .. studyDescription,
+            indication = studyDescription,
+            technique = '',
+            results = '',
+            conclusion = ''
+        },
+        source_type = 'orthanc',
+        modality = modality
+    }
+    
+    local headers = {
+        ['Content-Type'] = 'application/json',
+        ['X-API-Key'] = 'VOTRE_CLE_API'
+    }
+    
+    HttpPost('http://127.0.0.1:8741/pending-report', DumpJson(report), headers)
+    
+    -- 2. POST /open-report
+    HttpPost('http://127.0.0.1:8741/open-report?accession_number=' .. accessionNumber, '', headers)
+    
+    print('AIRADCR: rapport envoyé pour ' .. accessionNumber)
+end
 ```
 
-### 7.3 Stratégie de Retry
+---
+
+## 8. Gestion des Erreurs
+
+### Codes HTTP
+
+| Code | Signification | Action recommandée |
+|------|---------------|-------------------|
+| `200` | Succès | — |
+| `400` | Paramètres invalides | Vérifier le payload |
+| `401` | Clé API invalide | Vérifier `X-API-Key` |
+| `404` | Rapport non trouvé | Vérifier le `tid` / identifiants |
+| `429` | Rate limit atteint | Attendre 1 seconde et réessayer |
+| `500` | Erreur serveur interne | Réessayer après délai |
+| `503` | Application pas prête | Réessayer après `Retry-After` (2s) |
+
+### Retry recommandé
 
 ```python
 import time
-from typing import Callable
 
-def with_retry(
-    func: Callable,
-    max_retries: int = 3,
-    base_delay: float = 1.0
-):
-    """Exécute une fonction avec retry exponentiel."""
+def post_with_retry(url, data, headers, max_retries=3):
     for attempt in range(max_retries):
         try:
-            return func()
-        except Exception as e:
-            if attempt == max_retries - 1:
-                raise
-            delay = base_delay * (2 ** attempt)
-            print(f"Retry {attempt + 1}/{max_retries} dans {delay}s...")
-            time.sleep(delay)
+            r = requests.post(url, json=data, headers=headers, timeout=10)
+            if r.status_code == 503:
+                retry_after = int(r.headers.get('Retry-After', 2))
+                time.sleep(retry_after)
+                continue
+            if r.status_code == 429:
+                time.sleep(1)
+                continue
+            return r
+        except requests.exceptions.ConnectionError:
+            time.sleep(2 ** attempt)  # Backoff exponentiel
+    return None
 ```
 
 ---
 
-## 8. Bonnes Pratiques
+## 9. Bonnes Pratiques
 
-### 8.1 Avant Envoi
+### Pour TÉO Hub
 
-- [ ] **Toujours** vérifier `/health` avant `POST`
-- [ ] Générer des `technical_id` **uniques et prévisibles** (ex: `TEO_{accession}`)
-- [ ] Définir `source_type: "teo_hub"` pour traçabilité
-- [ ] Inclure les `ai_modules` utilisés
+1. **Toujours vérifier `/health`** avant d'envoyer un rapport
+2. **Utiliser `source_type: "teo_hub"`** pour traçabilité
+3. **Renseigner `ai_modules`** pour que le radiologue sache quelles IA ont analysé
+4. **Renseigner `accession_number`** systématiquement pour permettre la recherche RIS
+5. **Ne pas réutiliser un `technical_id`** — il doit être unique par examen
 
-### 8.2 Format des Identifiants
+### Pour le RIS
 
-```
-technical_id : TEO_[ACCESSION_NUMBER]
-              TEO_ACC2024001
-              
-patient_id   : Format RIS local
-              PAT123456
+1. **Utiliser `POST /open-report`** avec `accession_number` — pas besoin de connaître le `technical_id`
+2. **Inclure `X-API-Key`** dans les appels POST (obligatoire depuis v2.0)
+3. **Gérer le `503`** (application pas encore prête) avec retry
+4. **Un seul appel suffit** : `/open-report` fait recherche + navigation + focus
 
-exam_uid     : UID DICOM standard
-              1.2.840.113619.2.XXX.YYY
-```
+### Sécurité
 
-### 8.3 Gestion du Fallback
-
-```python
-def send_report_with_fallback(report_data: dict) -> str:
-    """Envoie au desktop, fallback vers cloud si indisponible."""
-    
-    # Essayer le desktop local d'abord
-    if airadcr_client.is_desktop_available():
-        result = airadcr_client.store_report(**report_data)
-        if result.success:
-            return f"https://airadcr.com/app?tid={result.technical_id}"
-    
-    # Fallback: cloud (sans identifiants patients)
-    cloud_data = {
-        k: v for k, v in report_data.items()
-        if k not in ['patient_id', 'exam_uid', 'accession_number', 'study_instance_uid']
-    }
-    return send_to_cloud(cloud_data)
-```
+1. **Ne jamais stocker la clé API en clair** dans le code source du RIS — utiliser un fichier de config protégé
+2. **Tourner les clés** régulièrement : créer une nouvelle clé → mettre à jour le RIS → révoquer l'ancienne
+3. **Activer `require_auth_for_reads`** si le poste est partagé
 
 ---
 
-## 9. Tests et Validation
+## 10. Tests et Validation
 
-### 9.1 Tests cURL
+### Script de test complet
 
 ```bash
-# 1. Vérifier le health
-curl -s http://localhost:8741/health | jq
+#!/bin/bash
+API_KEY="VOTRE_CLE_API"
+BASE="http://127.0.0.1:8741"
 
-# 2. Stocker un rapport
-curl -X POST http://localhost:8741/pending-report \
+echo "=== 1. Health Check ==="
+curl -s "$BASE/health" | python3 -m json.tool
+
+echo -e "\n=== 2. Store Report ==="
+curl -s -X POST "$BASE/pending-report" \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: airadcr_prod_7f3k9m2x5p8w1q4v6n0z" \
+  -H "X-API-Key: $API_KEY" \
   -d '{
-    "technical_id": "TEO_TEST_001",
-    "patient_id": "PAT123456",
-    "exam_uid": "1.2.3.4.5",
+    "technical_id": "TEST_001",
+    "patient_id": "PAT123",
     "accession_number": "ACC001",
-    "structured": {
-      "title": "Test IRM",
-      "indication": "Test indication",
-      "results": "Analyse IA: Test réussi"
-    },
-    "source_type": "teo_hub",
-    "ai_modules": ["test_module"]
-  }' | jq
+    "structured": {"title": "Radio Thorax", "indication": "Toux", "technique": "", "results": "", "conclusion": ""},
+    "modality": "CR"
+  }' | python3 -m json.tool
 
-# 3. Récupérer le rapport
-curl -s "http://localhost:8741/pending-report?tid=TEO_TEST_001" | jq
+echo -e "\n=== 3. Find Report ==="
+curl -s "$BASE/find-report?accession_number=ACC001" | python3 -m json.tool
 
-# 4. Supprimer le rapport
-curl -X DELETE "http://localhost:8741/pending-report?tid=TEO_TEST_001" | jq
+echo -e "\n=== 4. Open Report ==="
+curl -s -X POST "$BASE/open-report?accession_number=ACC001" \
+  -H "X-API-Key: $API_KEY" | python3 -m json.tool
+
+echo -e "\n=== 5. Get Report ==="
+curl -s "$BASE/pending-report?tid=TEST_001" | python3 -m json.tool
+
+echo -e "\n=== 6. Delete Report ==="
+curl -s -X DELETE "$BASE/pending-report?tid=TEST_001" \
+  -H "X-API-Key: $API_KEY" | python3 -m json.tool
+
+echo -e "\n=== Done ==="
 ```
-
-### 9.2 Script PowerShell de Test
-
-```powershell
-# test-airadcr-api.ps1
-
-$BaseUrl = "http://localhost:8741"
-$ApiKey = "airadcr_prod_7f3k9m2x5p8w1q4v6n0z"
-$Headers = @{
-    "Content-Type" = "application/json"
-    "X-API-Key" = $ApiKey
-}
-
-Write-Host "=== Test API AIRADCR Desktop ===" -ForegroundColor Cyan
-
-# Test 1: Health Check
-Write-Host "`n[1/4] Health Check..." -ForegroundColor Yellow
-try {
-    $health = Invoke-RestMethod -Uri "$BaseUrl/health" -Method GET
-    Write-Host "✅ Desktop disponible - Version: $($health.version)" -ForegroundColor Green
-} catch {
-    Write-Host "❌ Desktop non disponible" -ForegroundColor Red
-    exit 1
-}
-
-# Test 2: Store Report
-Write-Host "`n[2/4] Store Report..." -ForegroundColor Yellow
-$testId = "TEO_TEST_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
-$body = @{
-    technical_id = $testId
-    patient_id = "PAT_TEST_123"
-    exam_uid = "1.2.3.4.5.6.7.8.9"
-    accession_number = "ACC_TEST_001"
-    structured = @{
-        title = "IRM Test"
-        indication = "Test automatisé"
-        results = "Analyse IA: Test en cours"
-    }
-    source_type = "teo_hub"
-    ai_modules = @("test_module")
-} | ConvertTo-Json -Depth 3
-
-try {
-    $result = Invoke-RestMethod -Uri "$BaseUrl/pending-report" -Method POST -Headers $Headers -Body $body
-    Write-Host "✅ Rapport stocké: $($result.retrieval_url)" -ForegroundColor Green
-} catch {
-    Write-Host "❌ Erreur: $($_.Exception.Message)" -ForegroundColor Red
-}
-
-# Test 3: Get Report
-Write-Host "`n[3/4] Get Report..." -ForegroundColor Yellow
-try {
-    $report = Invoke-RestMethod -Uri "$BaseUrl/pending-report?tid=$testId" -Method GET
-    Write-Host "✅ Rapport récupéré - Patient: $($report.data.patient_id)" -ForegroundColor Green
-} catch {
-    Write-Host "❌ Erreur: $($_.Exception.Message)" -ForegroundColor Red
-}
-
-# Test 4: Delete Report
-Write-Host "`n[4/4] Delete Report..." -ForegroundColor Yellow
-try {
-    $delete = Invoke-RestMethod -Uri "$BaseUrl/pending-report?tid=$testId" -Method DELETE
-    Write-Host "✅ Rapport supprimé" -ForegroundColor Green
-} catch {
-    Write-Host "❌ Erreur: $($_.Exception.Message)" -ForegroundColor Red
-}
-
-Write-Host "`n=== Tests terminés ===" -ForegroundColor Cyan
-```
-
-### 9.3 Checklist Pré-Production
-
-- [ ] Clé API de production configurée
-- [ ] Desktop AIRADCR installé et en cours d'exécution
-- [ ] Port 8741 accessible depuis TÉO Hub
-- [ ] Tests cURL validés
-- [ ] Gestion des erreurs implémentée
-- [ ] Logs de debug activés pour la phase de test
-- [ ] Stratégie de fallback définie
 
 ---
 
-## 10. Annexes
+## 11. Configuration
 
-### 10.1 Schéma JSON Complet
+Fichier : `%APPDATA%/airadcr-desktop/config.toml`
 
-```json
-{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "PendingReportRequest",
-  "type": "object",
-  "required": ["technical_id", "structured"],
-  "properties": {
-    "technical_id": {
-      "type": "string",
-      "maxLength": 100,
-      "pattern": "^[A-Za-z0-9_-]+$",
-      "description": "Identifiant unique du rapport"
-    },
-    "patient_id": {
-      "type": "string",
-      "maxLength": 50,
-      "description": "ID patient local (accepté en mode local)"
-    },
-    "exam_uid": {
-      "type": "string",
-      "maxLength": 100,
-      "description": "UID DICOM de l'examen"
-    },
-    "accession_number": {
-      "type": "string",
-      "maxLength": 50,
-      "description": "Numéro d'accession DICOM"
-    },
-    "study_instance_uid": {
-      "type": "string",
-      "maxLength": 100,
-      "description": "Study Instance UID DICOM"
-    },
-    "structured": {
-      "type": "object",
-      "required": ["title"],
-      "properties": {
-        "title": { "type": "string" },
-        "indication": { "type": "string" },
-        "technique": { "type": "string" },
-        "results": { "type": "string" },
-        "conclusion": { "type": "string" }
-      }
-    },
-    "source_type": {
-      "type": "string",
-      "default": "teo_hub",
-      "enum": ["teo_hub", "ris_local", "pacs_local", "external"]
-    },
-    "ai_modules": {
-      "type": "array",
-      "items": { "type": "string" }
-    },
-    "modality": {
-      "type": "string",
-      "enum": ["MR", "CT", "US", "XA", "CR", "DX", "MG", "NM", "PT", "RF", "OT"]
-    },
-    "metadata": {
-      "type": "object",
-      "additionalProperties": true
-    },
-    "expires_in_hours": {
-      "type": "integer",
-      "minimum": 1,
-      "maximum": 168,
-      "default": 24
-    }
-  }
-}
+```toml
+http_port = 8741
+log_level = "info"
+log_retention_days = 30
+report_retention_hours = 24
+iframe_url = "https://airadcr.com/app?tori=true"
+backup_enabled = true
+backup_retention_days = 7
+cleanup_interval_secs = 3600
+
+# require_auth_for_reads = true  # Décommenter pour exiger X-API-Key sur GET
+
+[teo_hub]
+enabled = false
+host = "192.168.1.253"
+port = 54489
+health_endpoint = "th_health"
+get_report_endpoint = "th_get_ai_report"
+post_report_endpoint = "th_post_approved_report"
+timeout_secs = 30
+retry_count = 3
+retry_delay_ms = 1000
+tls_enabled = false
+# api_token est stocké dans le keychain OS, pas dans ce fichier
 ```
 
-### 10.2 Modalités DICOM Supportées
+### Variables d'environnement
 
-| Code | Description |
-|------|-------------|
-| MR | Imagerie par Résonance Magnétique |
-| CT | Tomodensitométrie |
-| US | Échographie |
-| XA | Angiographie |
-| CR | Radiographie Numérisée |
-| DX | Radiographie Numérique |
-| MG | Mammographie |
-| NM | Médecine Nucléaire |
-| PT | TEP (PET Scan) |
-| RF | Radioscopie |
-| OT | Autre |
-
-### 10.3 FAQ Technique
-
-**Q: Que se passe-t-il si le desktop n'est pas disponible ?**
-> R: Implémentez un fallback vers le cloud Supabase, mais sans les identifiants patients.
-
-**Q: Les rapports sont-ils chiffrés ?**
-> R: Oui, la base SQLite utilise SQLCipher pour le chiffrement au repos.
-
-**Q: Puis-je envoyer plusieurs rapports en parallèle ?**
-> R: Oui, chaque requête est indépendante. Utilisez des `technical_id` uniques.
-
-**Q: Comment gérer les doublons ?**
-> R: L'API retourne 409 si un `technical_id` existe déjà. Utilisez `DELETE` puis `POST` pour remplacer.
-
-**Q: Quelle est la taille maximale d'un rapport ?**
-> R: Pas de limite stricte, mais recommandé < 1 MB pour les performances.
+| Variable | Usage | Obligatoire |
+|----------|-------|-------------|
+| `AIRADCR_ADMIN_KEY` | Clé d'administration (min 32 chars) | ✅ En production |
+| `AIRADCR_PROD_API_KEY` | Clé API pré-configurée au démarrage | ❌ Optionnel |
+| `AIRADCR_ENV` | `production` pour mode prod | ❌ Optionnel |
 
 ---
 
-## 📞 Support
+## 12. Annexes
 
-- **Email** : support@airadcr.com
-- **Documentation** : https://docs.airadcr.com
-- **GitHub Issues** : https://github.com/airadcr/desktop/issues
+### A. Format `technical_id`
+
+- **Longueur** : 1 à 64 caractères
+- **Caractères autorisés** : `a-z`, `A-Z`, `0-9`, `-`, `_`
+- **Exemples valides** : `TEO_ACC2024001_MR`, `EXAM-2024-001`, `patient_12345`
+- **Exemples rejetés** : URLs, espaces, caractères spéciaux
+
+### B. Rate limiting
+
+60 requêtes/minute par IP avec burst autorisé de 60.
+
+### C. Ports alternatifs
+
+Si le port `8741` est occupé, le serveur tente automatiquement `8742` puis `8743`.
+
+### D. Deep Links
+
+```
+airadcr://open?tid=TEO_ACC2024001_MR
+airadcr://open/TEO_ACC2024001_MR
+airadcr://TEO_ACC2024001_MR
+```
 
 ---
 
-*Document généré le 16 décembre 2024 - Version 1.0.0*
+*Document mis à jour le 2026-02-23 — Version 2.0.0*

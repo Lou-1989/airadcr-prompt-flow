@@ -1065,9 +1065,15 @@ fn speechmike_set_led(led_state: String, state: State<'_, std::sync::Arc<speechm
         _ => return Err(format!("État LED inconnu: {}", led_state)),
     };
     
+    // Phase 1 fix: Use stored device path instead of re-opening by VID/PID
+    let device_path = state.device_path.lock()
+        .map_err(|e| format!("Lock error: {}", e))?
+        .clone()
+        .ok_or_else(|| "No device path stored".to_string())?;
+    
     let api = hidapi::HidApi::new().map_err(|e| format!("HidApi error: {}", e))?;
-    let device = api.open(status.vendor_id, status.product_id)
-        .map_err(|e| format!("Cannot open device: {}", e))?;
+    let device = api.open_path(&std::ffi::CString::new(device_path).unwrap_or_default())
+        .map_err(|e| format!("Cannot open device by path: {}", e))?;
     speechmike::set_led_state(&device, simple_state)?;
     
     info!("[SpeechMike] LED → {}", led_state);

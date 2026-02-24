@@ -29,13 +29,19 @@ export const useSecureMessaging = () => {
   const injectionQueueRef = useRef<Array<{ id: string; text: string; type: string; html?: string }>>([]);
   const isProcessingRef = useRef<boolean>(false);
 
-  // 🎤 FONCTION: Notifier Tauri de l'état d'enregistrement (désormais simplifié - pas de synchro d'état)
+  // 🎤 FONCTION: Notifier Tauri de l'état d'enregistrement + contrôle LED SpeechMike
   const notifyRecordingState = useCallback((state: 'started' | 'paused' | 'finished') => {
-    const messageType = `airadcr:recording_${state}`;
-    logger.debug(`[useSecureMessaging] 🎤 État enregistrement: ${messageType}`);
+    logger.debug(`[useSecureMessaging] 🎤 État enregistrement: ${state}`);
     
-    // Note: Plus besoin d'appeler Tauri puisque DictationState est supprimé
-    // La logique de dictation est 100% gérée par le frontend React
+    // Contrôle LED natif du SpeechMike
+    const ledMap: Record<string, string> = {
+      started: 'recording',  // Rouge fixe
+      paused: 'pause',       // Rouge clignotant
+      finished: 'idle',      // Vert fixe
+    };
+    invoke('speechmike_set_led', { ledState: ledMap[state] }).catch(() => {
+      // Silencieux si pas de SpeechMike connecté
+    });
   }, []);
 
   // Envoi de message sécurisé vers l'iframe (déclaré AVANT handleSecureMessage)

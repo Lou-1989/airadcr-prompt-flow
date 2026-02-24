@@ -1050,6 +1050,30 @@ fn speechmike_list_devices() -> Result<Vec<serde_json::Value>, String> {
     Ok(devices)
 }
 
+#[tauri::command]
+fn speechmike_set_led(led_state: String, state: State<'_, std::sync::Arc<speechmike::SpeechMikeState>>) -> Result<(), String> {
+    let status = state.status.lock().map_err(|e| format!("Lock error: {}", e))?;
+    if !status.connected {
+        return Err("Aucun SpeechMike connecté".to_string());
+    }
+    
+    let simple_state = match led_state.as_str() {
+        "recording" => speechmike::devices::SimpleLedState::RecordOverwrite,         // Rouge fixe
+        "pause"     => speechmike::devices::SimpleLedState::RecordStandbyOverwrite,  // Rouge clignotant
+        "idle"      => speechmike::devices::SimpleLedState::RecordInsert,            // Vert fixe
+        "off"       => speechmike::devices::SimpleLedState::Off,
+        _ => return Err(format!("État LED inconnu: {}", led_state)),
+    };
+    
+    let api = hidapi::HidApi::new().map_err(|e| format!("HidApi error: {}", e))?;
+    let device = api.open(status.vendor_id, status.product_id)
+        .map_err(|e| format!("Cannot open device: {}", e))?;
+    speechmike::set_led_state(&device, simple_state)?;
+    
+    info!("[SpeechMike] LED → {}", led_state);
+    Ok(())
+}
+
 // ============================================================================
 // COMMANDES POUR LE DEBUG PANEL - ONGLET BASE DE DONNÉES
 // ============================================================================
@@ -1692,7 +1716,8 @@ fn main() {
             teo_get_connection_status,
             // 🎤 Commandes SpeechMike natif (HID USB)
             speechmike_get_status,
-            speechmike_list_devices
+            speechmike_list_devices,
+            speechmike_set_led
         ])
         .setup(|app| {
             debug!("[DEBUG] .setup() appelé - enregistrement raccourcis SpeechMike");

@@ -324,7 +324,7 @@ pub fn start_speechmike_thread(
 }
 
 /// Set the LED state on the device
-fn set_led_state(device: &hidapi::HidDevice, state: SimpleLedState) -> Result<(), String> {
+pub fn set_led_state(device: &hidapi::HidDevice, state: SimpleLedState) -> Result<(), String> {
     let led_data = build_led_report(state);
     let mut report = vec![0u8; 10]; // Report ID 0 + command + 8 data bytes
     report[0] = 0; // Report ID

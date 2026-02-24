@@ -1056,6 +1056,7 @@ fn speechmike_set_led(led_state: String, state: State<'_, std::sync::Arc<speechm
     if !status.connected {
         return Err("Aucun SpeechMike connecté".to_string());
     }
+    drop(status); // Release lock before acquiring another
     
     let simple_state = match led_state.as_str() {
         "recording" => speechmike::devices::SimpleLedState::RecordOverwrite,         // Rouge fixe
@@ -1065,19 +1066,18 @@ fn speechmike_set_led(led_state: String, state: State<'_, std::sync::Arc<speechm
         _ => return Err(format!("État LED inconnu: {}", led_state)),
     };
     
-    // Phase 1 fix: Use stored device path instead of re-opening by VID/PID
-    let device_path = state.device_path.lock()
-        .map_err(|e| format!("Lock error: {}", e))?
-        .clone()
-        .ok_or_else(|| "No device path stored".to_string())?;
+    // Send LED command via channel to polling thread (no double-open HID)
+    let led_tx = state.led_tx.lock()
+        .map_err(|e| format!("Lock error: {}", e))?;
     
-    let api = hidapi::HidApi::new().map_err(|e| format!("HidApi error: {}", e))?;
-    let device = api.open_path(&std::ffi::CString::new(device_path).unwrap_or_default())
-        .map_err(|e| format!("Cannot open device by path: {}", e))?;
-    speechmike::set_led_state(&device, simple_state)?;
-    
-    info!("[SpeechMike] LED → {}", led_state);
-    Ok(())
+    match led_tx.as_ref() {
+        Some(tx) => {
+            tx.send(simple_state).map_err(|e| format!("LED channel send error: {}", e))?;
+            info!("[SpeechMike] LED → {} (via channel)", led_state);
+            Ok(())
+        }
+        None => Err("LED channel not available (device not connected)".to_string()),
+    }
 }
 
 // ============================================================================

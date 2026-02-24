@@ -49,12 +49,12 @@ pub enum SpeechMikeAction {
 }
 
 /// Shared state for the SpeechMike module
-/// Phase 1 fix: includes shared HidDevice handle for LED control without re-opening
+/// Phase 2 fix: LED commands sent via channel to polling thread (no double-open)
 pub struct SpeechMikeState {
     pub status: Arc<Mutex<SpeechMikeStatus>>,
     pub running: Arc<AtomicBool>,
-    /// Shared device path for LED commands (avoids double-open HID conflict)
-    pub device_path: Arc<Mutex<Option<String>>>,
+    /// Channel to send LED commands to the polling thread (avoids double-open HID)
+    pub led_tx: Arc<Mutex<Option<std::sync::mpsc::Sender<SimpleLedState>>>>,
 }
 
 impl Default for SpeechMikeState {
@@ -62,7 +62,7 @@ impl Default for SpeechMikeState {
         Self {
             status: Arc::new(Mutex::new(SpeechMikeStatus::default())),
             running: Arc::new(AtomicBool::new(false)),
-            device_path: Arc::new(Mutex::new(None)),
+            led_tx: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -276,7 +276,7 @@ pub fn start_speechmike_thread(
 ) {
     let running = state.running.clone();
     let status = state.status.clone();
-    let device_path_store = state.device_path.clone();
+    let led_tx_store = state.led_tx.clone();
     
     // Don't start if already running
     if running.load(Ordering::SeqCst) {
@@ -349,9 +349,9 @@ pub fn start_speechmike_thread(
                             info!("[SpeechMike] Périphérique déconnecté");
                         }
                     }
-                    // Clear stored device path
-                    if let Ok(mut dp) = device_path_store.lock() {
-                        *dp = None;
+                    // Clear LED channel
+                    if let Ok(mut lt) = led_tx_store.lock() {
+                        *lt = None;
                     }
                     debug!("[SpeechMike] Aucun périphérique trouvé, nouvelle tentative dans 3s");
                     thread::sleep(Duration::from_secs(3));
@@ -379,9 +379,10 @@ pub fn start_speechmike_thread(
                 }
             };
             
-            // Phase 1: Store device path for LED commands
-            if let Ok(mut dp) = device_path_store.lock() {
-                *dp = Some(path.clone());
+            // Create LED command channel for this device session
+            let (led_sender, led_receiver) = std::sync::mpsc::channel::<SimpleLedState>();
+            if let Ok(mut lt) = led_tx_store.lock() {
+                *lt = Some(led_sender);
             }
             
             // Phase 2: Fetch device code to identify slider models
@@ -443,8 +444,24 @@ pub fn start_speechmike_thread(
                 }
                 
                 match device.read_timeout(&mut buf, 10) {
-                    Ok(0) => continue,
+                    Ok(0) => {
+                        // No button data — check for pending LED commands
+                        while let Ok(led_state) = led_receiver.try_recv() {
+                            debug!("[SpeechMike] 💡 LED command received: {:?}", led_state);
+                            if let Err(e) = set_led_state(&device, led_state) {
+                                warn!("[SpeechMike] LED write failed: {}", e);
+                            }
+                        }
+                        continue;
+                    }
                     Ok(n) => {
+                        // Also process LED commands when we have button data
+                        while let Ok(led_state) = led_receiver.try_recv() {
+                            debug!("[SpeechMike] 💡 LED command received: {:?}", led_state);
+                            if let Err(e) = set_led_state(&device, led_state) {
+                                warn!("[SpeechMike] LED write failed: {}", e);
+                            }
+                        }
                         let bitmask = decode_input_report(&buf[..n], is_pm4, has_slider);
                         
                         if bitmask != last_bitmask {
@@ -487,8 +504,8 @@ pub fn start_speechmike_thread(
                             s.connected = false;
                             s.device_name = "Déconnecté".to_string();
                         }
-                        if let Ok(mut dp) = device_path_store.lock() {
-                            *dp = None;
+                        if let Ok(mut lt) = led_tx_store.lock() {
+                            *lt = None;
                         }
                         let _ = app_handle.emit_all("airadcr:speechmike_disconnected", ());
                         

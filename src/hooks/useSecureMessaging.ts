@@ -255,6 +255,22 @@ export const useSecureMessaging = () => {
         logger.debug('[Sécurisé] Demande de statut reçue');
         sendSecureMessage('airadcr:lock_status', { locked: isLocked });
         break;
+      
+      // 🎤 LED SpeechMike: feedback visuel selon l'état d'enregistrement
+      case 'airadcr:recording_started':
+        logger.debug('[Sécurisé] 🔴 Enregistrement démarré → LED rouge fixe');
+        notifyRecordingState('started');
+        break;
+        
+      case 'airadcr:recording_paused':
+        logger.debug('[Sécurisé] ⏸️ Enregistrement en pause → LED rouge clignotant');
+        notifyRecordingState('paused');
+        break;
+        
+      case 'airadcr:recording_finished':
+        logger.debug('[Sécurisé] ✅ Enregistrement terminé → LED vert fixe');
+        notifyRecordingState('finished');
+        break;
         
       default:
         logger.warn('[Sécurisé] Type de message non géré:', type);

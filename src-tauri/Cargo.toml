@@ -55,6 +55,9 @@ toml = "0.8"
 # 📁 Répertoires système
 dirs = "5"
 
+# 🎤 Détection native SpeechMike (USB HID direct, sans SpeechControl)
+hidapi = "2.6"
+
 # sysinfo = "0.29"  # 🔒 DÉSACTIVÉ TEMPORAIREMENT
 
 [target.'cfg(windows)'.dependencies]

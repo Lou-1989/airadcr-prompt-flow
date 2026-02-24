@@ -33,6 +33,7 @@ mod http_server;
 mod database;
 mod teo_client;
 mod config;
+mod speechmike;
 
 #[cfg(target_os = "windows")]
 use winapi::um::winuser::{GetSystemMetrics, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN};
@@ -1016,6 +1017,40 @@ async fn open_log_folder() -> Result<(), String> {
 }
 
 // ============================================================================
+// 🎤 COMMANDES SPEECHMIKE NATIF (HID USB DIRECT)
+// ============================================================================
+
+#[tauri::command]
+fn speechmike_get_status(state: State<'_, std::sync::Arc<speechmike::SpeechMikeState>>) -> Result<speechmike::SpeechMikeStatus, String> {
+    let status = state.status.lock().map_err(|e| format!("Lock error: {}", e))?;
+    Ok(status.clone())
+}
+
+#[tauri::command]
+fn speechmike_list_devices() -> Result<Vec<serde_json::Value>, String> {
+    let api = hidapi::HidApi::new().map_err(|e| format!("HidApi error: {}", e))?;
+    let mut devices = Vec::new();
+    
+    for device_info in api.device_list() {
+        let vid = device_info.vendor_id();
+        let pid = device_info.product_id();
+        
+        if let Some(filter) = speechmike::devices::is_supported_device(vid, pid) {
+            devices.push(serde_json::json!({
+                "vendor_id": format!("0x{:04x}", vid),
+                "product_id": format!("0x{:04x}", pid),
+                "description": filter.description,
+                "manufacturer": device_info.manufacturer_string().unwrap_or("Unknown"),
+                "product": device_info.product_string().unwrap_or("Unknown"),
+                "serial": device_info.serial_number().unwrap_or(""),
+            }));
+        }
+    }
+    
+    Ok(devices)
+}
+
+// ============================================================================
 // COMMANDES POUR LE DEBUG PANEL - ONGLET BASE DE DONNÉES
 // ============================================================================
 
@@ -1654,11 +1689,14 @@ fn main() {
             teo_fetch_report,
             teo_submit_approved,
             teo_get_config,
-            teo_get_connection_status
+            teo_get_connection_status,
+            // 🎤 Commandes SpeechMike natif (HID USB)
+            speechmike_get_status,
+            speechmike_list_devices
         ])
         .setup(|app| {
             debug!("[DEBUG] .setup() appelé - enregistrement raccourcis SpeechMike");
-            register_global_shortcuts(app.handle());
+            let tx = register_global_shortcuts(app.handle());
             
             // 🌐 Stocker l'AppHandle pour le serveur HTTP
             let _ = APP_HANDLE.set(app.handle());
@@ -1666,6 +1704,12 @@ fn main() {
             
             // 🔗 Traiter les deep links au premier lancement
             process_initial_deep_link(app);
+            
+            // 🎤 Démarrer le thread de détection SpeechMike natif (HID USB)
+            let sm_state = std::sync::Arc::new(speechmike::SpeechMikeState::default());
+            app.manage(sm_state.clone());
+            speechmike::start_speechmike_thread(tx, sm_state, app.handle());
+            info!("[SpeechMike] Thread de détection HID natif lancé");
             
             // 🎯 Assertion Always-on-top après stabilisation WebView2
             if let Some(window) = app.get_window("main") {
@@ -1692,7 +1736,8 @@ fn main() {
 // Corrige le problème fondamental : les callbacks GlobalShortcutManager s'exécutent dans un thread
 // secondaire où window.eval() (COM WebView2) et SetForegroundWindow() (UIPI) échouent silencieusement.
 // Solution : tx.send() non-bloquant → tokio task → window.emit() depuis le bon runtime.
-fn register_global_shortcuts(app_handle: tauri::AppHandle) {
+// 🆕 Retourne le tx sender pour que le thread SpeechMike puisse utiliser le même canal
+fn register_global_shortcuts(app_handle: tauri::AppHandle) -> tokio::sync::mpsc::UnboundedSender<&'static str> {
     // Channel tokio : bridge thread secondaire → runtime Tauri async
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<&'static str>();
 
@@ -1826,4 +1871,6 @@ fn register_global_shortcuts(app_handle: tauri::AppHandle) {
         .unwrap_or_else(|e| warn!("Erreur enregistrement F9: {}", e));
 
     info!("[Shortcuts] Raccourcis globaux enregistrés (channel tokio): Ctrl+Alt+D/L/I, F9, Ctrl+Shift+D/P/T/S, Ctrl+Space, Ctrl+Shift+Space");
+    
+    tx // 🆕 Retourner le sender pour le thread SpeechMike
 }

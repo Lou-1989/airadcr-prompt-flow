@@ -58,6 +58,11 @@ export const SECURITY_CONFIG = {
     'airadcr:speechmike_pause', // Met en pause l'enregistrement
     'airadcr:speechmike_finish', // Termine l'enregistrement et déclenche transcription
     
+    // SpeechMike native HID events (Desktop → Frontend)
+    'airadcr:speechmike_connected', // Périphérique HID détecté
+    'airadcr:speechmike_disconnected', // Périphérique HID déconnecté
+    'airadcr:speechmike_status', // Statut du périphérique
+    
     // Recording notifications (Web → Desktop)
     'airadcr:recording_started', // Notification: enregistrement démarré
     'airadcr:recording_paused', // Notification: enregistrement en pause

@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
 use std::thread;
 use std::time::Duration;
 use serde::Serialize;
+use tauri::Manager;
 
 /// Status of the SpeechMike connection
 #[derive(Debug, Clone, Serialize)]

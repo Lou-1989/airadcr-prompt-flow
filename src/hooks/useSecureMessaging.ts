@@ -267,32 +267,42 @@ export const useSecureMessaging = () => {
     };
   }, [handleSecureMessage]);
   
-  // 🎤 ÉCOUTE DES ÉVÉNEMENTS TAURI (raccourcis clavier globaux)
+  // 🎤 ÉCOUTE DES ÉVÉNEMENTS TAURI (raccourcis clavier globaux + SpeechMike natif)
   useEffect(() => {
     const listeners: UnlistenFn[] = [];
     
-    // 🎤 DICTATION: Ctrl+Shift+D (Start/Stop dictée)
+    // 🎤 DICTATION: Ctrl+Shift+D (Start/Stop dictée) — aussi déclenché par SpeechMike natif (bouton Record)
     listen('airadcr:dictation_startstop', () => {
-      logger.debug('[Tauri Event] 🔴 Ctrl+Shift+D → Start/Stop dictée');
+      logger.debug('[Tauri Event] 🔴 Start/Stop dictée (shortcut ou SpeechMike natif)');
       sendSecureMessage('airadcr:toggle_recording');
     }).then(unlisten => listeners.push(unlisten));
     
-    // 🎤 DICTATION: Ctrl+Shift+P (Pause/Resume dictée)
+    // 🎤 DICTATION: Ctrl+Shift+P (Pause/Resume dictée) — aussi déclenché par SpeechMike natif (bouton Stop/Play)
     listen('airadcr:dictation_pause', () => {
-      logger.debug('[Tauri Event] ⏯️ Ctrl+Shift+P → Pause/Resume dictée');
+      logger.debug('[Tauri Event] ⏯️ Pause/Resume dictée (shortcut ou SpeechMike natif)');
       sendSecureMessage('airadcr:toggle_pause');
     }).then(unlisten => listeners.push(unlisten));
     
-    // 💉 INJECTION: Ctrl+Shift+T (Inject texte brut)
+    // 💉 INJECTION: Ctrl+Shift+T (Inject texte brut) — aussi déclenché par SpeechMike natif (bouton Instruction)
     listen('airadcr:inject_raw', () => {
-      logger.debug('[Tauri Event] 💉 Ctrl+Shift+T → Inject texte brut');
+      logger.debug('[Tauri Event] 💉 Inject texte brut (shortcut ou SpeechMike natif)');
       sendSecureMessage('airadcr:request_injection', { type: 'brut' });
     }).then(unlisten => listeners.push(unlisten));
     
-    // 💉 INJECTION: Ctrl+Shift+S (Inject rapport structuré)
+    // 💉 INJECTION: Ctrl+Shift+S (Inject rapport structuré) — aussi déclenché par SpeechMike natif (bouton F1/EOL)
     listen('airadcr:inject_structured', () => {
-      logger.debug('[Tauri Event] 📋 Ctrl+Shift+S → Inject rapport structuré');
+      logger.debug('[Tauri Event] 📋 Inject rapport structuré (shortcut ou SpeechMike natif)');
       sendSecureMessage('airadcr:request_injection', { type: 'structuré' });
+    }).then(unlisten => listeners.push(unlisten));
+    
+    // 🎤 SPEECHMIKE NATIF: Périphérique connecté
+    listen('airadcr:speechmike_connected', (event) => {
+      logger.debug('[SpeechMike Natif] ✅ Périphérique connecté:', event.payload);
+    }).then(unlisten => listeners.push(unlisten));
+    
+    // 🎤 SPEECHMIKE NATIF: Périphérique déconnecté
+    listen('airadcr:speechmike_disconnected', () => {
+      logger.debug('[SpeechMike Natif] ❌ Périphérique déconnecté');
     }).then(unlisten => listeners.push(unlisten));
     
     return () => {

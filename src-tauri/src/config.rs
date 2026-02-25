@@ -115,6 +115,10 @@ pub struct AppConfig {
     #[serde(default = "default_http_port")]
     pub http_port: u16,
     
+    /// Adresse de binding du serveur HTTP (défaut: 0.0.0.0 pour accepter les connexions réseau)
+    #[serde(default = "default_http_bind_address")]
+    pub http_bind_address: String,
+    
     /// Niveau de log (error, warn, info, debug, trace)
     #[serde(default = "default_log_level")]
     pub log_level: String,
@@ -149,6 +153,7 @@ pub struct AppConfig {
 }
 
 fn default_http_port() -> u16 { 8741 }
+fn default_http_bind_address() -> String { "0.0.0.0".to_string() }
 fn default_log_level() -> String { "info".to_string() }
 fn default_log_retention_days() -> u32 { 30 }
 fn default_report_retention_hours() -> u32 { 24 }
@@ -161,6 +166,7 @@ impl Default for AppConfig {
     fn default() -> Self {
         Self {
             http_port: default_http_port(),
+            http_bind_address: default_http_bind_address(),
             log_level: default_log_level(),
             log_retention_days: default_log_retention_days(),
             report_retention_hours: default_report_retention_hours(),

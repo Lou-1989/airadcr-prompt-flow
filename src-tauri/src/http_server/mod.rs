@@ -22,14 +22,14 @@ pub struct HttpServerState {
 }
 
 /// Démarre le serveur HTTP sur le port spécifié avec retry sur ports alternatifs
-pub async fn start_server(port: u16, db: Arc<Database>) -> std::io::Result<()> {
+pub async fn start_server(port: u16, bind_address: &str, db: Arc<Database>) -> std::io::Result<()> {
     let state = web::Data::new(HttpServerState { db });
     
     // 🔄 Tentative de binding avec ports alternatifs
     let ports_to_try = [port, port + 1, port + 2]; // 8741, 8742, 8743
     
     for &try_port in &ports_to_try {
-        println!("🌐 [HTTP Server] Tentative de démarrage sur http://127.0.0.1:{}", try_port);
+        println!("🌐 [HTTP Server] Tentative de démarrage sur http://{}:{}", bind_address, try_port);
         
         // Configuration du rate limiting : 60 requêtes par minute par IP
         let governor_conf = GovernorConfigBuilder::default()
@@ -70,12 +70,12 @@ pub async fn start_server(port: u16, db: Arc<Database>) -> std::io::Result<()> {
         .client_request_timeout(std::time::Duration::from_secs(30))
         .keep_alive(std::time::Duration::from_secs(75));
         
-        match server.bind(("127.0.0.1", try_port)) {
+        match server.bind((bind_address, try_port)) {
             Ok(bound_server) => {
                 if try_port != port {
                     println!("⚠️  [HTTP Server] Port {} occupé, utilisation du port alternatif {}", port, try_port);
                 }
-                println!("✅ [HTTP Server] Démarré avec succès sur http://127.0.0.1:{}", try_port);
+                println!("✅ [HTTP Server] Démarré avec succès sur http://{}:{}", bind_address, try_port);
                 return bound_server.run().await;
             }
             Err(e) => {

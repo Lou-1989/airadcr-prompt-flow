@@ -29,6 +29,9 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         // RIS navigation endpoint (open report in iframe)
         .route("/open-report", web::post().to(handlers::open_report))
         
+        // Alias pour intégration RIS (même handler que /open-report)
+        .route("/refresh_gui", web::post().to(handlers::open_report))
+        
         // 🆕 TÉO Hub fetch endpoint (fetch from TÉO Hub without navigation)
         .route("/teo-hub/fetch", web::get().to(handlers::fetch_from_teo_hub))
         

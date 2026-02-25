@@ -29,6 +29,9 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         // RIS navigation endpoint (open report in iframe)
         .route("/open-report", web::post().to(handlers::open_report))
         
+        // 🆕 TÉO Hub fetch endpoint (fetch from TÉO Hub without navigation)
+        .route("/teo-hub/fetch", web::get().to(handlers::fetch_from_teo_hub))
+        
         // API Keys management (admin only)
         .route("/api-keys", web::post().to(handlers::create_api_key))
         .route("/api-keys", web::get().to(handlers::list_api_keys))

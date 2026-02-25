@@ -78,7 +78,7 @@
         "timestampUrl": "",
         "tsp": false,
         "webviewInstallMode": {
-          "type": "downloadBootstrapper"
+          "type": "skip"
         },
         "wix": {
           "language": "fr-FR",
@@ -88,7 +88,7 @@
           "featureGroupRefs": [],
           "featureRefs": [],
           "mergeRefs": [],
-          "skipWebviewInstall": false,
+          "skipWebviewInstall": true,
           "license": "LICENSE.rtf",
           "enableElevatedUpdateTask": true,
           "bannerPath": "assets/banner.bmp",

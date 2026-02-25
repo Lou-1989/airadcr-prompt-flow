@@ -147,6 +147,10 @@ pub struct AppConfig {
     #[serde(default = "default_cleanup_interval_secs")]
     pub cleanup_interval_secs: u64,
     
+    /// ⚠️ Désactiver l'authentification API (mode demo/test UNIQUEMENT)
+    #[serde(default)]
+    pub disable_api_auth: bool,
+    
     /// Configuration TÉO Hub Client
     #[serde(default)]
     pub teo_hub: TeoHubConfig,
@@ -174,6 +178,7 @@ impl Default for AppConfig {
             backup_enabled: default_backup_enabled(),
             backup_retention_days: default_backup_retention_days(),
             cleanup_interval_secs: default_cleanup_interval_secs(),
+            disable_api_auth: false,
             teo_hub: TeoHubConfig::default(),
         }
     }

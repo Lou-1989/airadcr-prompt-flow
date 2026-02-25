@@ -1,33 +1,36 @@
 
 
-## Ouvrir le serveur HTTP au reseau local
+## Corriger l'installation multi-sessions Windows
 
-### Pourquoi c'est necessaire
-Le serveur HTTP ecoute actuellement sur `127.0.0.1` (localhost uniquement). Orthanc/TEO tourne sur une machine differente du reseau, donc il ne peut pas atteindre le port 8741. Il faut changer le binding vers `0.0.0.0` pour accepter les connexions reseau.
+### Diagnostic
 
-### Impact
-- **Windows** : aucun changement de comportement visible, le serveur acceptera simplement aussi les connexions reseau
-- **Mac** : idem, transparent
-- **Securite** : le rate limiting et l'authentification par cle API restent en place
+Le probleme vient de la combinaison de deux reglages dans `src-tauri/tauri.conf.json` :
+
+1. **NSIS `installMode: "perMachine"`** (ligne 102) : installe l'application dans `C:\Program Files`, accessible a toutes les sessions Windows
+2. **`webviewInstallMode: "downloadBootstrapper"`** (ligne 80-82) : tente de telecharger et installer WebView2 pendant l'installation
+
+Sur la **session principale**, le bootstrapper WebView2 fonctionne car il a les permissions administrateur initiales. Sur une **session secondaire**, le bootstrapper echoue car :
+- WebView2 est deja installe au niveau systeme par la premiere session
+- Le bootstrapper detecte un conflit ou n'a pas les permissions pour reinstaller
+- L'echec du bootstrapper fait planter tout l'installeur MSI et NSIS
+
+### Lien avec TÉO Hub
+Si l'application ne s'installe pas sur la session secondaire, le serveur HTTP local (port 8741) ne demarre jamais. TÉO Hub/Orthanc envoie ses requetes dans le vide -- ce qui explique l'absence de connexion.
 
 ### Modifications
 
-**Fichier 1 : `src-tauri/src/config.rs`**
-- Ajouter un champ `http_bind_address` avec valeur par defaut `"0.0.0.0"`
-- Permet de reconfigurer via `config.toml` si besoin de restreindre plus tard
+**Fichier : `src-tauri/tauri.conf.json`**
 
-**Fichier 2 : `src-tauri/src/http_server/mod.rs`**
-- Modifier la signature de `start_server` pour accepter un parametre `bind_address`
-- Remplacer le `"127.0.0.1"` en dur par cette valeur dynamique
+1. Changer `webviewInstallMode` de `"downloadBootstrapper"` a `"skip"` (ligne 80-82)
+   - WebView2 est deja integre a Windows 10 (1803+) et Windows 11
+   - Plus besoin de le telecharger, ce qui elimine la source de l'echec
 
-**Fichier 3 : `src-tauri/src/main.rs`**
-- Passer `config.http_bind_address` lors de l'appel a `start_server`
+2. Egalement mettre `skipWebviewInstall: true` dans la section wix (ligne 91) pour coherence avec le MSI
 
-### Apres deploiement
-Dominique pourra tester avec :
-```text
-curl http://[IP-DU-POSTE]:8741/health
-```
-
-Note : le pare-feu Windows devra autoriser le port 8741 en entrant (commande PowerShell fournie dans le guide precedent).
+### Impact
+- L'installation fonctionnera sur toutes les sessions Windows sans conflit
+- Le serveur HTTP demarrera correctement sur la session secondaire
+- TÉO Hub pourra atteindre le port 8741
+- Aucun impact sur les machines modernes (WebView2 deja present)
+- Le portable EXE continue de fonctionner comme avant
 

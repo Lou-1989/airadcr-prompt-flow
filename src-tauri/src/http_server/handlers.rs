@@ -149,6 +149,7 @@ pub struct OpenReportQuery {
     pub accession_number: Option<String>,
     pub patient_id: Option<String>,
     pub exam_uid: Option<String>,
+    pub study_uid: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -827,13 +828,19 @@ pub async fn open_report(
         // Rechercher par identifiants RIS
         let has_accession = query.accession_number.as_ref().map_or(false, |s| !s.is_empty());
         let has_patient = query.patient_id.as_ref().map_or(false, |s| !s.is_empty());
-        let has_exam = query.exam_uid.as_ref().map_or(false, |s| !s.is_empty());
+        let has_exam = query.exam_uid.as_ref().map_or(false, |s| !s.is_empty())
+            || query.study_uid.as_ref().map_or(false, |s| !s.is_empty());
+        
+        // Résoudre exam_uid ou study_uid (study_uid est un alias DICOM standard)
+        let resolved_exam_uid = query.exam_uid.as_deref()
+            .filter(|s| !s.is_empty())
+            .or_else(|| query.study_uid.as_deref().filter(|s| !s.is_empty()));
         
         if has_accession || has_patient || has_exam {
             match state.db.find_pending_report_by_identifiers(
                 query.patient_id.as_deref(),
                 query.accession_number.as_deref(),
-                query.exam_uid.as_deref(),
+                resolved_exam_uid,
             ) {
                 Ok(Some(report)) => Some(report.technical_id),
                 Ok(None) => {
@@ -841,7 +848,7 @@ pub async fn open_report(
                     let config = get_config();
                     if config.teo_hub.enabled && has_patient && has_exam {
                         let patient_id_val = query.patient_id.as_deref().unwrap_or("");
-                        let exam_uid_val = query.exam_uid.as_deref().unwrap_or("");
+                        let exam_uid_val = resolved_exam_uid.unwrap_or("");
                         
                         log::info!("🔄 [HTTP] Fallback TÉO Hub: patient_id={}, exam_uid={}...",
                             mask_sensitive_id(patient_id_val),

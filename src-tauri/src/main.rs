@@ -1503,7 +1503,8 @@ fn main() {
     thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
         rt.block_on(async {
-            if let Err(e) = http_server::start_server(8741, db_for_server).await {
+            let config = crate::config::get_config();
+            if let Err(e) = http_server::start_server(config.http_port, &config.http_bind_address, db_for_server).await {
                 error!("[HTTP Server] Erreur: {}", e);
             }
         });

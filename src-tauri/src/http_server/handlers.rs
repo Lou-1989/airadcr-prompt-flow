@@ -12,6 +12,8 @@ use tauri::Manager;
 use super::HttpServerState;
 use super::middleware::{validate_api_key, validate_admin_key, RequestInfo};
 use crate::APP_HANDLE;
+use crate::teo_client;
+use crate::config::get_config;
 
 // ============================================================================
 // Fonctions utilitaires de sécurité
@@ -158,6 +160,28 @@ pub struct OpenReportResponse {
     pub technical_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub navigated_to: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct TeoHubFetchQuery {
+    pub patient_id: Option<String>,
+    pub study_uid: Option<String>,
+    pub exam_uid: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct TeoHubFetchResponse {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub technical_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retrieval_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
@@ -812,7 +836,42 @@ pub async fn open_report(
                 query.exam_uid.as_deref(),
             ) {
                 Ok(Some(report)) => Some(report.technical_id),
-                Ok(None) => None,
+                Ok(None) => {
+                    // 🆕 Fallback: tenter de récupérer depuis TÉO Hub
+                    let config = get_config();
+                    if config.teo_hub.enabled && has_patient && has_exam {
+                        let patient_id_val = query.patient_id.as_deref().unwrap_or("");
+                        let exam_uid_val = query.exam_uid.as_deref().unwrap_or("");
+                        
+                        log::info!("🔄 [HTTP] Fallback TÉO Hub: patient_id={}, exam_uid={}...",
+                            mask_sensitive_id(patient_id_val),
+                            &exam_uid_val[..exam_uid_val.len().min(20)]);
+                        
+                        match teo_client::fetch_ai_report(patient_id_val, exam_uid_val).await {
+                            Ok(teo_report) => {
+                                match store_teo_report_locally(
+                                    &state,
+                                    &teo_report,
+                                    query.patient_id.as_deref(),
+                                    query.exam_uid.as_deref(),
+                                    query.accession_number.as_deref(),
+                                ) {
+                                    Some(tid) => {
+                                        log::info!("✅ [HTTP] Rapport TÉO Hub stocké localement: tid={}", tid);
+                                        Some(tid)
+                                    }
+                                    None => None,
+                                }
+                            }
+                            Err(e) => {
+                                log::warn!("⚠️ [HTTP] Fallback TÉO Hub échoué: {}", e);
+                                None
+                            }
+                        }
+                    } else {
+                        None
+                    }
+                }
                 Err(e) => {
                     log::error!("❌ [HTTP] Erreur recherche pour open-report: {}", e);
                     request_info.log_access(&state.db, 500, "error", Some(&format!("Database error: {}", e)));
@@ -838,6 +897,7 @@ pub async fn open_report(
                 technical_id: None,
                 navigated_to: None,
                 error: Some("At least one identifier required: tid, accession_number, patient_id, or exam_uid".to_string()),
+                source: None,
             });
         }
     };
@@ -852,6 +912,7 @@ pub async fn open_report(
             technical_id: Some(tid),
             navigated_to: None,
             error: Some(format!("Invalid technical_id: {}", msg)),
+            source: None,
         });
     }
     
@@ -874,6 +935,7 @@ pub async fn open_report(
                         technical_id: Some(tid.clone()),
                         navigated_to: Some(format!("https://airadcr.com/app?tori=true&tid={}", tid)),
                         error: None,
+                        source: Some("local".to_string()),
                     })
                 }
                 Err(e) => {
@@ -885,6 +947,7 @@ pub async fn open_report(
                         technical_id: Some(tid),
                         navigated_to: None,
                         error: Some(format!("Failed to trigger navigation event: {}", e)),
+                        source: None,
                     })
                 }
             }
@@ -897,6 +960,7 @@ pub async fn open_report(
                 technical_id: Some(tid),
                 navigated_to: None,
                 error: Some("Main window not found".to_string()),
+                source: None,
             })
         }
     } else {
@@ -910,6 +974,167 @@ pub async fn open_report(
                 technical_id: Some(tid),
                 navigated_to: None,
                 error: Some("Application not yet ready. Please try again in a moment.".to_string()),
+                source: None,
             })
+    }
+}
+
+// ============================================================================
+// Helper: Stocker un rapport TÉO Hub localement
+// ============================================================================
+
+/// Convertit un rapport TÉO Hub en pending_report local et le stocke en SQLite
+fn store_teo_report_locally(
+    state: &web::Data<HttpServerState>,
+    teo_report: &teo_client::models::TeoAiReportResponse,
+    patient_id: Option<&str>,
+    exam_uid: Option<&str>,
+    accession_number: Option<&str>,
+) -> Option<String> {
+    // Générer un technical_id unique
+    let tid = format!("teo_{}", &Uuid::new_v4().to_string()[..8]);
+    let id = Uuid::new_v4().to_string();
+    let now = Utc::now();
+    let expires_at = now + Duration::hours(24);
+    
+    // Construire le JSON structuré depuis la réponse TÉO
+    let structured = serde_json::json!({
+        "title": teo_report.result.structured_report.title,
+        "results": teo_report.result.structured_report.results,
+        "conclusion": teo_report.result.structured_report.conclusion,
+        "translated_text": teo_report.result.translation.translated_text,
+        "translation_language": teo_report.result.translation.language,
+    });
+    let structured_json = serde_json::to_string(&structured).unwrap_or_default();
+    
+    match state.db.insert_pending_report(
+        &id,
+        &tid,
+        patient_id,
+        exam_uid,
+        accession_number,
+        None, // study_instance_uid
+        &structured_json,
+        "teo_hub_auto",
+        None, // ai_modules
+        None, // modality
+        None, // metadata
+        &now.to_rfc3339(),
+        &expires_at.to_rfc3339(),
+    ) {
+        Ok(_) => Some(tid),
+        Err(e) => {
+            log::error!("❌ [HTTP] Erreur stockage rapport TÉO Hub: {}", e);
+            None
+        }
+    }
+}
+
+// ============================================================================
+// GET /teo-hub/fetch - Récupère un rapport depuis TÉO Hub sans navigation
+// ============================================================================
+
+/// GET /teo-hub/fetch - Fetch un rapport depuis TÉO Hub, le stocke localement,
+/// retourne le technical_id et retrieval_url sans déclencher la navigation iframe.
+pub async fn fetch_from_teo_hub(
+    req: HttpRequest,
+    query: web::Query<TeoHubFetchQuery>,
+    state: web::Data<HttpServerState>,
+) -> HttpResponse {
+    let request_info = RequestInfo::from_request(&req);
+    
+    // 🔒 Authentification requise
+    let api_key = req
+        .headers()
+        .get("x-api-key")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    
+    if !validate_api_key(&state.db, api_key) {
+        log::warn!("❌ [HTTP] GET /teo-hub/fetch sans API key valide");
+        request_info.log_access(&state.db, 401, "unauthorized", Some("Invalid API key"));
+        return HttpResponse::Unauthorized().json(ErrorResponse {
+            error: "API key required".to_string(),
+            field: None,
+        });
+    }
+    
+    // Vérifier que TÉO Hub est activé
+    let config = get_config();
+    if !config.teo_hub.enabled {
+        request_info.log_access(&state.db, 503, "error", Some("TÉO Hub disabled"));
+        return HttpResponse::ServiceUnavailable().json(TeoHubFetchResponse {
+            success: false,
+            technical_id: None,
+            retrieval_url: None,
+            source: None,
+            error: Some("TÉO Hub is not enabled in configuration".to_string()),
+        });
+    }
+    
+    // Résoudre patient_id et study_uid
+    let patient_id = query.patient_id.as_deref().unwrap_or("");
+    let study_uid = query.study_uid.as_deref()
+        .or(query.exam_uid.as_deref())
+        .unwrap_or("");
+    
+    if patient_id.is_empty() || study_uid.is_empty() {
+        request_info.log_access(&state.db, 400, "bad_request", Some("Missing patient_id or study_uid"));
+        return HttpResponse::BadRequest().json(TeoHubFetchResponse {
+            success: false,
+            technical_id: None,
+            retrieval_url: None,
+            source: None,
+            error: Some("Both patient_id and study_uid (or exam_uid) are required".to_string()),
+        });
+    }
+    
+    log::info!("🔄 [HTTP] TÉO Hub fetch: patient_id={}, study_uid={}...",
+        mask_sensitive_id(patient_id), &study_uid[..study_uid.len().min(20)]);
+    
+    match teo_client::fetch_ai_report(patient_id, study_uid).await {
+        Ok(teo_report) => {
+            match store_teo_report_locally(
+                &state,
+                &teo_report,
+                Some(patient_id),
+                Some(study_uid),
+                None,
+            ) {
+                Some(tid) => {
+                    log::info!("✅ [HTTP] TÉO Hub fetch réussi: tid={}", tid);
+                    request_info.log_access(&state.db, 200, "success", None);
+                    HttpResponse::Ok().json(TeoHubFetchResponse {
+                        success: true,
+                        technical_id: Some(tid.clone()),
+                        retrieval_url: Some(format!("https://airadcr.com/app?tori=true&tid={}", tid)),
+                        source: Some("teo_hub".to_string()),
+                        error: None,
+                    })
+                }
+                None => {
+                    request_info.log_access(&state.db, 500, "error", Some("Failed to store TÉO report locally"));
+                    HttpResponse::InternalServerError().json(TeoHubFetchResponse {
+                        success: false,
+                        technical_id: None,
+                        retrieval_url: None,
+                        source: None,
+                        error: Some("Failed to store report in local database".to_string()),
+                    })
+                }
+            }
+        }
+        Err(e) => {
+            let error_msg = format!("TÉO Hub fetch failed: {}", e);
+            log::error!("❌ [HTTP] {}", error_msg);
+            request_info.log_access(&state.db, 502, "error", Some(&error_msg));
+            HttpResponse::BadGateway().json(TeoHubFetchResponse {
+                success: false,
+                technical_id: None,
+                retrieval_url: None,
+                source: None,
+                error: Some(error_msg),
+            })
+        }
     }
 }

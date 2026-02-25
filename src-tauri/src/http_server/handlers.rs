@@ -19,6 +19,15 @@ use crate::config::get_config;
 // Fonctions utilitaires de sécurité
 // ============================================================================
 
+/// ⚠️ Vérifie si l'authentification API est désactivée (mode demo/test)
+fn is_auth_disabled() -> bool {
+    let disabled = get_config().disable_api_auth;
+    if disabled {
+        log::warn!("⚠️ [SECURITY] API authentication DISABLED - demo/test mode!");
+    }
+    disabled
+}
+
 /// 🛡️ Masque un identifiant sensible pour les logs (affiche seulement les 4 premiers caractères)
 fn mask_sensitive_id(id: &str) -> String {
     if id.len() <= 4 {
@@ -312,7 +321,7 @@ pub async fn store_pending_report(
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
     
-    if !validate_api_key(&state.db, api_key) {
+    if !is_auth_disabled() && !validate_api_key(&state.db, api_key) {
         log::warn!("❌ [HTTP] Clé API invalide");
         request_info.log_access(&state.db, 401, "unauthorized", Some("Invalid API key"));
         return HttpResponse::Unauthorized().json(ErrorResponse {
@@ -481,7 +490,7 @@ pub async fn delete_pending_report(
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
     
-    if !validate_api_key(&state.db, api_key) {
+    if !is_auth_disabled() && !validate_api_key(&state.db, api_key) {
         log::warn!("❌ [HTTP] DELETE sans API key valide");
         request_info.log_access(&state.db, 401, "unauthorized", Some("Invalid API key for DELETE"));
         return HttpResponse::Unauthorized().json(ErrorResponse {
@@ -808,7 +817,7 @@ pub async fn open_report(
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
     
-    if !validate_api_key(&state.db, api_key) {
+    if !is_auth_disabled() && !validate_api_key(&state.db, api_key) {
         log::warn!("❌ [HTTP] POST /open-report sans API key valide");
         request_info.log_access(&state.db, 401, "unauthorized", Some("Invalid API key for open-report"));
         return HttpResponse::Unauthorized().json(ErrorResponse {
@@ -1057,7 +1066,7 @@ pub async fn fetch_from_teo_hub(
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
     
-    if !validate_api_key(&state.db, api_key) {
+    if !is_auth_disabled() && !validate_api_key(&state.db, api_key) {
         log::warn!("❌ [HTTP] GET /teo-hub/fetch sans API key valide");
         request_info.log_access(&state.db, 401, "unauthorized", Some("Invalid API key"));
         return HttpResponse::Unauthorized().json(ErrorResponse {

@@ -7,7 +7,7 @@ import { useInteractionMode } from '@/hooks/useInteractionMode';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { logger } from '@/utils/logger';
 import { listen } from '@tauri-apps/api/event';
-import { Progress } from '@/components/ui/progress';
+
 
 interface WebViewContainerProps {
   className?: string;
@@ -31,7 +31,6 @@ export const WebViewContainer = ({ className }: WebViewContainerProps) => {
   const [loadError, setLoadError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [currentUrl, setCurrentUrl] = useState(PRODUCTION_CONFIG.AIRADCR_URL);
-  const [progressValue, setProgressValue] = useState(0);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { sendSecureMessage } = useSecureMessaging();
@@ -41,22 +40,7 @@ export const WebViewContainer = ({ className }: WebViewContainerProps) => {
   const MAX_AUTO_RETRIES = 3;
   const RETRY_DELAY_MS = 5000;
 
-  // Animated indeterminate progress bar
-  useEffect(() => {
-    if (!isLoading) return;
-    let frame: number;
-    let start: number | null = null;
-    const animate = (ts: number) => {
-      if (!start) start = ts;
-      const elapsed = ts - start;
-      // Oscillate between 10 and 90 over ~2s
-      const val = 10 + 40 * (1 + Math.sin((elapsed / 1000) * Math.PI));
-      setProgressValue(Math.round(val));
-      frame = requestAnimationFrame(animate);
-    };
-    frame = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(frame);
-  }, [isLoading]);
+  // Progress animation removed — spinner only
 
   // Validation de l'URL au chargement
   useEffect(() => {
@@ -217,9 +201,6 @@ export const WebViewContainer = ({ className }: WebViewContainerProps) => {
             className="absolute inset-0 h-12 w-12 rounded-full border-[3px] border-transparent border-t-primary"
             style={{ animation: 'spin 1s cubic-bezier(0.4, 0, 0.2, 1) infinite' }}
           />
-        </div>
-        <div className="w-40 mb-6">
-          <Progress value={progressValue} className="h-1" />
         </div>
         {loadError && retryCount < MAX_AUTO_RETRIES && (
           <p className="text-xs text-muted-foreground">

@@ -1,104 +1,112 @@
 
 
-# Diagnostic et corrections du Debug Panel TEO Hub
+# Ecran de chargement professionnel + Audit UX + Correction unminimize/doublon
 
-## Bugs identifies dans le code actuel
+## Contexte
 
-### Bug 1 : `has_api_token` toujours `false` apres migration keychain (CRITIQUE)
+L'application affiche actuellement un ecran blanc pendant le chargement de l'iframe airadcr.com. Il n'y a aucun feedback visuel pour l'utilisateur. De plus, deux bugs de comportement ont ete identifies : la fenetre ne se restaure pas quand elle est minimisee (appel RIS), et un double appel sur le meme CR recharge inutilement l'iframe.
 
-**Fichier** : `src-tauri/src/main.rs` ligne 1371
+---
 
-Le code actuel :
+## 1. Ecran de chargement professionnel (Splash Screen)
+
+**Fichier** : `src/components/WebViewContainer.tsx`
+
+Actuellement, l'iframe est affichee immediatement mais le contenu met du temps a charger -- l'utilisateur voit un ecran blanc.
+
+**Correction** : Ajouter un etat `isLoading` (true par defaut), afficher un splash screen par-dessus l'iframe tant que `onLoad` n'a pas ete appele.
+
+Le splash screen affichera :
+- Le logo AirADCR (`/lovable-uploads/IMG_9255.png`) avec une animation de pulsation douce
+- Le texte "AirADCR" en titre
+- Le sous-titre "Dictee intelligente pour radiologie"
+- Une barre de progression animee (indeterminee) utilisant le composant `Progress` existant
+- Un fond blanc propre, coherent avec le design system medical
+
+L'iframe reste montee en arriere-plan (invisible via `opacity-0`) pour que le chargement commence immediatement. Une fois `onLoad` declenche, transition douce en fondu (fade-out du splash, fade-in de l'iframe).
+
+**Justification** : L'iframe doit rester montee pour ne pas retarder le chargement. Le splash masque le blanc sans ralentir le demarrage.
+
+---
+
+## 2. Correction : fenetre non restauree apres minimisation (unminimize manquant)
+
+**Fichier** : `src-tauri/src/http_server/handlers.rs` (lignes 943-945)
+
+Le code actuel dans `open_report` :
 ```rust
-has_api_token: !cfg.teo_hub.api_token.is_empty(),
+let _ = window.show();
+let _ = window.set_focus();
 ```
 
-Apres la migration keychain (config.rs lignes 225-235), le champ `api_token` est **vide** dans le config.toml car le token a ete deplace vers le keychain OS. Resultat : le Debug Panel affiche toujours "API Token: Non configure" meme si le token est bien present dans le keychain.
-
-**Correction** : Verifier aussi le keychain OS via `crate::database::keychain::get_teo_token()`.
-
-### Bug 2 : `get_connection_status()` retourne toujours `Unknown`
-
-**Fichier** : `src-tauri/src/teo_client/mod.rs` lignes 273-281
-
-La fonction ne fait que verifier si le client est enabled. Elle ne garde aucun etat du dernier health check. Elle retourne toujours `Unknown` ou `Disabled`, jamais `Connected`.
-
-**Impact** : Le statut affiché ne reflete jamais l'etat reel de la connexion entre deux health checks manuels.
-
-**Pas de correction necessaire** car le frontend gere deja son propre etat via `connectionStatus` dans `TeoHubConfig.tsx`. La commande `teo_get_connection_status` n'est d'ailleurs jamais appelee cote frontend.
-
-### Bug 3 : Label "Deconnecte" trompeur
-
-**Fichier** : `src/components/TeoHubConfig.tsx` ligne 122
-
-Le badge affiche "Deconnecte" quand le health check TÉO Hub echoue. L'utilisateur confond avec sa session AIRADCR (il est bien connecte en tant que Dr. Lounes). Ce n'est pas une deconnexion de l'app, c'est le serveur TÉO Hub distant qui ne repond pas.
-
-## Plan de corrections
-
-### 1. Corriger `has_api_token` dans `teo_get_config` (Rust)
-
-**Fichier** : `src-tauri/src/main.rs` (ligne 1371)
-
-Remplacer :
+Le deep link handler (main.rs lignes 1614-1616) fait correctement :
 ```rust
-has_api_token: !cfg.teo_hub.api_token.is_empty(),
-```
-Par :
-```rust
-has_api_token: !cfg.teo_hub.api_token.is_empty() 
-    || crate::database::keychain::get_teo_token()
-        .map(|opt| opt.is_some()).unwrap_or(false),
+let _ = window.show();
+let _ = window.unminimize();
+let _ = window.set_focus();
 ```
 
-**Justification** : Apres migration, le token est dans le keychain, pas dans le TOML. Sans cette correction, l'interface affiche un faux negatif.
+**Correction** : Ajouter `window.unminimize()` entre `show()` et `set_focus()` dans le handler `open_report`.
 
-### 2. Ajouter une commande `get_runtime_info` (Rust)
+**Justification** : Sur Windows, `show()` rend la fenetre visible mais ne la restaure pas depuis la barre des taches. `unminimize()` est necessaire pour que la fenetre retrouve sa taille normale.
 
-**Fichier** : `src-tauri/src/main.rs`
+---
 
-Nouvelle commande Tauri qui expose :
-- `disable_api_auth` : etat reel du bypass
-- `http_port` : port configure (note : le port reel binde n'est pas stocke actuellement)
-- `config_path` : chemin du fichier config.toml charge
-- `teo_hub_enabled` : si le client TÉO est actif
+## 3. Protection anti-doublon : meme CR appele deux fois
 
-**Justification** : Permet au Debug Panel d'afficher l'etat runtime sans deviner. Resout le probleme du 401 persistant en rendant visible si le bypass est actif ou non.
+**Fichier** : `src/components/WebViewContainer.tsx`
 
-### 3. Corriger les labels dans `TeoHubConfig.tsx`
+Actuellement, chaque evenement `airadcr:navigate_to_report` met a jour `currentUrl`, meme si le tid est identique. Cela provoque un rechargement complet de l'iframe et une perte potentielle du travail en cours.
 
-**Fichier** : `src/components/TeoHubConfig.tsx`
+**Correction** : Comparer le nouveau `tid` avec le `tid` deja en cours. Si identique, ne pas mettre a jour `currentUrl`. Extraire le tid actuel de l'URL courante pour la comparaison.
 
-| Ancien label | Nouveau label | Raison |
-|---|---|---|
-| "Deconnecte" | "TÉO Hub non joignable" | Evite la confusion avec la session utilisateur |
-| "Connecte" | "TÉO Hub OK" | Coherence |
+```text
+Flux actuel :
+  RIS appelle POST /open-report?tid=ABC
+  --> evenement navigate_to_report(ABC)
+  --> setCurrentUrl(url?tid=ABC)   <-- TOUJOURS, meme si deja ABC
 
-### 4. Ajouter un bloc "Etat Runtime" dans le Debug Panel
+Flux corrige :
+  RIS appelle POST /open-report?tid=ABC
+  --> evenement navigate_to_report(ABC)
+  --> si tid actuel == ABC --> SKIP (pas de rechargement)
+  --> si tid different --> setCurrentUrl(url?tid=ABC)
+```
 
-**Fichier** : `src/components/DebugPanel.tsx`
+**Justification** : En milieu hospitalier, un clic accidentel ou un double-clic sur le bouton contextuel ne doit pas faire perdre le travail en cours.
 
-Nouveau bloc en haut de l'onglet "Systeme" qui appelle `invoke('get_runtime_info')` et affiche :
-- Badge rouge clignotant `AUTH DESACTIVEE` ou vert `AUTH ACTIVEE`
-- Port HTTP configure
-- Chemin config.toml (tronque)
+---
 
-**Justification** : Le dev peut verifier en 5 secondes si le bypass est actif, sans curl ni log.
+## 4. Audit UX rapide -- micro-ameliorations sans alourdir
+
+### 4a. Ecran d'erreur de chargement ameliore
+
+**Fichier** : `src/components/WebViewContainer.tsx`
+
+L'ecran d'erreur actuel a un bouton "Reessayer" qui recharge toute l'iframe. Amelioration : ajouter un compteur de tentatives automatiques (retry automatique apres 5s, 3 tentatives max) avant d'afficher le bouton manuel.
+
+### 4b. Transition fluide apres navigation RIS
+
+**Fichier** : `src/components/WebViewContainer.tsx`
+
+Quand un nouveau tid arrive (navigation RIS), re-afficher brievement le splash screen pendant le chargement de la nouvelle page dans l'iframe. Cela evite le flash blanc entre deux rapports.
+
+---
 
 ## Fichiers modifies
 
-| Fichier | Modification | Justification |
-|---|---|---|
-| `src-tauri/src/main.rs` | Fix `has_api_token` + ajout `get_runtime_info` | Bug keychain + visibilite runtime |
-| `src/components/TeoHubConfig.tsx` | Labels corriges | UX : eviter confusion session vs TÉO Hub |
-| `src/components/DebugPanel.tsx` | Bloc runtime info | Diagnostic auth bypass en un coup d'oeil |
-
-## Fichiers NON modifies (justification)
-
-| Fichier | Raison de ne pas toucher |
+| Fichier | Modification |
 |---|---|
-| `src-tauri/src/config.rs` | La logique de chargement est correcte, le `disable_api_auth` est bien lu |
-| `src-tauri/src/http_server/handlers.rs` | Le bypass `is_auth_disabled()` fonctionne correctement |
-| `src-tauri/src/http_server/mod.rs` | Le port actif n'est pas stocke mais ce n'est pas bloquant |
-| `src-tauri/src/teo_client/mod.rs` | `get_connection_status()` n'est pas utilise cote frontend |
-| `src-tauri/src/teo_client/models.rs` | Les structures sont correctes |
+| `src/components/WebViewContainer.tsx` | Splash screen, anti-doublon tid, transition navigation, retry auto |
+| `src-tauri/src/http_server/handlers.rs` | Ajout `window.unminimize()` dans `open_report` |
+
+## Fichiers NON modifies
+
+| Fichier | Raison |
+|---|---|
+| `src/pages/Index.tsx` | Pas de changement necessaire, wrapper simple |
+| `src/index.css` | Les animations CSS peuvent etre inline ou Tailwind, pas besoin d'ajouter au design system |
+| `src/App.tsx` | Aucun impact sur la logique applicative |
+| `src/components/DebugPanel.tsx` | Deja corrige dans le commit precedent |
+| `src-tauri/src/main.rs` | Le deep link handler est deja correct |
 

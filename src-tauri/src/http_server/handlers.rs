@@ -940,8 +940,9 @@ pub async fn open_report(
                 Ok(_) => {
                     log::info!("✅ [HTTP] Navigation émise: tid={}", tid);
                     
-                    // Afficher et focus la fenêtre
+                    // Afficher, restaurer et focus la fenêtre
                     let _ = window.show();
+                    let _ = window.unminimize();
                     let _ = window.set_focus();
                     
                     request_info.log_access(&state.db, 200, "success", None);

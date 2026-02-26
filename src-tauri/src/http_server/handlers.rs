@@ -800,6 +800,18 @@ pub async fn find_report(
     }
 }
 
+/// Helper: affiche, restaure et focalise la fenêtre principale dans TOUS les cas
+fn show_main_window() {
+    if let Some(app_handle) = APP_HANDLE.get() {
+        if let Some(window) = app_handle.get_window("main") {
+            let _ = window.show();
+            let _ = window.unminimize();
+            let _ = window.set_focus();
+            log::debug!("📱 [HTTP] Fenêtre principale affichée et focalisée");
+        }
+    }
+}
+
 /// POST /open-report - Ouvre un rapport dans l'iframe AIRADCR (navigation depuis RIS)
 /// 🔒 Requiert une clé API valide
 /// Recherche par tid OU par identifiants RIS (accession_number, patient_id, exam_uid)
@@ -825,6 +837,9 @@ pub async fn open_report(
             field: None,
         });
     }
+    
+    // 📱 Ouvrir la fenêtre IMMÉDIATEMENT, avant toute logique de recherche
+    show_main_window();
     
     // Déterminer le technical_id à utiliser
     let technical_id: Option<String> = if let Some(tid) = &query.tid {
@@ -879,8 +894,20 @@ pub async fn open_report(
                                     None => None,
                                 }
                             }
-                            Err(e) => {
-                                log::warn!("⚠️ [HTTP] Fallback TÉO Hub échoué: {}", e);
+                        Err(e) => {
+                                let teo_error_detail = match &e {
+                                    crate::teo_client::errors::TeoClientError::NotFound(_) => "teo_hub_404_not_found",
+                                    crate::teo_client::errors::TeoClientError::Unauthorized(_) => "teo_hub_401_unauthorized",
+                                    crate::teo_client::errors::TeoClientError::HttpError(code, _) => {
+                                        log::warn!("⚠️ [HTTP] TÉO Hub HTTP {}: {}", code, e);
+                                        "teo_hub_http_error"
+                                    },
+                                    crate::teo_client::errors::TeoClientError::NetworkError(_) => "teo_hub_network_error",
+                                    crate::teo_client::errors::TeoClientError::Disabled => "teo_hub_disabled",
+                                    _ => "teo_hub_other_error",
+                                };
+                                request_info.log_access(&state.db, 200, teo_error_detail, Some(&format!("TÉO fallback: {}", e)));
+                                log::warn!("⚠️ [HTTP] Fallback TÉO Hub échoué ({}): {}", teo_error_detail, e);
                                 None
                             }
                         }
@@ -902,18 +929,28 @@ pub async fn open_report(
         }
     };
     
-    // Vérifier qu'on a un technical_id
+    // Vérifier qu'on a un technical_id — sinon ouvrir la page d'accueil
     let tid = match technical_id {
         Some(tid) => tid,
         None => {
-            request_info.log_access(&state.db, 400, "bad_request", Some("No identifier provided or report not found"));
-            return HttpResponse::BadRequest().json(OpenReportResponse {
-                success: false,
-                message: None,
+            log::info!("ℹ️ [HTTP] Aucun rapport trouvé, ouverture AIRADCR sans rapport");
+            request_info.log_access(&state.db, 200, "no_report_found", 
+                Some("Window opened without report - radiologist can dictate freely"));
+            
+            // Émettre navigation vers accueil (sans tid)
+            if let Some(app_handle) = APP_HANDLE.get() {
+                if let Some(window) = app_handle.get_window("main") {
+                    let _ = window.emit("airadcr:navigate_to_report", "");
+                }
+            }
+            
+            return HttpResponse::Ok().json(OpenReportResponse {
+                success: true,
+                message: Some("Window opened. No report available - radiologist can dictate freely.".to_string()),
                 technical_id: None,
-                navigated_to: None,
-                error: Some("At least one identifier required: tid, accession_number, patient_id, or exam_uid".to_string()),
-                source: None,
+                navigated_to: Some("https://airadcr.com/app?tori=true".to_string()),
+                error: None,
+                source: Some("no_report".to_string()),
             });
         }
     };
@@ -940,10 +977,6 @@ pub async fn open_report(
                 Ok(_) => {
                     log::info!("✅ [HTTP] Navigation émise: tid={}", tid);
                     
-                    // Afficher, restaurer et focus la fenêtre
-                    let _ = window.show();
-                    let _ = window.unminimize();
-                    let _ = window.set_focus();
                     
                     request_info.log_access(&state.db, 200, "success", None);
                     HttpResponse::Ok().json(OpenReportResponse {

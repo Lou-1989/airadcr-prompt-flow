@@ -212,27 +212,24 @@ export const WebViewContainer = ({ className }: WebViewContainerProps) => {
       {/* Splash Screen de chargement */}
       <div
         className={cn(
-          "absolute inset-0 z-10 flex flex-col items-center justify-center bg-background transition-opacity duration-500",
+          "absolute inset-0 z-10 flex flex-col items-center justify-center bg-background transition-opacity duration-700 ease-out",
           isLoading ? "opacity-100" : "opacity-0 pointer-events-none"
         )}
       >
-        <img
-          src="/lovable-uploads/IMG_9255.png"
-          alt="AirADCR Logo"
-          className="h-20 w-auto mb-6 animate-pulse"
-        />
-        <h1 className="text-2xl font-semibold text-foreground mb-1 tracking-tight">
-          AirADCR
-        </h1>
-        <p className="text-sm text-muted-foreground mb-8">
-          Dictée intelligente pour radiologie
-        </p>
-        <div className="w-48">
-          <Progress value={progressValue} className="h-1.5" />
+        {/* Minimal geometric loader — medical blue accent */}
+        <div className="relative mb-10">
+          <div className="h-12 w-12 rounded-full border-[3px] border-muted" />
+          <div
+            className="absolute inset-0 h-12 w-12 rounded-full border-[3px] border-transparent border-t-primary"
+            style={{ animation: 'spin 1s cubic-bezier(0.4, 0, 0.2, 1) infinite' }}
+          />
+        </div>
+        <div className="w-40 mb-6">
+          <Progress value={progressValue} className="h-1" />
         </div>
         {loadError && retryCount < MAX_AUTO_RETRIES && (
-          <p className="text-xs text-muted-foreground mt-4">
-            Reconnexion en cours… ({retryCount + 1}/{MAX_AUTO_RETRIES})
+          <p className="text-xs text-muted-foreground">
+            Reconnexion… ({retryCount + 1}/{MAX_AUTO_RETRIES})
           </p>
         )}
       </div>

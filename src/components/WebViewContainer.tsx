@@ -75,21 +75,15 @@ export const WebViewContainer = ({ className }: WebViewContainerProps) => {
           const tid = event.payload;
           logger.debug('[Navigation] Événement reçu: tid=' + tid);
 
-          // Anti-doublon : ne pas recharger si même tid
-          const currentTid = extractTid(currentUrl);
-          if (currentTid === tid) {
-            logger.debug('[Navigation] Même tid déjà chargé, skip rechargement');
-            return;
-          }
-
-          // Construire l'URL avec le tid
+          // Construire l'URL avec le tid + cache-buster pour forcer le rechargement
           const separator = PRODUCTION_CONFIG.AIRADCR_URL.includes('?') ? '&' : '?';
-          const newUrl = `${PRODUCTION_CONFIG.AIRADCR_URL}${separator}tid=${encodeURIComponent(tid)}`;
+          const cacheBuster = `_r=${Date.now()}`;
+          const newUrl = `${PRODUCTION_CONFIG.AIRADCR_URL}${separator}tid=${encodeURIComponent(tid)}&${cacheBuster}`;
 
           // Valider l'URL avant navigation
           if (validateAirADCRUrl(newUrl)) {
-            logger.debug('[Navigation] Changement URL vers:', newUrl);
-            // Re-afficher le splash pendant le chargement de la nouvelle page
+            logger.debug('[Navigation] Chargement rapport:', newUrl);
+            // Splash screen pendant la transition
             setIsLoading(true);
             setLoadError(false);
             setRetryCount(0);

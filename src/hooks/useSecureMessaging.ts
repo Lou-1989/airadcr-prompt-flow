@@ -92,6 +92,19 @@ export const useSecureMessaging = () => {
           reason: success ? 'SUCCESS' : 'UNKNOWN_ERROR',
           timestamp: Date.now()
         });
+        
+        // 🧹 Nettoyage SQLite post-injection réussie: libérer le pipeline
+        if (success) {
+          const iframe = document.querySelector('iframe[title="AirADCR"]') as HTMLIFrameElement;
+          const tidMatch = iframe?.src?.match(/[?&]tid=([^&]+)/);
+          const tid = tidMatch ? decodeURIComponent(tidMatch[1]) : null;
+          if (tid) {
+            logger.debug(`[Pipeline] 🧹 Suppression rapport ${tid} de SQLite après injection réussie`);
+            invoke('delete_pending_report_cmd', { technicalId: tid }).catch(err => {
+              logger.warn('[Pipeline] Échec suppression post-injection (cleanup auto prendra le relais):', err);
+            });
+          }
+        }
       })
       .catch(error => {
         sendSecureMessage('airadcr:injection_status', {

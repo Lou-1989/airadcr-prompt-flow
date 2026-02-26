@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -9,7 +9,15 @@ import { useInjectionContext } from '@/contexts/InjectionContext';
 import { Label } from '@/components/ui/label';
 import { DatabaseTab } from './DatabaseTab';
 import { TeoHubConfig } from './TeoHubConfig';
-import { Settings, Database, Server } from 'lucide-react';
+import { Settings, Database, Server, ShieldAlert, ShieldCheck } from 'lucide-react';
+
+interface RuntimeInfo {
+  disable_api_auth: boolean;
+  http_port: number;
+  config_path: string;
+  teo_hub_enabled: boolean;
+  build_version: string;
+}
 
 interface DebugPanelProps {
   isTauriApp: boolean;
@@ -38,6 +46,21 @@ export const DebugPanel = ({
 }: DebugPanelProps) => {
   const { activeWindow, lockedPosition } = useInjectionContext();
   const [iframeTestResult, setIframeTestResult] = useState<'idle' | 'testing' | 'success' | 'fail'>('idle');
+  const [runtimeInfo, setRuntimeInfo] = useState<RuntimeInfo | null>(null);
+
+  useEffect(() => {
+    if (!isTauriApp) return;
+    const load = async () => {
+      try {
+        const { invoke } = await import('@tauri-apps/api/tauri');
+        const info = await invoke<RuntimeInfo>('get_runtime_info');
+        setRuntimeInfo(info);
+      } catch (err) {
+        logger.error('[Debug] Erreur chargement runtime info', err);
+      }
+    };
+    load();
+  }, [isTauriApp]);
 
   const testIframeCommunication = useCallback(() => {
     setIframeTestResult('testing');
@@ -123,6 +146,47 @@ export const DebugPanel = ({
           
           {/* Onglet Système */}
           <TabsContent value="system" className="px-4 pb-4 mt-0 space-y-4">
+            {/* État Runtime */}
+            {runtimeInfo && (
+              <div className="space-y-2">
+                <h4 className="text-sm font-semibold">État Runtime</h4>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between p-2 bg-background/50 rounded">
+                    <span className="text-sm font-medium flex items-center gap-1.5">
+                      {runtimeInfo.disable_api_auth ? (
+                        <ShieldAlert className="w-3.5 h-3.5 text-destructive" />
+                      ) : (
+                        <ShieldCheck className="w-3.5 h-3.5 text-primary" />
+                      )}
+                      Auth API
+                    </span>
+                    <Badge 
+                      variant={runtimeInfo.disable_api_auth ? "destructive" : "default"}
+                      className={runtimeInfo.disable_api_auth ? "animate-pulse" : ""}
+                    >
+                      {runtimeInfo.disable_api_auth ? "DÉSACTIVÉE" : "ACTIVÉE"}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between p-2 bg-background/50 rounded">
+                    <span className="text-sm font-medium">Port HTTP</span>
+                    <span className="text-xs font-mono">{runtimeInfo.http_port}</span>
+                  </div>
+                  <div className="flex items-center justify-between p-2 bg-background/50 rounded">
+                    <span className="text-sm font-medium">Config</span>
+                    <span className="text-[10px] font-mono truncate max-w-[160px]" title={runtimeInfo.config_path}>
+                      {runtimeInfo.config_path.split(/[/\\]/).slice(-2).join('/')}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between p-2 bg-background/50 rounded">
+                    <span className="text-sm font-medium">Version</span>
+                    <span className="text-xs font-mono">{runtimeInfo.build_version}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <Separator />
+
             {/* Status des fonctions */}
             <div className="space-y-2">
               <h4 className="text-sm font-semibold">État des Fonctions</h4>

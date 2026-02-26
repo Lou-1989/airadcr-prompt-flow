@@ -1368,7 +1368,9 @@ fn teo_get_config() -> teo_client::models::TeoHubConfigInfo {
         tls_enabled: cfg.teo_hub.tls_enabled,
         timeout_secs: cfg.teo_hub.timeout_secs,
         retry_count: cfg.teo_hub.retry_count,
-        has_api_token: !cfg.teo_hub.api_token.is_empty(),
+        has_api_token: !cfg.teo_hub.api_token.is_empty()
+            || crate::database::keychain::get_teo_token()
+                .map(|opt| opt.is_some()).unwrap_or(false),
         has_tls_certs: !cfg.teo_hub.cert_file.is_empty() && !cfg.teo_hub.key_file.is_empty(),
     }
 }
@@ -1377,6 +1379,32 @@ fn teo_get_config() -> teo_client::models::TeoHubConfigInfo {
 #[tauri::command]
 fn teo_get_connection_status() -> String {
     format!("{:?}", teo_client::get_connection_status())
+}
+
+/// 🆕 Informations runtime pour le Debug Panel
+#[derive(Serialize)]
+struct RuntimeInfo {
+    disable_api_auth: bool,
+    http_port: u16,
+    config_path: String,
+    teo_hub_enabled: bool,
+    build_version: String,
+}
+
+#[tauri::command]
+fn get_runtime_info() -> RuntimeInfo {
+    let cfg = config::get_config();
+    let config_path = config::AppConfig::config_path()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| "inconnu".to_string());
+    
+    RuntimeInfo {
+        disable_api_auth: cfg.disable_api_auth,
+        http_port: cfg.http_port,
+        config_path,
+        teo_hub_enabled: cfg.teo_hub.enabled,
+        build_version: env!("CARGO_PKG_VERSION").to_string(),
+    }
 }
 
 // 🔗 EXTRACTION DU TID DEPUIS UNE DEEP LINK
@@ -1721,6 +1749,7 @@ fn main() {
             teo_submit_approved,
             teo_get_config,
             teo_get_connection_status,
+            get_runtime_info,
             // 🎤 Commandes SpeechMike natif (HID USB)
             speechmike_get_status,
             speechmike_list_devices,

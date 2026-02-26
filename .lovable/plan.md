@@ -1,71 +1,104 @@
 
 
-# Desactiver l'authentification API pour tests/demo
+# Diagnostic et corrections du Debug Panel TEO Hub
 
-## Contexte
+## Bugs identifies dans le code actuel
 
-Vous etes bloque par une erreur 401 persistante sur l'API locale (port 8741). Plutot que de continuer a deboguer le format des cles API, on va ajouter un **mode demo/test** qui desactive completement la verification des cles API.
+### Bug 1 : `has_api_token` toujours `false` apres migration keychain (CRITIQUE)
 
-## Ce qui sera modifie
+**Fichier** : `src-tauri/src/main.rs` ligne 1371
 
-### 1. Nouveau parametre dans la configuration (`src-tauri/src/config.rs`)
-
-Ajout d'un champ `disable_api_auth` (defaut: `false`) dans `AppConfig`. Quand il est a `true`, tous les endpoints acceptent les requetes sans header `X-API-Key`.
-
-```toml
-# Dans config.toml
-disable_api_auth = true
-```
-
-### 2. Fonction utilitaire d'authentification (`src-tauri/src/http_server/handlers.rs`)
-
-Creer une fonction `is_auth_disabled()` qui verifie le flag de config. Modifier les 4 blocs d'authentification (lignes ~309, ~478, ~805, ~1054) pour court-circuiter la validation si le mode demo est actif :
-
+Le code actuel :
 ```rust
-// Avant
-if !validate_api_key(&state.db, api_key) {
-    return HttpResponse::Unauthorized()...
-}
-
-// Apres
-if !is_auth_disabled() && !validate_api_key(&state.db, api_key) {
-    return HttpResponse::Unauthorized()...
-}
+has_api_token: !cfg.teo_hub.api_token.is_empty(),
 ```
 
-Un warning sera affiche dans les logs a chaque demarrage :
+Apres la migration keychain (config.rs lignes 225-235), le champ `api_token` est **vide** dans le config.toml car le token a ete deplace vers le keychain OS. Resultat : le Debug Panel affiche toujours "API Token: Non configure" meme si le token est bien present dans le keychain.
 
+**Correction** : Verifier aussi le keychain OS via `crate::database::keychain::get_teo_token()`.
+
+### Bug 2 : `get_connection_status()` retourne toujours `Unknown`
+
+**Fichier** : `src-tauri/src/teo_client/mod.rs` lignes 273-281
+
+La fonction ne fait que verifier si le client est enabled. Elle ne garde aucun etat du dernier health check. Elle retourne toujours `Unknown` ou `Disabled`, jamais `Connected`.
+
+**Impact** : Le statut affiché ne reflete jamais l'etat reel de la connexion entre deux health checks manuels.
+
+**Pas de correction necessaire** car le frontend gere deja son propre etat via `connectionStatus` dans `TeoHubConfig.tsx`. La commande `teo_get_connection_status` n'est d'ailleurs jamais appelee cote frontend.
+
+### Bug 3 : Label "Deconnecte" trompeur
+
+**Fichier** : `src/components/TeoHubConfig.tsx` ligne 122
+
+Le badge affiche "Deconnecte" quand le health check TÉO Hub echoue. L'utilisateur confond avec sa session AIRADCR (il est bien connecte en tant que Dr. Lounes). Ce n'est pas une deconnexion de l'app, c'est le serveur TÉO Hub distant qui ne repond pas.
+
+## Plan de corrections
+
+### 1. Corriger `has_api_token` dans `teo_get_config` (Rust)
+
+**Fichier** : `src-tauri/src/main.rs` (ligne 1371)
+
+Remplacer :
+```rust
+has_api_token: !cfg.teo_hub.api_token.is_empty(),
 ```
-[SECURITY] API authentication DISABLED - demo/test mode only!
+Par :
+```rust
+has_api_token: !cfg.teo_hub.api_token.is_empty() 
+    || crate::database::keychain::get_teo_token()
+        .map(|opt| opt.is_some()).unwrap_or(false),
 ```
 
-### 3. Indicateur visuel dans le Debug Panel (`src/components/DebugPanel.tsx`)
+**Justification** : Apres migration, le token est dans le keychain, pas dans le TOML. Sans cette correction, l'interface affiche un faux negatif.
 
-Afficher un badge rouge "AUTH DISABLED" quand le mode est actif, pour rappeler que la securite est desactivee.
+### 2. Ajouter une commande `get_runtime_info` (Rust)
 
-## Comment l'utiliser
+**Fichier** : `src-tauri/src/main.rs`
 
-1. Ouvrir le fichier `config.toml` (emplacement : `%APPDATA%/airadcr-desktop/config.toml` sous Windows)
-2. Ajouter la ligne `disable_api_auth = true`
-3. Redemarrer l'application
-4. Toutes les requetes API passent sans cle
+Nouvelle commande Tauri qui expose :
+- `disable_api_auth` : etat reel du bypass
+- `http_port` : port configure (note : le port reel binde n'est pas stocke actuellement)
+- `config_path` : chemin du fichier config.toml charge
+- `teo_hub_enabled` : si le client TÉO est actif
 
-## Ce que vous dites a votre dev
+**Justification** : Permet au Debug Panel d'afficher l'etat runtime sans deviner. Resout le probleme du 401 persistant en rendant visible si le bypass est actif ou non.
 
-> "J'ai active le mode test sur l'exe. Tu peux appeler `POST http://127.0.0.1:8741/pending-report` et `POST http://127.0.0.1:8741/open-report?tid=XXX` sans header X-API-Key. Ca marchera directement."
+### 3. Corriger les labels dans `TeoHubConfig.tsx`
 
-## Securite
+**Fichier** : `src/components/TeoHubConfig.tsx`
 
-- Le flag est `false` par defaut -- aucun impact en production
-- Un warning est logue a chaque requete non authentifiee
-- Le Debug Panel affiche clairement que l'auth est desactivee
-- **A reactiver avant mise en production**
+| Ancien label | Nouveau label | Raison |
+|---|---|---|
+| "Deconnecte" | "TÉO Hub non joignable" | Evite la confusion avec la session utilisateur |
+| "Connecte" | "TÉO Hub OK" | Coherence |
+
+### 4. Ajouter un bloc "Etat Runtime" dans le Debug Panel
+
+**Fichier** : `src/components/DebugPanel.tsx`
+
+Nouveau bloc en haut de l'onglet "Systeme" qui appelle `invoke('get_runtime_info')` et affiche :
+- Badge rouge clignotant `AUTH DESACTIVEE` ou vert `AUTH ACTIVEE`
+- Port HTTP configure
+- Chemin config.toml (tronque)
+
+**Justification** : Le dev peut verifier en 5 secondes si le bypass est actif, sans curl ni log.
 
 ## Fichiers modifies
 
-| Fichier | Modification |
-|---------|-------------|
-| `src-tauri/src/config.rs` | Ajout champ `disable_api_auth: bool` |
-| `src-tauri/src/http_server/handlers.rs` | 4 blocs auth modifies + fonction `is_auth_disabled()` |
-| `src/components/DebugPanel.tsx` | Badge "AUTH DISABLED" si mode actif |
+| Fichier | Modification | Justification |
+|---|---|---|
+| `src-tauri/src/main.rs` | Fix `has_api_token` + ajout `get_runtime_info` | Bug keychain + visibilite runtime |
+| `src/components/TeoHubConfig.tsx` | Labels corriges | UX : eviter confusion session vs TÉO Hub |
+| `src/components/DebugPanel.tsx` | Bloc runtime info | Diagnostic auth bypass en un coup d'oeil |
+
+## Fichiers NON modifies (justification)
+
+| Fichier | Raison de ne pas toucher |
+|---|---|
+| `src-tauri/src/config.rs` | La logique de chargement est correcte, le `disable_api_auth` est bien lu |
+| `src-tauri/src/http_server/handlers.rs` | Le bypass `is_auth_disabled()` fonctionne correctement |
+| `src-tauri/src/http_server/mod.rs` | Le port actif n'est pas stocke mais ce n'est pas bloquant |
+| `src-tauri/src/teo_client/mod.rs` | `get_connection_status()` n'est pas utilise cote frontend |
+| `src-tauri/src/teo_client/models.rs` | Les structures sont correctes |
 

@@ -109,18 +109,18 @@ interface TeoHealthResponse {
    const getStatusBadge = () => {
      switch (connectionStatus) {
        case 'connected':
-         return (
-          <Badge className="bg-primary/20 text-primary border-primary/30">
-             <CheckCircle2 className="w-3 h-3 mr-1" />
-             Connecté
-           </Badge>
-         );
-       case 'disconnected':
-         return (
-          <Badge variant="destructive">
-             <WifiOff className="w-3 h-3 mr-1" />
-             Déconnecté
-           </Badge>
+          return (
+           <Badge className="bg-primary/20 text-primary border-primary/30">
+              <CheckCircle2 className="w-3 h-3 mr-1" />
+              TÉO Hub OK
+            </Badge>
+          );
+        case 'disconnected':
+          return (
+           <Badge variant="destructive">
+              <WifiOff className="w-3 h-3 mr-1" />
+              TÉO Hub non joignable
+            </Badge>
          );
        case 'checking':
          return (

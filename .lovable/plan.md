@@ -1,112 +1,84 @@
 
 
-# Ecran de chargement professionnel + Audit UX + Correction unminimize/doublon
+# Rechargement libre du meme rapport + Nettoyage pipeline post-injection
 
-## Contexte
+## Analyse de l'architecture existante
 
-L'application affiche actuellement un ecran blanc pendant le chargement de l'iframe airadcr.com. Il n'y a aucun feedback visuel pour l'utilisateur. De plus, deux bugs de comportement ont ete identifies : la fenetre ne se restaure pas quand elle est minimisee (appel RIS), et un double appel sur le meme CR recharge inutilement l'iframe.
+Apres audit complet du code, voici les constats :
 
----
+### Navigation (WebViewContainer.tsx)
+Le bloc anti-doublon (lignes 78-83) empeche le rechargement si le meme `tid` est deja dans l'URL. Le radiologue ne peut pas relancer un rapport deja ouvert -- c'est trop restrictif.
 
-## 1. Ecran de chargement professionnel (Splash Screen)
+### Pipeline post-injection (useSecureMessaging.ts)
+Apres une injection reussie, le hook envoie un `airadcr:injection_status` avec `success: true` a l'iframe, mais **ne nettoie jamais le rapport en SQLite**. Il reste avec le status `retrieved` pendant 24h. Cela signifie que le pipeline n'est pas pret a recommencer immediatement.
 
-**Fichier** : `src/components/WebViewContainer.tsx`
-
-Actuellement, l'iframe est affichee immediatement mais le contenu met du temps a charger -- l'utilisateur voit un ecran blanc.
-
-**Correction** : Ajouter un etat `isLoading` (true par defaut), afficher un splash screen par-dessus l'iframe tant que `onLoad` n'a pas ete appele.
-
-Le splash screen affichera :
-- Le logo AirADCR (`/lovable-uploads/IMG_9255.png`) avec une animation de pulsation douce
-- Le texte "AirADCR" en titre
-- Le sous-titre "Dictee intelligente pour radiologie"
-- Une barre de progression animee (indeterminee) utilisant le composant `Progress` existant
-- Un fond blanc propre, coherent avec le design system medical
-
-L'iframe reste montee en arriere-plan (invisible via `opacity-0`) pour que le chargement commence immediatement. Une fois `onLoad` declenche, transition douce en fondu (fade-out du splash, fade-in de l'iframe).
-
-**Justification** : L'iframe doit rester montee pour ne pas retarder le chargement. Le splash masque le blanc sans ralentir le demarrage.
+### Bonne nouvelle : la commande Tauri existe deja
+`delete_pending_report_cmd` est deja enregistree dans `main.rs` (ligne 1739) et fonctionne. Pas besoin de creer une nouvelle commande Rust.
 
 ---
 
-## 2. Correction : fenetre non restauree apres minimisation (unminimize manquant)
+## Modifications prevues
 
-**Fichier** : `src-tauri/src/http_server/handlers.rs` (lignes 943-945)
+### 1. WebViewContainer.tsx -- Autoriser le rechargement du meme rapport
 
-Le code actuel dans `open_report` :
-```rust
-let _ = window.show();
-let _ = window.set_focus();
-```
-
-Le deep link handler (main.rs lignes 1614-1616) fait correctement :
-```rust
-let _ = window.show();
-let _ = window.unminimize();
-let _ = window.set_focus();
-```
-
-**Correction** : Ajouter `window.unminimize()` entre `show()` et `set_focus()` dans le handler `open_report`.
-
-**Justification** : Sur Windows, `show()` rend la fenetre visible mais ne la restaure pas depuis la barre des taches. `unminimize()` est necessaire pour que la fenetre retrouve sa taille normale.
-
----
-
-## 3. Protection anti-doublon : meme CR appele deux fois
-
-**Fichier** : `src/components/WebViewContainer.tsx`
-
-Actuellement, chaque evenement `airadcr:navigate_to_report` met a jour `currentUrl`, meme si le tid est identique. Cela provoque un rechargement complet de l'iframe et une perte potentielle du travail en cours.
-
-**Correction** : Comparer le nouveau `tid` avec le `tid` deja en cours. Si identique, ne pas mettre a jour `currentUrl`. Extraire le tid actuel de l'URL courante pour la comparaison.
+Supprimer le bloc anti-doublon (lignes 78-83). A la place, toujours recharger avec un cache-buster et re-afficher le splash screen pour masquer la transition.
 
 ```text
-Flux actuel :
-  RIS appelle POST /open-report?tid=ABC
-  --> evenement navigate_to_report(ABC)
-  --> setCurrentUrl(url?tid=ABC)   <-- TOUJOURS, meme si deja ABC
+Avant :
+  tid identique --> SKIP (bloque le rechargement)
 
-Flux corrige :
-  RIS appelle POST /open-report?tid=ABC
-  --> evenement navigate_to_report(ABC)
-  --> si tid actuel == ABC --> SKIP (pas de rechargement)
-  --> si tid different --> setCurrentUrl(url?tid=ABC)
+Apres :
+  tid identique --> splash screen + rechargement avec cache-buster
+  tid different --> splash screen + rechargement normal
 ```
 
-**Justification** : En milieu hospitalier, un clic accidentel ou un double-clic sur le bouton contextuel ne doit pas faire perdre le travail en cours.
+Le `extractTid` reste utile pour le logging.
+
+### 2. useSecureMessaging.ts -- Nettoyage SQLite apres injection reussie
+
+Dans `processNextInjection`, apres reception de `success: true`, appeler la commande Tauri existante `delete_pending_report_cmd` pour supprimer le rapport de SQLite. Cela libere le pipeline immediatement.
+
+Le nettoyage est "fire and forget" : si l'appel echoue (pas de Tauri, erreur DB), le cleanup automatique (toutes les 10 minutes) prend le relais. Aucun risque de blocage.
+
+Pour extraire le `tid` du rapport injecte, on utilise l'URL courante de l'iframe. Alternativement, on peut stocker le `tid` dans le payload d'injection si disponible.
 
 ---
 
-## 4. Audit UX rapide -- micro-ameliorations sans alourdir
+## Pipeline corrige
 
-### 4a. Ecran d'erreur de chargement ameliore
-
-**Fichier** : `src/components/WebViewContainer.tsx`
-
-L'ecran d'erreur actuel a un bouton "Reessayer" qui recharge toute l'iframe. Amelioration : ajouter un compteur de tentatives automatiques (retry automatique apres 5s, 3 tentatives max) avant d'afficher le bouton manuel.
-
-### 4b. Transition fluide apres navigation RIS
-
-**Fichier** : `src/components/WebViewContainer.tsx`
-
-Quand un nouveau tid arrive (navigation RIS), re-afficher brievement le splash screen pendant le chargement de la nouvelle page dans l'iframe. Cela evite le flash blanc entre deux rapports.
+```text
+1. TEO Hub POST /pending-report --> SQLite (status="pending")
+2. RIS POST /open-report --> evenement Tauri --> iframe charge le rapport
+3. GET /pending-report --> donnees retournees, status="retrieved"
+4. Radiologue dicte/valide --> iframe envoie postMessage "airadcr:inject"
+5. Injection dans le RIS via clipboard
+6. Succes --> DELETE rapport de SQLite (via delete_pending_report_cmd)
+7. Pipeline pret pour nouveau cycle immediatement
+```
 
 ---
+
+## Risques et protections
+
+| Risque | Protection |
+|---|---|
+| Double-clic RIS sur le meme rapport | Rechargement propre avec splash, pas de crash |
+| Injection echouee | Rapport conserve en SQLite, pas de suppression |
+| Tauri absent (mode web) | invoke() echoue silencieusement, cleanup auto prend le relais |
+| Rapport supprime trop tot | Suppression UNIQUEMENT apres `success: true` confirme |
 
 ## Fichiers modifies
 
 | Fichier | Modification |
 |---|---|
-| `src/components/WebViewContainer.tsx` | Splash screen, anti-doublon tid, transition navigation, retry auto |
-| `src-tauri/src/http_server/handlers.rs` | Ajout `window.unminimize()` dans `open_report` |
+| `src/components/WebViewContainer.tsx` | Suppression du bloc anti-doublon tid, rechargement toujours autorise avec cache-buster |
+| `src/hooks/useSecureMessaging.ts` | Appel `delete_pending_report_cmd` apres injection reussie |
 
 ## Fichiers NON modifies
 
 | Fichier | Raison |
 |---|---|
-| `src/pages/Index.tsx` | Pas de changement necessaire, wrapper simple |
-| `src/index.css` | Les animations CSS peuvent etre inline ou Tailwind, pas besoin d'ajouter au design system |
-| `src/App.tsx` | Aucun impact sur la logique applicative |
-| `src/components/DebugPanel.tsx` | Deja corrige dans le commit precedent |
-| `src-tauri/src/main.rs` | Le deep link handler est deja correct |
+| `src-tauri/src/main.rs` | `delete_pending_report_cmd` existe deja |
+| `src-tauri/src/http_server/handlers.rs` | `unminimize()` deja corrige |
+| `src-tauri/src/database/queries.rs` | `delete_pending_report` fonctionne deja |
 

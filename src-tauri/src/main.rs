@@ -540,8 +540,23 @@ async fn perform_injection_at_position_direct(x: i32, y: i32, text: String, html
         thread::sleep(Duration::from_millis(120)); // Stabiliser focus
     }
     
-    // FALLBACK: Autres OS utilisent Enigo
-    #[cfg(not(target_os = "windows"))]
+    // macOS: Enigo + clic pour focaliser la fenêtre cible
+    #[cfg(target_os = "macos")]
+    {
+        let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
+        enigo.move_mouse(clamped_x, clamped_y, Coordinate::Abs).map_err(|e| e.to_string())?;
+        thread::sleep(Duration::from_millis(30));
+        
+        // Clic gauche pour donner le focus à la fenêtre sous le curseur
+        enigo.button(Button::Left, Direction::Press).map_err(|e| e.to_string())?;
+        enigo.button(Button::Left, Direction::Release).map_err(|e| e.to_string())?;
+        thread::sleep(Duration::from_millis(80));
+        
+        debug!("[macOS] Injection: déplacement + clic focus à ({}, {})", clamped_x, clamped_y);
+    }
+    
+    // Linux: fallback Enigo basique
+    #[cfg(target_os = "linux")]
     {
         let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
         enigo.move_mouse(clamped_x, clamped_y, Coordinate::Abs).map_err(|e| e.to_string())?;
@@ -701,9 +716,66 @@ async fn get_virtual_desktop_info() -> Result<VirtualDesktopInfo, String> {
         }
     }
     
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     {
-        // Fallback macOS/Linux: valeurs génériques du bureau principal
+        // macOS: utiliser Core Graphics pour obtenir les dimensions réelles du bureau virtuel
+        use std::process::Command;
+        // Utiliser system_profiler pour obtenir la résolution sans dépendance native supplémentaire
+        match Command::new("system_profiler")
+            .args(["SPDisplaysDataType", "-json"])
+            .output()
+        {
+            Ok(output) => {
+                if let Ok(json_str) = String::from_utf8(output.stdout) {
+                    // Parser le JSON pour extraire la résolution
+                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&json_str) {
+                        if let Some(displays) = json.get("SPDisplaysDataType")
+                            .and_then(|d| d.as_array())
+                        {
+                            let mut total_width: i32 = 0;
+                            let mut max_height: i32 = 0;
+                            let mut min_x: i32 = 0;
+                            let mut min_y: i32 = 0;
+                            
+                            for gpu in displays {
+                                if let Some(ndrvs) = gpu.get("spdisplays_ndrvs").and_then(|n| n.as_array()) {
+                                    for display in ndrvs {
+                                        let res = display.get("_spdisplays_resolution")
+                                            .and_then(|r| r.as_str())
+                                            .unwrap_or("1920 x 1080");
+                                        let parts: Vec<&str> = res.split(" x ").collect();
+                                        if parts.len() >= 2 {
+                                            let w = parts[0].trim().parse::<i32>().unwrap_or(1920);
+                                            let h = parts[1].trim().split_whitespace().next()
+                                                .and_then(|s| s.parse::<i32>().ok()).unwrap_or(1080);
+                                            total_width += w;
+                                            if h > max_height { max_height = h; }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            if total_width > 0 && max_height > 0 {
+                                debug!("[macOS] Bureau virtuel détecté: ({}, {}) {}x{}", min_x, min_y, total_width, max_height);
+                                return Ok(VirtualDesktopInfo { x: min_x, y: min_y, width: total_width, height: max_height });
+                            }
+                        }
+                    }
+                }
+                // Fallback si parsing échoue
+                debug!("[macOS] Fallback résolution par défaut");
+                Ok(VirtualDesktopInfo { x: 0, y: 0, width: 1920, height: 1080 })
+            },
+            Err(e) => {
+                warn!("[macOS] system_profiler échoué: {}, fallback", e);
+                Ok(VirtualDesktopInfo { x: 0, y: 0, width: 1920, height: 1080 })
+            }
+        }
+    }
+    
+    #[cfg(target_os = "linux")]
+    {
+        // Linux: fallback simple
         Ok(VirtualDesktopInfo { x: 0, y: 0, width: 1920, height: 1080 })
     }
 }

@@ -4,5 +4,18 @@
 <dict>
     <key>NSMicrophoneUsageDescription</key>
     <string>AIRADCR utilise le microphone pour la dictée vocale des comptes rendus radiologiques.</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>com.airadcr.desktop</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>airadcr</string>
+            </array>
+        </dict>
+    </array>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>AIRADCR a besoin d'accéder à d'autres applications pour injecter les rapports radiologiques dans votre logiciel RIS.</string>
 </dict>
 </plist>

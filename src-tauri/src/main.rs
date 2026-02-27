@@ -13,6 +13,14 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use active_win_pos_rs::get_active_window;
 use log::{info, warn, error, debug};
 
+// 🍎 macOS: Vérification permission Accessibility
+#[cfg(target_os = "macos")]
+extern crate objc;
+#[cfg(target_os = "macos")]
+extern crate core_foundation;
+#[cfg(target_os = "macos")]
+extern crate core_graphics;
+
 /// Retourne la touche modificateur pour copier/coller selon l'OS
 /// Windows/Linux: Ctrl, macOS: Cmd (Meta)
 fn clipboard_modifier() -> Key {
@@ -372,6 +380,51 @@ async fn has_text_selection(state: State<'_, AppState>) -> Result<bool, String> 
     Ok(has_selection)
 }
 
+// 🍎 macOS: Vérification permission Accessibility (AXIsProcessTrusted)
+#[cfg(target_os = "macos")]
+#[tauri::command]
+fn check_accessibility_permission() -> bool {
+    use core_foundation::base::TCFType;
+    use core_foundation::boolean::CFBoolean;
+    
+    // Appel à AXIsProcessTrusted() via le framework ApplicationServices
+    unsafe {
+        extern "C" {
+            fn AXIsProcessTrusted() -> u8;
+        }
+        let trusted = AXIsProcessTrusted() != 0;
+        if trusted {
+            info!("[macOS] Permission Accessibility: ACCORDÉE");
+        } else {
+            warn!("[macOS] Permission Accessibility: NON ACCORDÉE — l'injection échouera silencieusement");
+        }
+        trusted
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+fn check_accessibility_permission() -> bool {
+    true // Sur Windows/Linux, pas besoin de cette permission
+}
+
+#[cfg(target_os = "macos")]
+#[tauri::command]
+fn request_accessibility_permission() -> Result<(), String> {
+    info!("[macOS] Ouverture Préférences Système → Accessibilité");
+    std::process::Command::new("open")
+        .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+        .spawn()
+        .map_err(|e| format!("Impossible d'ouvrir les Préférences Système: {}", e))?;
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+fn request_accessibility_permission() -> Result<(), String> {
+    Ok(()) // Noop sur Windows/Linux
+}
+
 #[tauri::command]
 async fn set_ignore_cursor_events(window: tauri::Window, ignore: bool) -> Result<(), String> {
     window.set_ignore_cursor_events(ignore)
@@ -672,10 +725,13 @@ async fn get_window_at_point(x: i32, y: i32) -> Result<WindowInfo, String> {
                 width: win.position.width as i32,
                 height: win.position.height as i32,
             }),
-            Err(_) => Ok(WindowInfo {
-                title: "Unknown".to_string(),
-                app_name: "Unknown".to_string(),
-                x: 0, y: 0, width: 1920, height: 1080,
+            Err(_) => {
+                warn!("[macOS/Linux] Fenêtre active non détectée, utilisation fallback résolution système");
+                Ok(WindowInfo {
+                    title: "Unknown".to_string(),
+                    app_name: "Unknown".to_string(),
+                    x: 0, y: 0, width: 0, height: 0,
+                })
             })
         }
     }
@@ -835,8 +891,10 @@ async fn get_physical_window_rect() -> Result<PhysicalRect, String> {
                 width: win.position.width as i32,
                 height: win.position.height as i32,
             }),
-            Err(_) => Ok(PhysicalRect {
-                left: 0, top: 0, right: 1920, bottom: 1080, width: 1920, height: 1080,
+            Err(_) => {
+                warn!("[macOS/Linux] Fenêtre active non détectée pour PhysicalRect, fallback à zéro");
+                Ok(PhysicalRect {
+                left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0,
             })
         }
     }
@@ -947,12 +1005,13 @@ async fn get_window_client_rect_at_point(x: i32, y: i32) -> Result<ClientRectInf
                 client_height: win.position.height as i32,
                 hwnd: 0,
             }),
-            Err(_) => Ok(ClientRectInfo {
+            Err(_) => {
+                warn!("[macOS/Linux] Fenêtre active non détectée pour ClientRect, fallback à zéro");
+                Ok(ClientRectInfo {
                 app_name: "Unknown".to_string(), title: "Unknown".to_string(),
-                window_left: 0, window_top: 0, window_width: 1920, window_height: 1080,
-                client_left: 0, client_top: 0, client_width: 1920, client_height: 1080,
+                window_left: 0, window_top: 0, window_width: 0, window_height: 0,
+                client_left: 0, client_top: 0, client_width: 0, client_height: 0,
                 hwnd: 0,
-            })
         }
     }
 }
@@ -1825,8 +1884,10 @@ fn main() {
             // 🎤 Commandes SpeechMike natif (HID USB)
             speechmike_get_status,
             speechmike_list_devices,
-            speechmike_set_led
-        ])
+            speechmike_set_led,
+            // 🍎 macOS Accessibility
+            check_accessibility_permission,
+            request_accessibility_permission
         .setup(|app| {
             debug!("[DEBUG] .setup() appelé - enregistrement raccourcis SpeechMike");
             let tx = register_global_shortcuts(app.handle());
@@ -1907,90 +1968,90 @@ fn register_global_shortcuts(app_handle: tauri::AppHandle) -> tokio::sync::mpsc:
     // 🎨 DEBUG PANEL: Ctrl+Alt+D
     let handle_debug = app_handle.clone();
     shortcut_manager
-        .register("Ctrl+Alt+D", move || {
-            debug!("[Shortcuts] Ctrl+Alt+D pressé (debug panel)");
+        .register("CmdOrCtrl+Alt+D", move || {
+            debug!("[Shortcuts] CmdOrCtrl+Alt+D pressé (debug panel)");
             if let Some(window) = handle_debug.get_window("main") {
                 window.emit("airadcr:toggle_debug", ()).ok();
             }
         })
-        .unwrap_or_else(|e| warn!("Erreur enregistrement Ctrl+Alt+D: {}", e));
+        .unwrap_or_else(|e| warn!("Erreur enregistrement CmdOrCtrl+Alt+D: {}", e));
 
     // 📋 LOG WINDOW: Ctrl+Alt+L
     let handle_logs = app_handle.clone();
     shortcut_manager
-        .register("Ctrl+Alt+L", move || {
-            debug!("[Shortcuts] Ctrl+Alt+L pressé (log window)");
+        .register("CmdOrCtrl+Alt+L", move || {
+            debug!("[Shortcuts] CmdOrCtrl+Alt+L pressé (log window)");
             if let Some(window) = handle_logs.get_window("main") {
                 window.emit("airadcr:toggle_logs", ()).ok();
             }
         })
-        .unwrap_or_else(|e| warn!("Erreur enregistrement Ctrl+Alt+L: {}", e));
+        .unwrap_or_else(|e| warn!("Erreur enregistrement CmdOrCtrl+Alt+L: {}", e));
 
     // 🧪 TEST INJECTION: Ctrl+Alt+I
     let handle_test = app_handle.clone();
     shortcut_manager
-        .register("Ctrl+Alt+I", move || {
-            debug!("[Shortcuts] Ctrl+Alt+I pressé (test injection)");
+        .register("CmdOrCtrl+Alt+I", move || {
+            debug!("[Shortcuts] CmdOrCtrl+Alt+I pressé (test injection)");
             if let Some(window) = handle_test.get_window("main") {
                 window.emit("airadcr:test_injection", ()).ok();
             }
         })
-        .unwrap_or_else(|e| warn!("Erreur enregistrement Ctrl+Alt+I: {}", e));
+        .unwrap_or_else(|e| warn!("Erreur enregistrement CmdOrCtrl+Alt+I: {}", e));
 
     // 🎤 DICTATION: Ctrl+Shift+D (Start/Stop dictée)
     let tx_d = tx.clone();
     shortcut_manager
-        .register("Ctrl+Shift+D", move || {
-            debug!("[Shortcuts] Ctrl+Shift+D pressé → tx.send(toggle_recording)");
+        .register("CmdOrCtrl+Shift+D", move || {
+            debug!("[Shortcuts] CmdOrCtrl+Shift+D pressé → tx.send(toggle_recording)");
             let _ = tx_d.send("toggle_recording");
         })
-        .unwrap_or_else(|e| warn!("Erreur enregistrement Ctrl+Shift+D: {}", e));
+        .unwrap_or_else(|e| warn!("Erreur enregistrement CmdOrCtrl+Shift+D: {}", e));
 
     // 🎤 DICTATION: Ctrl+Shift+P (Pause/Resume dictée)
     let tx_p = tx.clone();
     shortcut_manager
-        .register("Ctrl+Shift+P", move || {
-            debug!("[Shortcuts] Ctrl+Shift+P pressé → tx.send(toggle_pause)");
+        .register("CmdOrCtrl+Shift+P", move || {
+            debug!("[Shortcuts] CmdOrCtrl+Shift+P pressé → tx.send(toggle_pause)");
             let _ = tx_p.send("toggle_pause");
         })
-        .unwrap_or_else(|e| warn!("Erreur enregistrement Ctrl+Shift+P: {}", e));
+        .unwrap_or_else(|e| warn!("Erreur enregistrement CmdOrCtrl+Shift+P: {}", e));
 
     // 💉 INJECTION: Ctrl+Shift+T (Inject texte brut)
     let tx_t = tx.clone();
     shortcut_manager
-        .register("Ctrl+Shift+T", move || {
-            debug!("[Shortcuts] Ctrl+Shift+T pressé → tx.send(inject_raw)");
+        .register("CmdOrCtrl+Shift+T", move || {
+            debug!("[Shortcuts] CmdOrCtrl+Shift+T pressé → tx.send(inject_raw)");
             let _ = tx_t.send("inject_raw");
         })
-        .unwrap_or_else(|e| warn!("Erreur enregistrement Ctrl+Shift+T: {}", e));
+        .unwrap_or_else(|e| warn!("Erreur enregistrement CmdOrCtrl+Shift+T: {}", e));
 
     // 💉 INJECTION: Ctrl+Shift+S (Inject rapport structuré)
     let tx_s = tx.clone();
     shortcut_manager
-        .register("Ctrl+Shift+S", move || {
-            debug!("[Shortcuts] Ctrl+Shift+S pressé → tx.send(inject_structured)");
+        .register("CmdOrCtrl+Shift+S", move || {
+            debug!("[Shortcuts] CmdOrCtrl+Shift+S pressé → tx.send(inject_structured)");
             let _ = tx_s.send("inject_structured");
         })
-        .unwrap_or_else(|e| warn!("Erreur enregistrement Ctrl+Shift+S: {}", e));
+        .unwrap_or_else(|e| warn!("Erreur enregistrement CmdOrCtrl+Shift+S: {}", e));
 
     // 🎯 ERGONOMIC: Ctrl+Space → toggle_recording (style Wispr Flow / SuperWhisper)
     // Touche la plus accessible : auriculaire Ctrl + pouce Space, une seule main
     let tx_space = tx.clone();
     shortcut_manager
-        .register("Ctrl+Space", move || {
-            debug!("[Shortcuts] Ctrl+Space pressé (ergonomic) → toggle_recording");
+        .register("CmdOrCtrl+Space", move || {
+            debug!("[Shortcuts] CmdOrCtrl+Space pressé (ergonomic) → toggle_recording");
             let _ = tx_space.send("toggle_recording");
         })
-        .unwrap_or_else(|e| warn!("Erreur enregistrement Ctrl+Space: {}", e));
+        .unwrap_or_else(|e| warn!("Erreur enregistrement CmdOrCtrl+Space: {}", e));
 
     // 🎯 ERGONOMIC: Ctrl+Shift+Space → toggle_pause
     let tx_shift_space = tx.clone();
     shortcut_manager
-        .register("Ctrl+Shift+Space", move || {
-            debug!("[Shortcuts] Ctrl+Shift+Space pressé (ergonomic) → toggle_pause");
+        .register("CmdOrCtrl+Shift+Space", move || {
+            debug!("[Shortcuts] CmdOrCtrl+Shift+Space pressé (ergonomic) → toggle_pause");
             let _ = tx_shift_space.send("toggle_pause");
         })
-        .unwrap_or_else(|e| warn!("Erreur enregistrement Ctrl+Shift+Space: {}", e));
+        .unwrap_or_else(|e| warn!("Erreur enregistrement CmdOrCtrl+Shift+Space: {}", e));
 
     // ANTI-GHOST: F9 (désactiver click-through)
     let handle_f9 = app_handle.clone();
@@ -2003,7 +2064,7 @@ fn register_global_shortcuts(app_handle: tauri::AppHandle) -> tokio::sync::mpsc:
         })
         .unwrap_or_else(|e| warn!("Erreur enregistrement F9: {}", e));
 
-    info!("[Shortcuts] Raccourcis globaux enregistrés (channel tokio): Ctrl+Alt+D/L/I, F9, Ctrl+Shift+D/P/T/S, Ctrl+Space, Ctrl+Shift+Space");
+    info!("[Shortcuts] Raccourcis globaux enregistrés (channel tokio): CmdOrCtrl+Alt+D/L/I, F9, CmdOrCtrl+Shift+D/P/T/S, CmdOrCtrl+Space, CmdOrCtrl+Shift+Space");
     
     tx // 🆕 Retourner le sender pour le thread SpeechMike
 }

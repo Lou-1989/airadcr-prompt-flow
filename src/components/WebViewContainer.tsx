@@ -7,6 +7,8 @@ import { useInteractionMode } from '@/hooks/useInteractionMode';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { logger } from '@/utils/logger';
 import { listen } from '@tauri-apps/api/event';
+import { invoke } from '@tauri-apps/api/tauri';
+import { toast } from '@/hooks/use-toast';
 
 
 interface WebViewContainerProps {
@@ -49,6 +51,31 @@ export const WebViewContainer = ({ className }: WebViewContainerProps) => {
     if (!isValid) {
       logger.error('[Sécurité] URL AirADCR non autorisée:', PRODUCTION_CONFIG.AIRADCR_URL);
     }
+  }, []);
+
+  // 🍎 macOS: Vérification permission Accessibility au démarrage
+  useEffect(() => {
+    if (!(window as any).__TAURI__) return;
+    
+    const checkAccessibility = async () => {
+      try {
+        const granted = await invoke<boolean>('check_accessibility_permission');
+        if (!granted) {
+          toast({
+            title: "⚠️ Permission Accessibilité requise",
+            description: "Pour que l'injection de texte fonctionne, veuillez autoriser AIRADCR dans Préférences Système → Confidentialité → Accessibilité.",
+            variant: "destructive",
+          });
+          // Ouvrir automatiquement le panneau Accessibilité
+          await invoke('request_accessibility_permission');
+        }
+      } catch (e) {
+        // Silently ignore on non-macOS or if command not available
+        logger.debug('[Accessibility] Check skipped:', e);
+      }
+    };
+    
+    checkAccessibility();
   }, []);
 
   // Écouter les événements de navigation depuis le serveur HTTP (RIS)

@@ -1,128 +1,195 @@
 
 
-# Ouverture systematique de la fenetre AIRADCR + Logging TÉO Hub
+# Audit global macOS - AIRADCR Desktop
 
-## Probleme actuel
+## Verdict : 80% fonctionnel -- 3 problemes bloquants restants, 4 ameliorations recommandees
 
-Dans `open_report` (handlers.rs, lignes 906-918), quand aucun rapport n'est trouve (ni localement, ni via TÉO Hub), le handler retourne une erreur 400 **sans ouvrir la fenetre**. Le `show()` / `unminimize()` / `set_focus()` ne se produit qu'a la ligne 944 quand un `tid` valide existe.
-
-Consequence : le radiologue clique dans le RIS, rien ne se passe visuellement. Il ne sait pas si l'application a recu la demande.
-
-## Comportement souhaite
-
-**Dans TOUS les cas** (200, 400, 401, 404, 500 du TÉO Hub), la fenetre AIRADCR doit :
-1. S'afficher (`show`)
-2. Se restaurer si minimisee (`unminimize`)
-3. Prendre le focus (`set_focus`)
-
-Le radiologue voit toujours l'application apparaitre. S'il y a un rapport, l'iframe navigue vers lui. S'il n'y en a pas, l'application s'ouvre sur la page d'accueil et le radiologue peut dicter librement.
-
-## Logging
-
-Le systeme de logging existe deja via `request_info.log_access()` qui ecrit dans la table SQLite `access_logs`. Cependant, le **fallback TÉO Hub** (lignes 866-886) ne log que de facon generique quand il echoue. Il faut enrichir le logging pour distinguer les differents codes de reponse TÉO Hub (400, 401, 404, 500) dans les logs d'acces.
+Les corrections precedentes (Entitlements, Info.plist, injection avec clic, resolution dynamique) sont en place. Voici ce qui reste.
 
 ---
 
-## Modifications
+## Ce qui fonctionne sur macOS
 
-### Fichier : `src-tauri/src/http_server/handlers.rs`
+| Fonctionnalite | Status | Detail |
+|---|---|---|
+| Affichage permanent (always-on-top) | OK | `alwaysOnTop: true` + assertion 800ms |
+| Microphone (dictee vocale) | OK | `NSMicrophoneUsageDescription` + entitlement `audio-input` |
+| SpeechMike USB HID | OK | `hidapi` cross-platform, detection + LED + polling |
+| Serveur HTTP local (port 8741) | OK | actix-web cross-platform |
+| Deep links `airadcr://` | OK | `CFBundleURLTypes` enregistre dans Info.plist |
+| Base de donnees SQLCipher | OK | `keyring` utilise macOS Keychain |
+| System tray | OK | Menu contextuel fonctionnel |
+| Clipboard Cmd+V | OK | `clipboard_modifier()` retourne `Key::Meta` |
+| Injection avec clic focus | OK | Bloc `#[cfg(target_os = "macos")]` avec move + clic + paste |
+| Resolution dynamique | OK | `system_profiler SPDisplaysDataType -json` |
+| Logging + dossier logs | OK | `open` commande macOS pour ouvrir le dossier |
+| Raccourcis globaux | PARTIEL | Fonctionnent mais utilisent `Ctrl` au lieu de `Cmd` |
+| Entitlements automation | OK | `com.apple.security.automation.apple-events` present |
 
-**1. Extraire l'ouverture de fenetre dans une fonction helper**
+---
 
-Creer une fonction `show_main_window()` qui fait `show + unminimize + set_focus` sur la fenetre "main". Cette fonction sera appelee au debut de `open_report`, avant toute logique de recherche de rapport.
+## Problemes bloquants
+
+### BLOQUANT 1 : Pas de verification/demande de permission Accessibility
+
+**Probleme** : Sur macOS Ventura+ (13+), Enigo ne peut simuler aucune touche (Cmd+V, Cmd+C) sans que l'utilisateur ait accorde la permission **Accessibility** dans Preferences Systeme > Confidentialite > Accessibilite. Sans cette permission, l'injection echoue **silencieusement** -- pas d'erreur, pas de log, juste rien ne se passe.
+
+**Impact** : Le radiologue installe l'app, clique sur "Injecter", et rien ne se passe. Aucun message ne lui explique pourquoi.
+
+**Solution** : Ajouter une verification au demarrage via `AXIsProcessTrusted()` (Core Foundation). Si non accorde, afficher un message explicatif et ouvrir automatiquement le panneau Accessibilite. Implementer cela comme une commande Tauri `check_accessibility_permission` appelee au demarrage cote frontend.
+
+### BLOQUANT 2 : DMG non signe et non notarise
+
+**Probleme** : Le workflow CI ne fait aucune signature ni notarization pour macOS. Le DMG genere declenchera Gatekeeper :
+- macOS Sonoma (14) : "Application non identifiee" avec bouton "Annuler" uniquement
+- macOS Sequoia (15) : Bloquer plus dur, necessite terminal `xattr -cr`
+
+**Impact** : Les radiologues ne pourront pas installer l'application sans manipulation technique avancee.
+
+**Solution** : Ajouter les etapes `codesign` + `xcrun notarytool` dans le workflow GitHub Actions pour macOS. Necessite un certificat Apple Developer ID ($99/an).
+
+### BLOQUANT 3 : Raccourcis macOS non-standard
+
+**Probleme** : Tous les raccourcis utilisent `Ctrl+Shift+D/P/T/S` et `Ctrl+Space`. Sur macOS, la convention est `Cmd+Shift+...` et `Cmd+Space` (qui entre en conflit avec Spotlight). Les radiologues Mac ne trouveront pas les raccourcis intuitifs.
+
+**Impact** : UX degradee. `Ctrl+Space` peut ne pas fonctionner si une autre app l'intercepte. Les raccourcis `Ctrl+Alt+D/L/I` entrent potentiellement en conflit avec des raccourcis systeme macOS.
+
+**Solution** : Utiliser des raccourcis conditionnes par l'OS. Pour le `main.rs`, enregistrer `CmdOrCtrl+Shift+D/P/T/S` (Tauri les resout automatiquement par OS). Pour `Ctrl+Space`, utiliser `Alt+Space` sur macOS (pas de conflit Spotlight).
+
+---
+
+## Ameliorations non-bloquantes
+
+### MOYEN 1 : Fallbacks hardcodes 1920x1080
+
+Plusieurs fonctions non-Windows retournent `1920x1080` en cas d'echec :
+- `get_window_at_point` (ligne 678)
+- `get_physical_window_rect` (ligne 839)
+- `get_window_client_rect_at_point` (lignes 950-954)
+
+**Solution** : Utiliser la meme logique `system_profiler` que `get_virtual_desktop_info` comme fallback, ou au minimum logger un warning quand le fallback est utilise.
+
+### MOYEN 2 : `get_window_at_point` ne detecte pas la fenetre au point
+
+Sur macOS, le fallback utilise `get_active_window()` qui retourne la fenetre **active**, pas celle sous le curseur. Cela signifie que le verrouillage de cible d'injection ne fonctionne pas correctement sur macOS.
+
+**Solution** : Utiliser `CGWindowListCopyWindowInfo` via Core Graphics pour identifier la fenetre sous un point donne. Cela necessite l'ajout de la crate `core-graphics` dans `Cargo.toml`.
+
+### MOYEN 3 : Pas de distinction client rect sur macOS
+
+`get_window_client_rect_at_point` retourne les memes valeurs pour window rect et client rect sur macOS (lignes 937-948). Sur Windows, la distinction est importante pour les barres de titre et bordures.
+
+### MINEUR : `has_text_selection` peut declencher un Cmd+C parasite
+
+La detection de selection (lignes 340-373) simule Cmd+C dans l'application cible. Sur macOS, cela peut emettre un son "boop" si rien n'est selectionne, ce qui est desagreable en milieu medical.
+
+---
+
+## Plan de correction (par priorite)
+
+### Fichier : `src-tauri/src/main.rs`
+
+**1. Ajouter `check_accessibility_permission` (BLOQUANT 1)**
+
+Nouvelle commande Tauri qui verifie si l'Accessibility est accordee :
 
 ```rust
-fn show_main_window() {
-    if let Some(app_handle) = APP_HANDLE.get() {
-        if let Some(window) = app_handle.get_window("main") {
-            let _ = window.show();
-            let _ = window.unminimize();
-            let _ = window.set_focus();
-            log::debug!("📱 [HTTP] Fenêtre principale affichée et focalisée");
-        }
-    }
+#[cfg(target_os = "macos")]
+#[tauri::command]
+fn check_accessibility_permission() -> bool {
+    // AXIsProcessTrusted() via objc/core-foundation
+    // Retourne true si la permission est accordee
+}
+
+#[cfg(target_os = "macos")]
+#[tauri::command]
+fn request_accessibility_permission() -> Result<(), String> {
+    // Ouvre System Preferences > Accessibility
+    std::process::Command::new("open")
+        .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 ```
 
-**2. Appeler `show_main_window()` au tout debut de `open_report`**
+Cote frontend (`WebViewContainer.tsx` ou `App.tsx`), verifier au demarrage et afficher un message si non accorde.
 
-Juste apres la validation de l'API key (ligne 827), appeler `show_main_window()`. Ainsi, dans TOUS les cas (rapport trouve, pas trouve, erreur TÉO Hub), la fenetre s'ouvre.
+**2. Corriger les raccourcis macOS (BLOQUANT 3)**
 
-**3. Enrichir le logging du fallback TÉO Hub**
+Remplacer dans `register_global_shortcuts` :
+- `"Ctrl+Shift+D"` par `"CmdOrCtrl+Shift+D"`
+- `"Ctrl+Shift+P"` par `"CmdOrCtrl+Shift+P"`
+- `"Ctrl+Shift+T"` par `"CmdOrCtrl+Shift+T"`
+- `"Ctrl+Shift+S"` par `"CmdOrCtrl+Shift+S"`
+- `"Ctrl+Space"` par `"CmdOrCtrl+Space"` (ou `"Alt+Space"` sur macOS)
+- `"Ctrl+Shift+Space"` par `"CmdOrCtrl+Shift+Space"`
+- `"Ctrl+Alt+D"` par `"CmdOrCtrl+Alt+D"`
+- `"Ctrl+Alt+L"` par `"CmdOrCtrl+Alt+L"`
+- `"Ctrl+Alt+I"` par `"CmdOrCtrl+Alt+I"`
 
-Dans le bloc `Err(e)` du fallback TÉO (lignes 882-886), logger le type d'erreur TÉO Hub de maniere specifique via `request_info.log_access()` :
+**3. Supprimer les fallbacks hardcodes (MOYEN 1)**
 
-```rust
-Err(e) => {
-    let teo_error_detail = match &e {
-        teo_client::errors::TeoClientError::NotFound(_) => "teo_hub_404_not_found",
-        teo_client::errors::TeoClientError::Unauthorized(_) => "teo_hub_401_unauthorized",
-        teo_client::errors::TeoClientError::HttpError(code, _) => {
-            // Log le code HTTP specifique
-            log::warn!("⚠️ [HTTP] TÉO Hub HTTP {}: {}", code, e);
-            "teo_hub_http_error"
-        },
-        teo_client::errors::TeoClientError::NetworkError(_) => "teo_hub_network_error",
-        _ => "teo_hub_other_error",
-    };
-    request_info.log_access(&state.db, 200, teo_error_detail, Some(&format!("TÉO fallback: {}", e)));
-    log::warn!("⚠️ [HTTP] Fallback TÉO Hub échoué ({}): {}", teo_error_detail, e);
-    None
-}
+Remplacer les `1920x1080` par des appels a `system_profiler` ou au minimum un log `warn!` pour alerter.
+
+### Fichier : `src-tauri/Cargo.toml`
+
+Ajouter sous `[target.'cfg(target_os = "macos")'.dependencies]` :
+
+```toml
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = "0.9"
 ```
 
-**4. Quand aucun rapport n'est trouve, ouvrir AIRADCR sans `tid`**
+Necessaire pour `AXIsProcessTrusted()`.
 
-Au lieu de retourner 400, emettre un evenement de navigation vers la page d'accueil (sans tid) et retourner 200. Le radiologue voit l'application s'ouvrir sur la page par defaut, prete a dicter.
+### Fichier : `.github/workflows/build.yml`
 
-```rust
-// Quand technical_id est None : naviguer vers la page d'accueil
-None => {
-    log::info!("ℹ️ [HTTP] Aucun rapport trouvé, ouverture AIRADCR sans rapport");
-    request_info.log_access(&state.db, 200, "no_report_found", 
-        Some("Window opened without report - radiologist can dictate freely"));
-    
-    // Emettre navigation vers accueil (sans tid)
-    if let Some(app_handle) = APP_HANDLE.get() {
-        if let Some(window) = app_handle.get_window("main") {
-            let _ = window.emit("airadcr:navigate_to_report", "");
-        }
-    }
-    
-    return HttpResponse::Ok().json(OpenReportResponse {
-        success: true,
-        message: Some("Window opened. No report available - radiologist can dictate freely.".to_string()),
-        technical_id: None,
-        navigated_to: Some("https://airadcr.com/app?tori=true".to_string()),
-        error: None,
-        source: Some("no_report".to_string()),
+Ajouter les etapes de signature macOS (necessite les secrets `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`) :
+
+```yaml
+- name: Import Apple certificate
+  if: contains(matrix.settings.platform, 'macos')
+  env:
+    APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+    APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+  run: |
+    # Import certificate into temporary keychain
+    ...
+
+- name: Notarize DMG
+  if: contains(matrix.settings.platform, 'macos')
+  run: |
+    xcrun notarytool submit ... --wait
+    xcrun stapler staple ...
+```
+
+### Fichier : `src/components/WebViewContainer.tsx` (ou `src/App.tsx`)
+
+Ajouter une verification Accessibility au demarrage :
+
+```typescript
+useEffect(() => {
+  if (window.__TAURI__) {
+    invoke('check_accessibility_permission').then((granted) => {
+      if (!granted) {
+        // Afficher un message demandant d'activer l'Accessibility
+        toast.warning("Veuillez activer l'accessibilite pour AIRADCR...");
+        invoke('request_accessibility_permission');
+      }
     });
-}
+  }
+}, []);
 ```
 
 ---
 
-## Pipeline final pour chaque code TÉO Hub
+## Resume des fichiers a modifier
 
-| TÉO Hub Response | Comportement AIRADCR |
+| Fichier | Modifications |
 |---|---|
-| 200 OK (rapport recu) | Fenetre ouverte + navigation vers le rapport |
-| 400 Bad Request | Fenetre ouverte + page d'accueil (log: teo_hub_bad_request) |
-| 401 Unauthorized | Fenetre ouverte + page d'accueil (log: teo_hub_401_unauthorized) |
-| 404 Not Found | Fenetre ouverte + page d'accueil (log: teo_hub_404_not_found) |
-| 500 Server Error | Fenetre ouverte + page d'accueil (log: teo_hub_http_error) |
-| Network Error | Fenetre ouverte + page d'accueil (log: teo_hub_network_error) |
-
-## Fichiers modifies
-
-| Fichier | Modification |
-|---|---|
-| `src-tauri/src/http_server/handlers.rs` | Fonction `show_main_window()`, appel au debut de `open_report`, logging enrichi du fallback TÉO, ouverture fenetre meme sans rapport |
-
-## Ce qui ne change pas
-
-- Le handler `POST /pending-report` (pas concerne)
-- Le handler `GET /pending-report` (pas concerne)
-- Le client TÉO Hub (`teo_client/mod.rs`) -- deja bien structure avec les bons types d'erreur
-- Le systeme `access_logs` SQLite -- deja fonctionnel, on l'enrichit juste avec des resultats plus precis
+| `src-tauri/src/main.rs` | Commandes Accessibility, raccourcis CmdOrCtrl, fallbacks ameliores |
+| `src-tauri/Cargo.toml` | Ajout `core-foundation` pour macOS |
+| `.github/workflows/build.yml` | Signature + notarization macOS |
+| `src/components/WebViewContainer.tsx` | Verification Accessibility au demarrage |
 

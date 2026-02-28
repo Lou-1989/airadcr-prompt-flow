@@ -1,195 +1,124 @@
 
 
-# Audit global macOS - AIRADCR Desktop
+# Plan de correction macOS -- Bugs microphone + crash injection
 
-## Verdict : 80% fonctionnel -- 3 problemes bloquants restants, 4 ameliorations recommandees
+## Verification de l'analyse
 
-Les corrections precedentes (Entitlements, Info.plist, injection avec clic, resolution dynamique) sont en place. Voici ce qui reste.
+Apres inspection complete du code, voici le statut reel :
 
----
-
-## Ce qui fonctionne sur macOS
-
-| Fonctionnalite | Status | Detail |
+| Point audite | Statut actuel | Action requise |
 |---|---|---|
-| Affichage permanent (always-on-top) | OK | `alwaysOnTop: true` + assertion 800ms |
-| Microphone (dictee vocale) | OK | `NSMicrophoneUsageDescription` + entitlement `audio-input` |
-| SpeechMike USB HID | OK | `hidapi` cross-platform, detection + LED + polling |
-| Serveur HTTP local (port 8741) | OK | actix-web cross-platform |
-| Deep links `airadcr://` | OK | `CFBundleURLTypes` enregistre dans Info.plist |
-| Base de donnees SQLCipher | OK | `keyring` utilise macOS Keychain |
-| System tray | OK | Menu contextuel fonctionnel |
-| Clipboard Cmd+V | OK | `clipboard_modifier()` retourne `Key::Meta` |
-| Injection avec clic focus | OK | Bloc `#[cfg(target_os = "macos")]` avec move + clic + paste |
-| Resolution dynamique | OK | `system_profiler SPDisplaysDataType -json` |
-| Logging + dossier logs | OK | `open` commande macOS pour ouvrir le dossier |
-| Raccourcis globaux | PARTIEL | Fonctionnent mais utilisent `Ctrl` au lieu de `Cmd` |
-| Entitlements automation | OK | `com.apple.security.automation.apple-events` present |
+| Raccourcis CmdOrCtrl | DEJA CORRIGE | Aucune |
+| Commandes Accessibility (check/request) | DEJA CORRIGE | Aucune |
+| Frontend check Accessibility au demarrage | DEJA CORRIGE | Aucune |
+| `sandbox` iframe manque `allow-microphone` | **BUG CONFIRME** | Correction requise |
+| CSP manque `media-src` | **BUG CONFIRME** | Correction requise |
+| Pas de garde Accessibility avant Enigo | **BUG CONFIRME** | Correction requise |
+| `CmdOrCtrl+Space` conflit Spotlight macOS | **BUG CONFIRME** | Correction requise |
+| Entitlement `allow-unsigned-executable-memory` | **MANQUANT** | Correction requise |
+| Fallback hardcode 1920x1080 | **PRESENT** (lignes 823, 827) | Amelioration |
+
+**5 corrections restantes, toutes macOS-only ou cross-platform sans impact Windows/Linux.**
 
 ---
 
-## Problemes bloquants
+## Corrections a implementer
 
-### BLOQUANT 1 : Pas de verification/demande de permission Accessibility
+### 1. Microphone : ajouter `allow-microphone` au sandbox iframe
 
-**Probleme** : Sur macOS Ventura+ (13+), Enigo ne peut simuler aucune touche (Cmd+V, Cmd+C) sans que l'utilisateur ait accorde la permission **Accessibility** dans Preferences Systeme > Confidentialite > Accessibilite. Sans cette permission, l'injection echoue **silencieusement** -- pas d'erreur, pas de log, juste rien ne se passe.
+**Fichier** : `src/security/SecurityConfig.ts` -- ligne 32
 
-**Impact** : Le radiologue installe l'app, clique sur "Injecter", et rien ne se passe. Aucun message ne lui explique pourquoi.
+Le sandbox iframe bloque `getUserMedia()` car il ne contient pas `allow-microphone`. C'est la cause racine du bug microphone.
 
-**Solution** : Ajouter une verification au demarrage via `AXIsProcessTrusted()` (Core Foundation). Si non accorde, afficher un message explicatif et ouvrir automatiquement le panneau Accessibilite. Implementer cela comme une commande Tauri `check_accessibility_permission` appelee au demarrage cote frontend.
+**Avant** :
+```
+sandbox: 'allow-same-origin allow-scripts allow-forms allow-navigation allow-popups allow-clipboard-read allow-clipboard-write allow-modals'
+```
 
-### BLOQUANT 2 : DMG non signe et non notarise
+**Apres** :
+```
+sandbox: 'allow-same-origin allow-scripts allow-forms allow-navigation allow-popups allow-clipboard-read allow-clipboard-write allow-modals allow-microphone allow-camera'
+```
 
-**Probleme** : Le workflow CI ne fait aucune signature ni notarization pour macOS. Le DMG genere declenchera Gatekeeper :
-- macOS Sonoma (14) : "Application non identifiee" avec bouton "Annuler" uniquement
-- macOS Sequoia (15) : Bloquer plus dur, necessite terminal `xattr -cr`
+Aussi ajouter `display-capture` dans l'attribut `allow` (ligne 30) pour future-proofing :
+```
+allow: 'clipboard-read; clipboard-write; fullscreen; microphone; camera; autoplay; display-capture'
+```
 
-**Impact** : Les radiologues ne pourront pas installer l'application sans manipulation technique avancee.
+**Impact Windows/Linux** : Aucun. Ces tokens n'ont d'effet que si le navigateur les supporte, et ils ne retirent rien.
 
-**Solution** : Ajouter les etapes `codesign` + `xcrun notarytool` dans le workflow GitHub Actions pour macOS. Necessite un certificat Apple Developer ID ($99/an).
+### 2. CSP : ajouter `media-src` pour les flux audio WebKit
 
-### BLOQUANT 3 : Raccourcis macOS non-standard
+**Fichier** : `src-tauri/tauri.conf.json` -- ligne 147
 
-**Probleme** : Tous les raccourcis utilisent `Ctrl+Shift+D/P/T/S` et `Ctrl+Space`. Sur macOS, la convention est `Cmd+Shift+...` et `Cmd+Space` (qui entre en conflit avec Spotlight). Les radiologues Mac ne trouveront pas les raccourcis intuitifs.
+Ajouter `media-src 'self' blob: mediastream:` dans la CSP pour autoriser les flux audio dans WKWebView.
 
-**Impact** : UX degradee. `Ctrl+Space` peut ne pas fonctionner si une autre app l'intercepte. Les raccourcis `Ctrl+Alt+D/L/I` entrent potentiellement en conflit avec des raccourcis systeme macOS.
+**Impact Windows/Linux** : Aucun. La directive est inerte si non utilisee.
 
-**Solution** : Utiliser des raccourcis conditionnes par l'OS. Pour le `main.rs`, enregistrer `CmdOrCtrl+Shift+D/P/T/S` (Tauri les resout automatiquement par OS). Pour `Ctrl+Space`, utiliser `Alt+Space` sur macOS (pas de conflit Spotlight).
+### 3. Garde Accessibility obligatoire avant chaque appel Enigo
 
----
+**Fichier** : `src-tauri/src/main.rs`
 
-## Ameliorations non-bloquantes
-
-### MOYEN 1 : Fallbacks hardcodes 1920x1080
-
-Plusieurs fonctions non-Windows retournent `1920x1080` en cas d'echec :
-- `get_window_at_point` (ligne 678)
-- `get_physical_window_rect` (ligne 839)
-- `get_window_client_rect_at_point` (lignes 950-954)
-
-**Solution** : Utiliser la meme logique `system_profiler` que `get_virtual_desktop_info` comme fallback, ou au minimum logger un warning quand le fallback est utilise.
-
-### MOYEN 2 : `get_window_at_point` ne detecte pas la fenetre au point
-
-Sur macOS, le fallback utilise `get_active_window()` qui retourne la fenetre **active**, pas celle sous le curseur. Cela signifie que le verrouillage de cible d'injection ne fonctionne pas correctement sur macOS.
-
-**Solution** : Utiliser `CGWindowListCopyWindowInfo` via Core Graphics pour identifier la fenetre sous un point donne. Cela necessite l'ajout de la crate `core-graphics` dans `Cargo.toml`.
-
-### MOYEN 3 : Pas de distinction client rect sur macOS
-
-`get_window_client_rect_at_point` retourne les memes valeurs pour window rect et client rect sur macOS (lignes 937-948). Sur Windows, la distinction est importante pour les barres de titre et bordures.
-
-### MINEUR : `has_text_selection` peut declencher un Cmd+C parasite
-
-La detection de selection (lignes 340-373) simule Cmd+C dans l'application cible. Sur macOS, cela peut emettre un son "boop" si rien n'est selectionne, ce qui est desagreable en milieu medical.
-
----
-
-## Plan de correction (par priorite)
-
-### Fichier : `src-tauri/src/main.rs`
-
-**1. Ajouter `check_accessibility_permission` (BLOQUANT 1)**
-
-Nouvelle commande Tauri qui verifie si l'Accessibility est accordee :
+Creer une fonction helper `ensure_accessibility()` qui verifie `AXIsProcessTrusted()` et retourne une erreur propre. L'appeler au debut de :
+- `perform_injection_at_position` (ligne 248)
+- `perform_injection` (ligne 295)
+- `has_text_selection` (ligne 348)
+- `perform_injection_at_position_direct` (ligne 464)
 
 ```rust
 #[cfg(target_os = "macos")]
-#[tauri::command]
-fn check_accessibility_permission() -> bool {
-    // AXIsProcessTrusted() via objc/core-foundation
-    // Retourne true si la permission est accordee
-}
-
-#[cfg(target_os = "macos")]
-#[tauri::command]
-fn request_accessibility_permission() -> Result<(), String> {
-    // Ouvre System Preferences > Accessibility
-    std::process::Command::new("open")
-        .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
-        .spawn()
-        .map_err(|e| e.to_string())?;
+fn ensure_accessibility() -> Result<(), String> {
+    unsafe {
+        extern "C" { fn AXIsProcessTrusted() -> u8; }
+        if AXIsProcessTrusted() == 0 {
+            return Err("Permission Accessibilite macOS non accordee. Ouvrez Preferences Systeme > Confidentialite > Accessibilite et autorisez AIRADCR.".to_string());
+        }
+    }
     Ok(())
 }
+
+#[cfg(not(target_os = "macos"))]
+fn ensure_accessibility() -> Result<(), String> { Ok(()) }
 ```
 
-Cote frontend (`WebViewContainer.tsx` ou `App.tsx`), verifier au demarrage et afficher un message si non accorde.
+**Impact Windows/Linux** : La version non-macOS retourne toujours `Ok(())`. Zero impact.
 
-**2. Corriger les raccourcis macOS (BLOQUANT 3)**
+### 4. Remplacer `CmdOrCtrl+Space` par `Alt+Space`
 
-Remplacer dans `register_global_shortcuts` :
-- `"Ctrl+Shift+D"` par `"CmdOrCtrl+Shift+D"`
-- `"Ctrl+Shift+P"` par `"CmdOrCtrl+Shift+P"`
-- `"Ctrl+Shift+T"` par `"CmdOrCtrl+Shift+T"`
-- `"Ctrl+Shift+S"` par `"CmdOrCtrl+Shift+S"`
-- `"Ctrl+Space"` par `"CmdOrCtrl+Space"` (ou `"Alt+Space"` sur macOS)
-- `"Ctrl+Shift+Space"` par `"CmdOrCtrl+Shift+Space"`
-- `"Ctrl+Alt+D"` par `"CmdOrCtrl+Alt+D"`
-- `"Ctrl+Alt+L"` par `"CmdOrCtrl+Alt+L"`
-- `"Ctrl+Alt+I"` par `"CmdOrCtrl+Alt+I"`
+**Fichier** : `src-tauri/src/main.rs` -- lignes 2039-2045
 
-**3. Supprimer les fallbacks hardcodes (MOYEN 1)**
+`Cmd+Space` est intercepte par Spotlight sur macOS. Le raccourci ne fonctionnera jamais sans que l'utilisateur desactive Spotlight. Remplacer par `Alt+Space` qui n'a pas de conflit.
 
-Remplacer les `1920x1080` par des appels a `system_profiler` ou au minimum un log `warn!` pour alerter.
+De meme, remplacer `CmdOrCtrl+Shift+Space` (ligne 2050) par `Alt+Shift+Space`.
 
-### Fichier : `src-tauri/Cargo.toml`
+**Impact Windows/Linux** : Changement de `Ctrl+Space` vers `Alt+Space`. C'est un changement comportemental mais `Alt+Space` est plus accessible (pas de conflit Windows non plus, `Alt+Space` ouvre le menu systeme mais est intercepte par le global shortcut en premier).
 
-Ajouter sous `[target.'cfg(target_os = "macos")'.dependencies]` :
+### 5. Ajouter entitlement `allow-unsigned-executable-memory`
 
-```toml
-[target.'cfg(target_os = "macos")'.dependencies]
-core-foundation = "0.9"
-```
+**Fichier** : `src-tauri/Entitlements.plist`
 
-Necessaire pour `AXIsProcessTrusted()`.
+Ajouter `com.apple.security.cs.allow-unsigned-executable-memory` pour compatibilite avec le hardened runtime (requis par `enigo` et `hidapi` sur certaines versions macOS).
 
-### Fichier : `.github/workflows/build.yml`
+**Impact Windows/Linux** : Ce fichier n'est utilise que pour les builds macOS.
 
-Ajouter les etapes de signature macOS (necessite les secrets `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`) :
+### 6. Ameliorer les fallbacks 1920x1080
 
-```yaml
-- name: Import Apple certificate
-  if: contains(matrix.settings.platform, 'macos')
-  env:
-    APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-    APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-  run: |
-    # Import certificate into temporary keychain
-    ...
+**Fichier** : `src-tauri/src/main.rs` -- lignes 822-828
 
-- name: Notarize DMG
-  if: contains(matrix.settings.platform, 'macos')
-  run: |
-    xcrun notarytool submit ... --wait
-    xcrun stapler staple ...
-```
+Remplacer les fallbacks silencieux par des logs `warn!` et des valeurs zero (au lieu de 1920x1080 qui peuvent fausser les calculs de positionnement).
 
-### Fichier : `src/components/WebViewContainer.tsx` (ou `src/App.tsx`)
-
-Ajouter une verification Accessibility au demarrage :
-
-```typescript
-useEffect(() => {
-  if (window.__TAURI__) {
-    invoke('check_accessibility_permission').then((granted) => {
-      if (!granted) {
-        // Afficher un message demandant d'activer l'Accessibility
-        toast.warning("Veuillez activer l'accessibilite pour AIRADCR...");
-        invoke('request_accessibility_permission');
-      }
-    });
-  }
-}, []);
-```
+**Impact Windows/Linux** : Aucun. Ces lignes sont dans un bloc `#[cfg(target_os = "macos")]`.
 
 ---
 
-## Resume des fichiers a modifier
+## Resume des fichiers modifies
 
-| Fichier | Modifications |
-|---|---|
-| `src-tauri/src/main.rs` | Commandes Accessibility, raccourcis CmdOrCtrl, fallbacks ameliores |
-| `src-tauri/Cargo.toml` | Ajout `core-foundation` pour macOS |
-| `.github/workflows/build.yml` | Signature + notarization macOS |
-| `src/components/WebViewContainer.tsx` | Verification Accessibility au demarrage |
+| Fichier | Modification | Impact Windows |
+|---|---|---|
+| `src/security/SecurityConfig.ts` | `allow-microphone allow-camera` dans sandbox | Aucun |
+| `src-tauri/tauri.conf.json` | `media-src` dans CSP | Aucun |
+| `src-tauri/src/main.rs` | `ensure_accessibility()` + appels dans 4 fonctions | Aucun (noop) |
+| `src-tauri/src/main.rs` | `Alt+Space` au lieu de `CmdOrCtrl+Space` | Mineur |
+| `src-tauri/src/main.rs` | Fallbacks 0 au lieu de 1920x1080 | Aucun |
+| `src-tauri/Entitlements.plist` | Entitlement memoire | macOS only |
 

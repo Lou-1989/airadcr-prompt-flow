@@ -246,6 +246,7 @@ async fn check_app_focus(window: tauri::Window, state: State<'_, AppState>) -> R
 
 #[tauri::command]
 async fn perform_injection_at_position(text: String, html: Option<String>, x: i32, y: i32, state: State<'_, AppState>) -> Result<(), String> {
+    ensure_accessibility()?;
     // Thread-safe clipboard operations
     let _clipboard_guard = match state.clipboard_lock.lock() {
         Ok(guard) => guard,
@@ -293,6 +294,7 @@ async fn perform_injection_at_position(text: String, html: Option<String>, x: i3
 
 #[tauri::command]
 async fn perform_injection(text: String, html: Option<String>, state: State<'_, AppState>) -> Result<(), String> {
+    ensure_accessibility()?;
     // Thread-safe clipboard operations
     let _clipboard_guard = match state.clipboard_lock.lock() {
         Ok(guard) => guard,
@@ -346,6 +348,7 @@ fn get_always_on_top_status(state: State<'_, AppState>) -> Result<bool, String> 
 // 🆕 DÉTECTION DE SÉLECTION DE TEXTE
 #[tauri::command]
 async fn has_text_selection(state: State<'_, AppState>) -> Result<bool, String> {
+    ensure_accessibility()?;
     let _clipboard_guard = match state.clipboard_lock.lock() {
         Ok(guard) => guard,
         Err(poisoned) => {
@@ -425,6 +428,21 @@ fn request_accessibility_permission() -> Result<(), String> {
     Ok(()) // Noop sur Windows/Linux
 }
 
+// 🍎 Garde obligatoire: vérifier Accessibility AVANT tout appel Enigo (prévient crash/SIGABRT)
+#[cfg(target_os = "macos")]
+fn ensure_accessibility() -> Result<(), String> {
+    unsafe {
+        extern "C" { fn AXIsProcessTrusted() -> u8; }
+        if AXIsProcessTrusted() == 0 {
+            return Err("Permission Accessibilité macOS non accordée. Ouvrez Préférences Système → Confidentialité → Accessibilité et autorisez AIRADCR.".to_string());
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn ensure_accessibility() -> Result<(), String> { Ok(()) }
+
 #[tauri::command]
 async fn set_ignore_cursor_events(window: tauri::Window, ignore: bool) -> Result<(), String> {
     window.set_ignore_cursor_events(ignore)
@@ -462,6 +480,7 @@ use winapi::um::winuser::WINDOWPLACEMENT;
 // 🆕 INJECTION WINDOWS ROBUSTE avec Win32 API pour multi-écrans
 #[tauri::command]
 async fn perform_injection_at_position_direct(x: i32, y: i32, text: String, html: Option<String>, state: State<'_, AppState>) -> Result<(), String> {
+    ensure_accessibility()?;
     let _clipboard_guard = match state.clipboard_lock.lock() {
         Ok(guard) => guard,
         Err(poisoned) => {
@@ -819,12 +838,12 @@ async fn get_virtual_desktop_info() -> Result<VirtualDesktopInfo, String> {
                     }
                 }
                 // Fallback si parsing échoue
-                debug!("[macOS] Fallback résolution par défaut");
-                Ok(VirtualDesktopInfo { x: 0, y: 0, width: 1920, height: 1080 })
+                warn!("[macOS] Fallback résolution: system_profiler parsé mais aucune résolution valide extraite");
+                Ok(VirtualDesktopInfo { x: 0, y: 0, width: 0, height: 0 })
             },
             Err(e) => {
-                warn!("[macOS] system_profiler échoué: {}, fallback", e);
-                Ok(VirtualDesktopInfo { x: 0, y: 0, width: 1920, height: 1080 })
+                warn!("[macOS] system_profiler échoué: {} — résolution inconnue", e);
+                Ok(VirtualDesktopInfo { x: 0, y: 0, width: 0, height: 0 })
             }
         }
     }
@@ -2034,24 +2053,23 @@ fn register_global_shortcuts(app_handle: tauri::AppHandle) -> tokio::sync::mpsc:
         })
         .unwrap_or_else(|e| warn!("Erreur enregistrement CmdOrCtrl+Shift+S: {}", e));
 
-    // 🎯 ERGONOMIC: Ctrl+Space → toggle_recording (style Wispr Flow / SuperWhisper)
-    // Touche la plus accessible : auriculaire Ctrl + pouce Space, une seule main
+    // 🎯 ERGONOMIC: Alt+Space → toggle_recording (évite conflit Spotlight macOS)
     let tx_space = tx.clone();
     shortcut_manager
-        .register("CmdOrCtrl+Space", move || {
-            debug!("[Shortcuts] CmdOrCtrl+Space pressé (ergonomic) → toggle_recording");
+        .register("Alt+Space", move || {
+            debug!("[Shortcuts] Alt+Space pressé (ergonomic) → toggle_recording");
             let _ = tx_space.send("toggle_recording");
         })
-        .unwrap_or_else(|e| warn!("Erreur enregistrement CmdOrCtrl+Space: {}", e));
+        .unwrap_or_else(|e| warn!("Erreur enregistrement Alt+Space: {}", e));
 
-    // 🎯 ERGONOMIC: Ctrl+Shift+Space → toggle_pause
+    // 🎯 ERGONOMIC: Alt+Shift+Space → toggle_pause
     let tx_shift_space = tx.clone();
     shortcut_manager
-        .register("CmdOrCtrl+Shift+Space", move || {
-            debug!("[Shortcuts] CmdOrCtrl+Shift+Space pressé (ergonomic) → toggle_pause");
+        .register("Alt+Shift+Space", move || {
+            debug!("[Shortcuts] Alt+Shift+Space pressé (ergonomic) → toggle_pause");
             let _ = tx_shift_space.send("toggle_pause");
         })
-        .unwrap_or_else(|e| warn!("Erreur enregistrement CmdOrCtrl+Shift+Space: {}", e));
+        .unwrap_or_else(|e| warn!("Erreur enregistrement Alt+Shift+Space: {}", e));
 
     // ANTI-GHOST: F9 (désactiver click-through)
     let handle_f9 = app_handle.clone();
@@ -2064,7 +2082,7 @@ fn register_global_shortcuts(app_handle: tauri::AppHandle) -> tokio::sync::mpsc:
         })
         .unwrap_or_else(|e| warn!("Erreur enregistrement F9: {}", e));
 
-    info!("[Shortcuts] Raccourcis globaux enregistrés (channel tokio): CmdOrCtrl+Alt+D/L/I, F9, CmdOrCtrl+Shift+D/P/T/S, CmdOrCtrl+Space, CmdOrCtrl+Shift+Space");
+    info!("[Shortcuts] Raccourcis globaux enregistrés (channel tokio): CmdOrCtrl+Alt+D/L/I, F9, CmdOrCtrl+Shift+D/P/T/S, Alt+Space, Alt+Shift+Space");
     
     tx // 🆕 Retourner le sender pour le thread SpeechMike
 }

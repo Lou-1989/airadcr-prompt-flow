@@ -357,11 +357,21 @@ async fn has_text_selection(state: State<'_, AppState>) -> Result<bool, String> 
         }
     };
     
+    // Sur macOS, simuler Cmd+C sans sélection produit un son d'erreur ("boop").
+    // On désactive cette détection sur macOS pour éviter l'effet sonore parasite.
+    #[cfg(target_os = "macos")]
+    {
+        warn!("[macOS] has_text_selection: détection par Cmd+C désactivée (son boop). Retourne false.");
+        return Ok(false);
+    }
+    
     // Sauvegarder le clipboard actuel
+    #[cfg(not(target_os = "macos"))]
+    {
     let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
     let original = clipboard.get_text().unwrap_or_default();
     
-    // Simuler Ctrl+C (Windows/Linux) ou Cmd+C (macOS) pour copier la sélection
+    // Simuler Ctrl+C (Windows/Linux) pour copier la sélection
     let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
     let copy_key = clipboard_modifier();
     enigo.key(copy_key, Direction::Press).map_err(|e| e.to_string())?;
@@ -381,6 +391,7 @@ async fn has_text_selection(state: State<'_, AppState>) -> Result<bool, String> 
     
     debug!("Détection sélection: {}", if has_selection { "OUI" } else { "NON" });
     Ok(has_selection)
+    } // fin #[cfg(not(target_os = "macos"))]
 }
 
 // 🍎 macOS: Vérification permission Accessibility (AXIsProcessTrusted)
@@ -815,14 +826,20 @@ async fn get_virtual_desktop_info() -> Result<VirtualDesktopInfo, String> {
                             for gpu in displays {
                                 if let Some(ndrvs) = gpu.get("spdisplays_ndrvs").and_then(|n| n.as_array()) {
                                     for display in ndrvs {
-                                        let res = display.get("_spdisplays_resolution")
-                                            .and_then(|r| r.as_str())
-                                            .unwrap_or("1920 x 1080");
+                                        let res = match display.get("_spdisplays_resolution").and_then(|r| r.as_str()) {
+                                            Some(r) => r,
+                                            None => { warn!("[macOS] Écran sans résolution parsable, ignoré"); continue; }
+                                        };
                                         let parts: Vec<&str> = res.split(" x ").collect();
                                         if parts.len() >= 2 {
-                                            let w = parts[0].trim().parse::<i32>().unwrap_or(1920);
-                                            let h = parts[1].trim().split_whitespace().next()
-                                                .and_then(|s| s.parse::<i32>().ok()).unwrap_or(1080);
+                                            let w = match parts[0].trim().parse::<i32>() {
+                                                Ok(v) => v,
+                                                Err(_) => { warn!("[macOS] Résolution non parsable: {}", res); continue; }
+                                            };
+                                            let h = match parts[1].trim().split_whitespace().next().and_then(|s| s.parse::<i32>().ok()) {
+                                                Some(v) => v,
+                                                None => { warn!("[macOS] Hauteur non parsable: {}", res); continue; }
+                                            };
                                             total_width += w;
                                             if h > max_height { max_height = h; }
                                         }
@@ -1158,6 +1175,14 @@ async fn open_log_folder() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         std::process::Command::new("open")
+            .arg(log_dir.to_string_lossy().as_ref())
+            .spawn()
+            .map_err(|e| format!("Impossible d'ouvrir le dossier: {}", e))?;
+    }
+    
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
             .arg(log_dir.to_string_lossy().as_ref())
             .spawn()
             .map_err(|e| format!("Impossible d'ouvrir le dossier: {}", e))?;
@@ -1656,6 +1681,17 @@ fn main() {
     
     #[cfg(target_os = "windows")]
     enable_dpi_awareness();
+    
+    // 🍎 Diagnostic macOS au démarrage
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(output) = std::process::Command::new("sw_vers").arg("-productVersion").output() {
+            let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            info!("[macOS] Version système: {}", version);
+        }
+        let ax_status = check_accessibility_permission();
+        info!("[macOS] Accessibility: {}", if ax_status { "ACCORDÉE" } else { "NON ACCORDÉE — ouvrez Préférences Système → Confidentialité → Accessibilité" });
+    }
     
     // 🌐 Démarrer le serveur HTTP local dans un thread séparé
     let app_data_dir = dirs::data_local_dir()
